@@ -1,0 +1,116 @@
+name: pr-preview
+
+# Publishes each PR's build to GitHub Pages under /pr-<number>/ and links it
+# from a comment on the PR. Uses the repo's own Pages site, no external service.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+concurrency:
+  group: pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  deploy:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build for the preview path
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/
+        run: npm run build
+
+      - name: Publish to the gh-pages branch
+        env:
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Work in a separate worktree so the source checkout stays untouched.
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch origin gh-pages --depth=1
+            git worktree add ../pages origin/gh-pages
+            git -C ../pages checkout -B gh-pages
+          else
+            git worktree add --detach ../pages
+            git -C ../pages checkout --orphan gh-pages
+            git -C ../pages rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          rm -rf "../pages/pr-${PR}"
+          mkdir -p "../pages/pr-${PR}"
+          cp -r packages/app/dist/. "../pages/pr-${PR}/"
+
+          git -C ../pages add -A
+          if git -C ../pages diff --staged --quiet; then
+            echo "preview unchanged"
+          else
+            git -C ../pages commit -m "Deploy preview for PR #${PR}"
+            git -C ../pages push origin gh-pages
+          fi
+
+      - name: Link the preview from the PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/
+        run: |
+          MARKER="<!-- pr-preview -->"
+          BODY="${MARKER}
+          Preview for ${{ github.event.pull_request.head.sha }}: ${URL}
+
+          Updates on every push to this branch."
+
+          # Update the existing comment so pushes do not stack up new ones.
+          ID=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
+                 --jq "map(select(.body | startswith(\"${MARKER}\"))) | .[0].id // empty")
+          if [ -n "$ID" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${ID}" -f body="${BODY}" >/dev/null
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" -f body="${BODY}" >/dev/null
+          fi
+
+  cleanup:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Remove the preview directory
+        env:
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if ! git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            echo "no gh-pages branch, nothing to clean"
+            exit 0
+          fi
+
+          git fetch origin gh-pages --depth=1
+          git worktree add ../pages origin/gh-pages
+          git -C ../pages checkout -B gh-pages
+          rm -rf "../pages/pr-${PR}"
+          git -C ../pages add -A
+          if git -C ../pages diff --staged --quiet; then
+            echo "nothing to remove"
+          else
+            git -C ../pages commit -m "Remove preview for PR #${PR}"
+            git -C ../pages push origin gh-pages
+          fi
