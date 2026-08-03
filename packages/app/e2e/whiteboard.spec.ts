@@ -214,9 +214,21 @@ test.describe('hover', () => {
       { type: 'set-metadata', id: IDS.ui, description: 'Browser-side checkout flow.' },
     ]);
 
-    await page.getByTestId(`entity-${IDS.ui}`).hover();
+    const node = page.getByTestId(`entity-${IDS.ui}`);
+    await node.hover();
 
-    await expect(page.getByTestId('hover-description')).toContainText('Browser-side checkout flow.');
+    await expect(node.getByTestId('hover-description')).toContainText('Browser-side checkout flow.');
+  });
+
+  test('leaves out the description line when there is none', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    const node = page.getByTestId(`entity-${IDS.gateway}`);
+    await node.hover();
+
+    // Scoped to this element: every node carries its own hover card.
+    await expect(node.getByTestId('hover-type')).toBeVisible();
+    await expect(node.getByTestId('hover-description')).toHaveCount(0);
   });
 
   test('shows a permanent type icon on an entity', async ({ page }) => {
@@ -654,14 +666,42 @@ test.describe('agent harness', () => {
 });
 
 test.describe('selection actions', () => {
-  test('delete sits under the selection rather than in the toolbar', async ({ page }) => {
+  test('delete sits with the selection rather than in the toolbar', async ({ page }) => {
     await dispatch(page, sampleDomain());
 
     await expect(page.locator('.toolbar [data-testid="delete-selected"]')).toHaveCount(0);
-    await expect(page.getByTestId('selection-actions')).toHaveCount(0);
+    await expect(page.getByTestId('delete-selected')).toHaveCount(0);
 
     await page.getByTestId(`entity-${IDS.ui}`).click();
-    await expect(page.getByTestId('selection-actions')).toBeVisible();
+    await expect(page.getByTestId('delete-selected')).toBeVisible();
+  });
+
+  test('delete sits below the editor panel', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+
+    const editor = (await page.getByTestId(`editor-${IDS.ui}`).boundingBox())!;
+    const trash = (await page.getByTestId('delete-selected').boundingBox())!;
+
+    // Inside the panel, at the bottom of it.
+    expect(trash.y).toBeGreaterThan(editor.y);
+    expect(trash.y + trash.height).toBeLessThanOrEqual(editor.y + editor.height + 1);
+  });
+
+  test('delete follows a dragged selection before the drop', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+    await page.getByTestId(`entity-${IDS.ledger}`).click({ modifiers: ['ControlOrMeta'] });
+
+    const before = (await page.getByTestId('delete-selected').boundingBox())!;
+    await page.locator(`.react-flow__node[data-id="${IDS.gateway}"]`).hover();
+    await page.mouse.down();
+    await page.mouse.move(300, 560, { steps: 12 });
+
+    // Still mid-drag, before any command has fired.
+    const during = (await page.getByTestId('delete-selected').boundingBox())!;
+    expect(during.y).not.toBe(before.y);
+    await page.mouse.up();
   });
 
   test('deletes a single selection', async ({ page }) => {
@@ -734,6 +774,21 @@ test.describe('connections', () => {
     await expect(
       page.locator(`.react-flow__edge[data-id^="${IDS.authorise}"] .react-flow__edge-path`),
     ).toHaveAttribute('marker-end', 'url(#modl-arrow-end)');
+  });
+
+  test('a routed line keeps its curve', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'set-waypoints', id: IDS.authorise, waypoints: [{ x: 200, y: 120 }] },
+    ]);
+
+    const path = await page
+      .locator(`.react-flow__edge[data-id^="${IDS.authorise}"] .react-flow__edge-path`)
+      .getAttribute('d');
+
+    // Cubic segments, so adding a bend does not turn the line into a polyline.
+    expect(path).toContain('C');
+    expect(path).not.toContain('L');
   });
 
   test('a waypoint reroutes the line', async ({ page }) => {
