@@ -6,6 +6,7 @@ import {
   type Document,
   type Element,
   type Id,
+  type Point,
 } from '../model/types.js';
 import { isConnectionType, isEntityType } from '../model/paradigm.js';
 import { parseFilter } from '../query/filter.js';
@@ -183,6 +184,62 @@ export function apply(state: AppState, command: Command): CommandResult {
       return fail(command.type, 'wrong-kind', `element ${command.id} carries no type`);
     }
 
+    case 'rename-tag': {
+      const element = state.document.model.elements[command.id];
+      if (!element) return unknown(command.type, command.id);
+      if (!(command.from in element.tags)) {
+        return fail(command.type, 'unknown-element', `element ${command.id} has no tag "${command.from}"`);
+      }
+      if (command.to.trim() === '') {
+        return fail(command.type, 'schema-invalid', 'tag key must not be empty');
+      }
+      if (command.to !== command.from && command.to in element.tags) {
+        return fail(
+          command.type,
+          'duplicate-id',
+          `element ${command.id} already carries a tag "${command.to}"`,
+        );
+      }
+
+      // Rebuilt in order so a rename keeps the tag where the reader left it.
+      const tags: Record<string, string> = {};
+      for (const [key, value] of Object.entries(element.tags)) {
+        if (key === command.from) tags[command.to] = value;
+        else tags[key] = value;
+      }
+      return ok(withElement(state, { ...element, tags }, state.document.layout), [
+        { type: 'element-updated', id: command.id },
+      ]);
+    }
+
+    case 'resize-element': {
+      const element = state.document.model.elements[command.id];
+      if (!element) return unknown(command.type, command.id);
+      if (!isEntity(element)) {
+        return fail(command.type, 'wrong-kind', `element ${command.id} is not an entity`);
+      }
+      if (!(command.width > 0) || !(command.height > 0)) {
+        return fail(command.type, 'schema-invalid', 'width and height must be positive');
+      }
+
+      const previous = state.document.layout[command.id];
+      const origin = previous && 'x' in previous ? { x: previous.x, y: previous.y } : { x: 0, y: 0 };
+
+      return ok(
+        {
+          ...state,
+          document: {
+            ...state.document,
+            layout: {
+              ...state.document.layout,
+              [command.id]: { ...origin, width: command.width, height: command.height },
+            },
+          },
+        },
+        [{ type: 'element-updated', id: command.id }],
+      );
+    }
+
     case 'set-endpoints': {
       const element = state.document.model.elements[command.id];
       if (!element) return unknown(command.type, command.id);
@@ -278,9 +335,8 @@ export function apply(state: AppState, command: Command): CommandResult {
       if (state.document.model.elements[command.id]) {
         return fail(command.type, 'duplicate-id', `element ${command.id} already exists`);
       }
-      if (command.memberIds.length === 0) {
-        return fail(command.type, 'empty-endpoints', 'a group needs at least one member');
-      }
+      // An empty group is allowed: it draws as a container you can drag
+      // elements into, and stays an ordinary entity if nothing joins it.
       for (const memberId of command.memberIds) {
         if (!state.document.model.elements[memberId]) return unknown(command.type, memberId);
       }
@@ -316,12 +372,7 @@ export function apply(state: AppState, command: Command): CommandResult {
             model: { elements },
             layout: {
               ...state.document.layout,
-              [command.id]: {
-                x: command.position.x,
-                y: command.position.y,
-                width: DEFAULT_ENTITY_SIZE.width,
-                height: DEFAULT_ENTITY_SIZE.height,
-              },
+              [command.id]: containerBox(state, command.memberIds, command.position),
             },
           },
           selection: [command.id],
@@ -466,6 +517,45 @@ function checkEndpoints(
     }
   }
   return null;
+}
+
+/** Room for the container header and a margin around what it holds. */
+const GROUP_PADDING = { side: 28, top: 44, bottom: 28 } as const;
+/** An empty container still needs somewhere to drop things. */
+export const MIN_GROUP_SIZE = { width: 260, height: 180 } as const;
+
+/**
+ * A rectangle that actually contains its members, since membership on the
+ * board is decided by what sits inside the box. Without this a caller has to
+ * work the geometry out itself, and a box that misses its own members hides
+ * its header behind them.
+ */
+function containerBox(
+  state: AppState,
+  memberIds: Id[],
+  fallback: Point,
+): { x: number; y: number; width: number; height: number } {
+  const boxes = memberIds
+    .map((id) => state.document.layout[id])
+    .filter((entry): entry is { x: number; y: number; width: number; height: number } =>
+      entry !== undefined && 'x' in entry,
+    );
+
+  if (boxes.length === 0) {
+    return { ...fallback, ...MIN_GROUP_SIZE };
+  }
+
+  const x = Math.min(...boxes.map((b) => b.x)) - GROUP_PADDING.side;
+  const y = Math.min(...boxes.map((b) => b.y)) - GROUP_PADDING.top;
+  const right = Math.max(...boxes.map((b) => b.x + b.width)) + GROUP_PADDING.side;
+  const bottom = Math.max(...boxes.map((b) => b.y + b.height)) + GROUP_PADDING.bottom;
+
+  return {
+    x,
+    y,
+    width: Math.max(right - x, MIN_GROUP_SIZE.width),
+    height: Math.max(bottom - y, MIN_GROUP_SIZE.height),
+  };
 }
 
 function withElement(

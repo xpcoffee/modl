@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { apply, applyAll } from './apply.js';
+import { isGroup } from '../query/groups.js';
 import { initialState } from '../state.js';
 import type { AppState, Command } from './types.js';
 
@@ -250,6 +251,80 @@ describe('delete-element', () => {
   });
 });
 
+describe('rename-tag', () => {
+  it('keeps the value and the position among the other tags', () => {
+    const state = must(
+      base,
+      { type: 'set-tag', id: A, key: 'team', value: 'web' },
+      { type: 'set-tag', id: A, key: 'tier', value: '1' },
+      { type: 'rename-tag', id: A, from: 'team', to: 'squad' },
+    );
+    expect(state.document.model.elements[A]?.tags).toEqual({ squad: 'web', tier: '1' });
+    expect(Object.keys(state.document.model.elements[A]?.tags ?? {})).toEqual(['squad', 'tier']);
+  });
+
+  it('lands as one command in the trace', () => {
+    const state = must(base, { type: 'set-tag', id: A, key: 'team', value: 'web' });
+    const result = apply(state, { type: 'rename-tag', id: A, from: 'team', to: 'squad' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.events).toEqual([{ type: 'element-updated', id: A }]);
+  });
+
+  it('unknown-element: rejects a tag that is not there', () => {
+    const result = apply(base, { type: 'rename-tag', id: A, from: 'absent', to: 'x' });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('unknown-element');
+  });
+
+  it('schema-invalid: rejects an empty new key', () => {
+    const state = must(base, { type: 'set-tag', id: A, key: 'team', value: 'web' });
+    const result = apply(state, { type: 'rename-tag', id: A, from: 'team', to: '  ' });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('schema-invalid');
+  });
+
+  it('duplicate-id: refuses to overwrite another tag', () => {
+    const state = must(
+      base,
+      { type: 'set-tag', id: A, key: 'team', value: 'web' },
+      { type: 'set-tag', id: A, key: 'tier', value: '1' },
+    );
+    const result = apply(state, { type: 'rename-tag', id: A, from: 'team', to: 'tier' });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('duplicate-id');
+  });
+});
+
+describe('resize-element', () => {
+  it('stores a new size and keeps the position', () => {
+    const state = must(
+      base,
+      { type: 'move-element', id: A, position: { x: 30, y: 40 } },
+      { type: 'resize-element', id: A, width: 400, height: 300 },
+    );
+    expect(state.document.layout[A]).toEqual({ x: 30, y: 40, width: 400, height: 300 });
+  });
+
+  it('schema-invalid: rejects a zero dimension', () => {
+    const result = apply(base, { type: 'resize-element', id: A, width: 0, height: 100 });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('schema-invalid');
+  });
+
+  it('wrong-kind: rejects resizing a connection', () => {
+    const state = must(base, link(LINK, [A], [B]));
+    const result = apply(state, { type: 'resize-element', id: LINK, width: 10, height: 10 });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('wrong-kind');
+  });
+});
+
 describe('groups', () => {
   const GROUP = '66666666-6666-4666-8666-666666666666';
 
@@ -267,17 +342,27 @@ describe('groups', () => {
     expect(state.selection).toEqual([GROUP]);
   });
 
-  it('empty-endpoints: rejects a group with no members', () => {
-    const result = apply(base, {
+  it('accepts a group with one member', () => {
+    const state = must(base, {
       type: 'group-elements',
       id: GROUP,
-      title: 'Empty',
+      title: 'Solo',
+      memberIds: [A],
+      position: { x: 0, y: 0 },
+    });
+    expect(state.document.model.elements[A]?.groupId).toBe(GROUP);
+  });
+
+  it('accepts an empty group, which stays an ordinary entity', () => {
+    const state = must(base, {
+      type: 'group-elements',
+      id: GROUP,
+      title: 'Empty box',
       memberIds: [],
       position: { x: 0, y: 0 },
     });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.code).toBe('empty-endpoints');
+    expect(state.document.model.elements[GROUP]).toBeDefined();
+    expect(isGroup(state.document.model.elements, GROUP)).toBe(false);
   });
 
   it('set-group moves an element into a group', () => {

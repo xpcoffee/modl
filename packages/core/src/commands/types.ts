@@ -38,6 +38,8 @@ export type Command =
   | { type: 'set-metadata'; id: Id; title?: string; description?: string }
   | { type: 'set-tag'; id: Id; key: string; value: string }
   | { type: 'remove-tag'; id: Id; key: string }
+  | { type: 'rename-tag'; id: Id; from: string; to: string }
+  | { type: 'resize-element'; id: Id; width: number; height: number }
   | { type: 'set-element-type'; id: Id; elementType: EntityType | ConnectionType }
   | { type: 'set-endpoints'; id: Id; from: Id[]; to: Id[] }
   | { type: 'delete-element'; id: Id }

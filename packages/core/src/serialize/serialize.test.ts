@@ -11,7 +11,7 @@ import {
 import type { Document, Element } from '../model/types.js';
 
 const FIXTURES = join(import.meta.dirname, '..', '..', 'fixtures');
-const CHECKOUT = join(FIXTURES, 'checkout.dmap.json');
+const CHECKOUT = join(FIXTURES, 'checkout.modl.json');
 
 function loadCheckout(): Document {
   const result = parseDocument(readFileSync(CHECKOUT, 'utf8'));

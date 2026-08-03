@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isLoadable, validateDocument, type IssueCode } from './validate.js';
 
-const CHECKOUT = join(import.meta.dirname, '..', '..', 'fixtures', 'checkout.dmap.json');
+const CHECKOUT = join(import.meta.dirname, '..', '..', 'fixtures', 'checkout.modl.json');
 
 const UI = '11111111-1111-4111-8111-111111111111';
 const GATEWAY = '22222222-2222-4222-8222-222222222222';
