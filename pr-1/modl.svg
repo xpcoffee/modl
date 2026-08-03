@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="#5b8def" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+  <title>modl</title>
+
+  <!-- Bowsprit, reaching forward off the bow -->
+  <path d="M9 44 L2 39" />
+
+  <!-- Hull, bow to the left -->
+  <path d="M5 44 H59 C57 51 51 56 43 56 H21 C13 56 7 51 5 44 Z" />
+
+  <!-- Foremast and its sail -->
+  <path d="M26 44 V15" />
+  <path d="M24 18 V41 H11 Z" />
+
+  <!-- Mainmast and its sail -->
+  <path d="M45 44 V8" />
+  <path d="M43 11 V41 H30 Z" />
+</svg>
