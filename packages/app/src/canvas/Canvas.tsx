@@ -27,6 +27,7 @@ import { GroupNode } from './GroupNode.js';
 import { ConnectionEdge } from './ConnectionEdge.js';
 import { ArrowMarkers } from './ArrowMarkers.js';
 import { SelectionActions } from './SelectionActions.js';
+import { getNewElementType } from './newElementType.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
 
 const NODE_TYPES = { entity: EntityNode, group: GroupNode };
@@ -84,9 +85,11 @@ export function Canvas() {
 
         store.dispatch({ type: 'move-element', id: node.id, position: to });
 
-        // A container's rectangle is derived from where its members sit, so
-        // moving the container has to carry them along or it springs back.
-        if (node.data.isContainer && (delta.x !== 0 || delta.y !== 0)) {
+        // A group carries its members whether it is open or shut. Moving it
+        // while collapsed and leaving them behind would scatter them back to
+        // their old positions the moment it is expanded.
+        const carriesMembers = node.data.isContainer || node.data.memberCount > 0;
+        if (carriesMembers && (delta.x !== 0 || delta.y !== 0)) {
           for (const memberId of descendantsOf(elements, node.id)) {
             const layout = state.document.layout[memberId];
             if (!layout || !('x' in layout)) continue;
@@ -169,8 +172,8 @@ export function Canvas() {
       store.dispatch({
         type: 'create-entity',
         id: crypto.randomUUID(),
-        entityType: 'component',
-        title: 'New component',
+        entityType: getNewElementType(),
+        title: `New ${getNewElementType()}`,
         position: {
           x: at.x - DEFAULT_ENTITY_SIZE.width / 2,
           y: at.y - DEFAULT_ENTITY_SIZE.height / 2,

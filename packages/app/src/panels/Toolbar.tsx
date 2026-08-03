@@ -7,6 +7,7 @@ import {
   type EntityType,
 } from '@modl/core';
 import { store } from '../store/store.js';
+import { setNewElementType, useNewElementType } from '../canvas/newElementType.js';
 import { useAppState } from '../store/useStore.js';
 
 /** Downloads text as a file. */
@@ -23,7 +24,7 @@ export function Toolbar() {
   const state = useAppState();
   const fileInput = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState('');
-  const [entityType, setEntityType] = useState<EntityType>('component');
+  const entityType = useNewElementType();
 
   const visible = selectIds(state.document.model.elements, state.filter).size;
   const total = Object.keys(state.document.model.elements).length;
@@ -95,7 +96,7 @@ export function Toolbar() {
         data-testid="entity-type"
         aria-label="Type for new elements"
         value={entityType}
-        onChange={(event) => setEntityType(event.target.value as EntityType)}
+        onChange={(event) => setNewElementType(event.target.value as EntityType)}
       >
         {ENTITY_TYPES.map((type) => (
           <option key={type} value={type}>
