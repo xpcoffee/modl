@@ -50,6 +50,74 @@ test.describe('direct manipulation', () => {
     expect(moves).toHaveLength(1);
   });
 
+  test('a node follows the pointer during a drag', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    const node = page.locator(`.react-flow__node[data-id="${IDS.ui}"]`);
+    const before = await node.boundingBox();
+
+    await node.hover();
+    await page.mouse.down();
+    await page.mouse.move(500, 450, { steps: 10 });
+
+    // Still mid-drag: the node has moved on screen before any command fires.
+    const during = await node.boundingBox();
+    expect(during?.x).not.toBe(before?.x);
+    const trace = await getTrace(page);
+    expect(trace.filter((entry) => entry.command.type === 'move-element')).toHaveLength(0);
+
+    await page.mouse.up();
+    const after = await getTrace(page);
+    expect(after.filter((entry) => entry.command.type === 'move-element')).toHaveLength(1);
+  });
+
+  test('dragging a multi-selection moves every selected node', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.locator(`.react-flow__node[data-id="${IDS.ui}"]`).click();
+    await page.locator(`.react-flow__node[data-id="${IDS.gateway}"]`).click({
+      modifiers: ['ControlOrMeta'],
+    });
+    await expect
+      .poll(() => page.evaluate(() => window.__domainMapper.getState().selection.length))
+      .toBe(2);
+
+    const before = await getDocument(page);
+    await page.locator(`.react-flow__node[data-id="${IDS.ui}"]`).hover();
+    await page.mouse.down();
+    await page.mouse.move(420, 520, { steps: 10 });
+    await page.mouse.up();
+
+    const after = await getDocument(page);
+    for (const id of [IDS.ui, IDS.gateway]) {
+      expect(after.layout[id]).not.toEqual(before.layout[id]);
+    }
+  });
+
+  test('a new connection takes the paradigm of its target', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'set-element-type', id: IDS.ledger, elementType: 'state' },
+    ]);
+
+    await page.evaluate(
+      ([from, to]) =>
+        window.__domainMapper.dispatch({
+          type: 'create-connection',
+          id: '66666666-6666-4666-8666-666666666666',
+          connectionType: 'transition',
+          from: [from!],
+          to: [to!],
+          title: '',
+        }),
+      [IDS.ui, IDS.ledger],
+    );
+
+    const document = await getDocument(page);
+    expect(document.model.elements['66666666-6666-4666-8666-666666666666']).toMatchObject({
+      type: 'transition',
+    });
+  });
+
   test('deleting a selected node cascades to its connections', async ({ page }) => {
     await dispatch(page, sampleDomain());
 
@@ -75,20 +143,45 @@ test.describe('inspector', () => {
     expect(document.model.elements[IDS.ui]?.title).toBe('Renamed');
   });
 
-  test('adds and removes a tag', async ({ page }) => {
+  test('creates a tag as soon as the key is typed', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`entity-${IDS.ui}`).click();
 
+    // No confirm step: typing the key is enough, matching how the title behaves.
     await page.getByTestId('tag-key').fill('tier');
-    await page.getByTestId('tag-value').fill('1');
-    await page.getByTestId('tag-add').click();
 
-    let document = await getDocument(page);
-    expect(document.model.elements[IDS.ui]?.tags).toMatchObject({ tier: '1' });
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.ui]?.tags).toMatchObject({ tier: '' });
+  });
 
-    await page.getByLabel('Remove tag tier').click();
-    document = await getDocument(page);
-    expect(document.model.elements[IDS.ui]?.tags['tier']).toBeUndefined();
+  test('edits a tag value in place', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+
+    await page.getByLabel('Tag value for team').fill('platform');
+
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.ui]?.tags['team']).toBe('platform');
+  });
+
+  test('removes a tag', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+
+    await page.getByLabel('Remove tag team').click();
+
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.ui]?.tags['team']).toBeUndefined();
+  });
+
+  test('changes the type of an element', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+
+    await page.getByTestId('inspector-type').selectOption('state');
+
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.ui]).toMatchObject({ type: 'state' });
   });
 
   test('prompts when nothing is selected', async ({ page }) => {
@@ -116,6 +209,18 @@ test.describe('filtering', () => {
     await expect(page.getByTestId('filter-error')).toBeVisible();
     // Everything stays readable while the expression is unparseable.
     await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-dimmed/);
+  });
+
+  test('suggests recorded values for the key being typed', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.getByTestId('filter-input').fill('team=');
+
+    const options = await page
+      .locator('#filter-suggestions option')
+      .evaluateAll((nodes) => nodes.map((node) => (node as HTMLOptionElement).value));
+    expect(options).toContain('team=payments');
+    expect(options).toContain('team=web');
   });
 
   test('clearing the filter restores every element', async ({ page }) => {
