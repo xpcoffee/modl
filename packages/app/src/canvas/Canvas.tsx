@@ -1,5 +1,6 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  applyNodeChanges,
   Background,
   Controls,
   ReactFlow,
@@ -11,6 +12,7 @@ import {
   type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { connectionTypeFor, isEntity } from '@domain-mapper/core';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 import { connectionIdFromEdge, deriveEdges, deriveNodes, type EntityNodeData } from './derive.js';
@@ -29,23 +31,35 @@ export function Canvas() {
   const state = useAppState();
   const { screenToFlowPosition } = useReactFlow();
 
-  const nodes = useMemo(() => deriveNodes(state), [state]);
+  const derived = useMemo(() => deriveNodes(state), [state]);
   const edges = useMemo(() => deriveEdges(state), [state]);
 
   /**
-   * React Flow moves a node internally during a drag. The command fires once
-   * on drop, so the trace records intent instead of every mouse position.
+   * React Flow owns node positions while a drag is in flight, so the node
+   * follows the pointer. The command fires once on drop, which keeps the
+   * trace holding the position the user meant rather than every pixel.
    */
-  const onNodeDragStop = useCallback((_: unknown, node: Node) => {
-    store.dispatch({ type: 'move-element', id: node.id, position: node.position });
+  const [nodes, setNodes] = useState(derived);
+  useEffect(() => setNodes(derived), [derived]);
+
+  const onNodeDragStop = useCallback((_: unknown, __: Node, dragged: Node[]) => {
+    // Every selected node moves together, so each one needs its own command.
+    for (const node of dragged) {
+      store.dispatch({ type: 'move-element', id: node.id, position: node.position });
+    }
   }, []);
 
   const onConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
+    const target = store.getState().document.model.elements[connection.target];
+    // The connection takes the paradigm of what it points at.
+    const connectionType =
+      target && isEntity(target) ? connectionTypeFor(target.type) : 'interaction';
+
     store.dispatch({
       type: 'create-connection',
       id: crypto.randomUUID(),
-      connectionType: 'interaction',
+      connectionType,
       from: [connection.source],
       to: [connection.target],
       title: '',
@@ -67,10 +81,10 @@ export function Canvas() {
   );
 
   /**
-   * React Flow is controlled here, so its selection and removal changes only
-   * take effect once they come back through the command bus.
+   * React Flow is controlled here, so selection and removal only take effect
+   * once they come back through the command bus.
    */
-  const applyChanges = useCallback(
+  const routeChanges = useCallback(
     (changes: readonly CanvasChange[], toElementId: (id: string) => string) => {
       const selection = new Set(store.getState().selection);
       let selectionMoved = false;
@@ -98,13 +112,17 @@ export function Canvas() {
   );
 
   const onNodesChange = useCallback(
-    (changes: NodeChange<Node<EntityNodeData>>[]) => applyChanges(changes, (id) => id),
-    [applyChanges],
+    (changes: NodeChange<Node<EntityNodeData>>[]) => {
+      // Position and dimension changes stay local until the drag ends.
+      setNodes((current) => applyNodeChanges(changes, current));
+      routeChanges(changes, (id) => id);
+    },
+    [routeChanges],
   );
 
   const onEdgesChange = useCallback(
-    (changes: EdgeChange<Edge>[]) => applyChanges(changes, connectionIdFromEdge),
-    [applyChanges],
+    (changes: EdgeChange<Edge>[]) => routeChanges(changes, connectionIdFromEdge),
+    [routeChanges],
   );
 
   return (
@@ -118,6 +136,8 @@ export function Canvas() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onDoubleClick={onPaneDoubleClick}
+        // Pinned so the gesture is the same on every platform.
+        multiSelectionKeyCode={['Control', 'Meta']}
         fitView
         proOptions={{ hideAttribution: true }}
       >
