@@ -9,7 +9,7 @@ import { stopEditing } from './editing.js';
 
 /**
  * A domain entity. The title and a type icon show always, the description and
- * tags on hover, and the editor when it is selected.
+ * tags on hover, and the editor when it is the only thing selected.
  */
 export function EntityNode({ data, selected }: NodeProps<Node<EntityNodeData>>) {
   return (
@@ -20,7 +20,22 @@ export function EntityNode({ data, selected }: NodeProps<Node<EntityNodeData>>) 
     >
       <Handle type="target" position={Position.Left} />
 
-      <ElementIcon elementType={data.elementType} className="entity-node__icon" />
+      {/* Expand sits where collapse sits on an open container, so the control
+          for a group is in one place whichever way it is showing. */}
+      <div className="entity-node__corner">
+        {data.memberCount > 0 && (
+          <button
+            type="button"
+            className="entity-node__expand nodrag"
+            data-testid={`expand-${data.id}`}
+            aria-label={`Expand ${data.title}`}
+            onClick={() => store.dispatch({ type: 'set-expanded', id: data.id, expanded: true })}
+          >
+            + {data.memberCount}
+          </button>
+        )}
+        <ElementIcon elementType={data.elementType} className="entity-node__icon" />
+      </div>
 
       {data.editing ? (
         <InlineTitle
@@ -33,19 +48,7 @@ export function EntityNode({ data, selected }: NodeProps<Node<EntityNodeData>>) 
         <div className="entity-node__title">{data.title || <em>untitled</em>}</div>
       )}
 
-      {data.memberCount > 0 && (
-        <button
-          type="button"
-          className="entity-node__expand nodrag"
-          data-testid={`expand-${data.id}`}
-          aria-label={`Expand ${data.title}`}
-          onClick={() => store.dispatch({ type: 'set-expanded', id: data.id, expanded: true })}
-        >
-          + {data.memberCount}
-        </button>
-      )}
-
-      {selected ? (
+      {data.soleSelection ? (
         <div className="entity-node__editor">
           <ElementEditor
             id={data.id}

@@ -23,6 +23,8 @@ export interface EntityNodeData extends Record<string, unknown> {
   tags: Record<string, string>;
   dimmed: boolean;
   editing: boolean;
+  /** True only when this is the single selected element, which opens the editor. */
+  soleSelection: boolean;
   /** Members this collapses, 0 when it is an ordinary entity. */
   memberCount: number;
   expanded: boolean;
@@ -41,11 +43,17 @@ export interface ConnectionEdgeData extends Record<string, unknown> {
   tags: Record<string, string>;
   dimmed: boolean;
   editing: boolean;
+  soleSelection: boolean;
+  waypoints: Point[];
+  arrowStart: boolean;
+  arrowEnd: boolean;
 }
 
 export interface DeriveOptions {
   /** Element currently being renamed in place. */
   editingId: Id | null;
+  /** A selection box is being dragged, so element editors stay shut. */
+  boxSelecting: boolean;
 }
 
 interface Rect {
@@ -128,6 +136,7 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Entit
   const expanded = new Set(state.expanded);
   const visible = selectIds(elements, state.filter);
   const selected = new Set(state.selection);
+  const soleSelection = onlySelected(state, options);
   const rects = measure(state, expanded);
 
   const rendered = Object.values(elements)
@@ -151,6 +160,8 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Entit
       ...(groupId && parentRect ? { parentId: groupId } : {}),
       ...(isContainer ? { style: { width: rect.width, height: rect.height } } : {}),
       selected: selected.has(entity.id),
+      // A selected element lifts above the rest so its editor is not covered.
+      ...(selected.has(entity.id) ? { zIndex: 1000 } : {}),
       data: {
         id: entity.id,
         title: entity.title,
@@ -159,6 +170,7 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Entit
         tags: entity.tags,
         dimmed: !visible.has(entity.id),
         editing: options.editingId === entity.id,
+        soleSelection: soleSelection === entity.id,
         memberCount: membersOf(elements, entity.id).length,
         expanded: expanded.has(entity.id),
         parentOrigin,
@@ -218,6 +230,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
   const expanded = new Set(state.expanded);
   const visible = selectIds(elements, state.filter);
   const selected = new Set(state.selection);
+  const soleSelection = onlySelected(state, options);
   const edges: Edge<ConnectionEdgeData>[] = [];
 
   for (const element of Object.values(elements)) {
@@ -235,6 +248,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           source: from,
           target: to,
           selected: selected.has(element.id),
+          ...(selected.has(element.id) ? { zIndex: 1001 } : {}),
           data: {
             connectionId: element.id,
             title: element.title,
@@ -243,12 +257,35 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
             tags: element.tags,
             dimmed: !visible.has(element.id),
             editing: options.editingId === element.id,
+            soleSelection: soleSelection === element.id,
+            waypoints: layoutOf(state, element.id).waypoints,
+            arrowStart: layoutOf(state, element.id).arrowStart ?? false,
+            arrowEnd: layoutOf(state, element.id).arrowEnd ?? false,
           },
         });
       }
     }
   }
   return edges;
+}
+
+/**
+ * The element whose editor should open: exactly one selected, and no
+ * selection box in flight. Dragging a box across the board would otherwise
+ * pop an editor open under the pointer.
+ */
+function onlySelected(state: AppState, options: DeriveOptions): Id | null {
+  if (options.boxSelecting) return null;
+  return state.selection.length === 1 ? (state.selection[0] ?? null) : null;
+}
+
+/** Connection layout, defaulted so callers need no checks. */
+function layoutOf(
+  state: AppState,
+  id: Id,
+): { waypoints: Point[]; arrowStart?: boolean; arrowEnd?: boolean } {
+  const entry = state.document.layout[id];
+  return entry && 'waypoints' in entry ? entry : { waypoints: [] };
 }
 
 /** Recovers the connection id from a derived edge id. */

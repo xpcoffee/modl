@@ -222,18 +222,21 @@ select {
   font: inherit;
 }
 
-.entity-node__expand {
+.entity-node__corner {
   position: absolute;
-  right: -10px;
-  bottom: -10px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  font-size: 10px;
+  top: 6px;
+  left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Sits where collapse sits on an open container. */
+.entity-node__expand {
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 11px;
   line-height: 1.4;
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #0b1020;
-  font-weight: 600;
 }
 
 /* Groups */
@@ -287,13 +290,16 @@ select {
 
 .group-node__hover {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 8px);
   left: 0;
-  display: none;
-  z-index: 10;
+  z-index: 20;
 }
 
-.group-node__header:hover .group-node__hover {
+.group-node__hover {
+  display: none;
+}
+
+.group-node:hover > .group-node__hover {
   display: block;
 }
 
@@ -379,9 +385,6 @@ select {
 }
 
 .entity-node__icon {
-  position: absolute;
-  top: 8px;
-  left: 8px;
   width: 14px;
   height: 14px;
   color: var(--muted);
@@ -413,14 +416,11 @@ select {
 .group-node__editor,
 .edge-label__editor {
   position: absolute;
-  top: calc(100% + 8px);
+  /* Clear of the actions bar, which sits directly under the selection. */
+  top: calc(100% + 42px);
   left: 0;
   z-index: 20;
   cursor: default;
-}
-
-.group-node__editor {
-  top: calc(100% + 2px);
 }
 
 .element-editor {
@@ -552,4 +552,118 @@ select {
 
 .react-flow__resize-control.line {
   border-color: var(--accent);
+}
+
+/* Selected details sit above everything else on the board. */
+
+/* Above the nodes layer, so a selected line's details are not covered by a
+   component, and above the edge hit-path so the label stays clickable. */
+.react-flow__edgelabel-renderer {
+  z-index: 1002;
+}
+
+.edge-label.is-selected {
+  z-index: 1001;
+}
+
+/* Waypoints */
+
+.waypoint {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 11px;
+  height: 11px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.waypoint--add {
+  background: var(--panel);
+  opacity: 0.5;
+}
+
+.waypoint--add:hover {
+  opacity: 1;
+}
+
+.waypoint--bend {
+  background: var(--accent);
+  cursor: grab;
+}
+
+/* Above the selected label, which shares this layer and covers them otherwise. */
+.waypoints {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1100;
+}
+
+/* Arrowheads */
+
+.arrow-markers {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.arrow-markers path {
+  fill: var(--muted);
+}
+
+.element-editor__arrows {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.element-editor__arrows button {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.element-editor__arrows .is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Delete, placed under the selection */
+
+.selection-actions {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin-top: 8px;
+  transform-origin: top left;
+  /* Above every node, which React Flow lifts as high as 1000 when selected. */
+  z-index: 1500;
+  pointer-events: all;
+}
+
+.selection-actions button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border-radius: 8px;
+  color: #f08a8a;
+}
+
+.selection-actions button:hover {
+  border-color: #f08a8a;
+  background: #2a2024;
+}
+
+.selection-actions svg {
+  width: 15px;
+  height: 15px;
 }

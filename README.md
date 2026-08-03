@@ -27,7 +27,7 @@ Let users draw a domain while the tool records a structure underneath: stable id
 |---|---|
 | [docs/vision.md](docs/vision.md) | The full picture: three paradigms, groups as zoom, forks |
 | [docs/domain-model.md](docs/domain-model.md) | The structure, the file format, validation rules. Enough to generate a document from another source |
-| [docs/decisions/001-first-iteration-path.md](docs/decisions/001-first-iteration-path.md) | Architecture choices and what would reverse them |
+| [docs/decisions/](docs/decisions/) | One file per architectural decision: the tension, what was rejected, what would reverse it |
 | [docs/specs/001-bootstrap.md](docs/specs/001-bootstrap.md) | Iteration 1 scope, commands, features, acceptance criteria |
 
 ## Running it
@@ -92,11 +92,12 @@ Use that path rather than `npx playwright install`, which fetches whatever versi
 - **Drag** a node to move it. The command is recorded on drop, so the trace holds the position you meant
 - **Multi-select** with Control-click or Cmd-click. Dragging moves the whole selection
 - **Connect** two components by dragging from the handle on a node's right edge to another node. The connection takes the paradigm of what it points at
-- **Select** a node or edge to edit it in place: click the type chip to change paradigm, type into the description, click a tag to rename or retype it, `+ tag` to add one
-- **Hover** an element for its description and tags. A type icon is always visible: a cog for a component, a ring for a state, a footprint for a step
+- **Select** a node or edge to edit it in place: click the type chip to change paradigm, type into the description, click a tag to rename or retype it, `+ tag` to add one. A trash button appears under the selection, for one element or many
+- **Hover** an element for its description and tags. A type icon is always visible: a cube for a component, a ring for a state, a footprint for a step
 - **Group** any selection, or none, to start a container. Drag elements in and out of it, resize it by its corners, and collapse or expand to move between levels of detail. Connections into a collapsed group re-point at the group
 - **Filter** with expressions like `team=payments`, `-deprecated`, or `team=payments tier=1`. Non-matching elements dim rather than disappear, and the input suggests recorded values
-- **Delete** removes the selection, on either Delete or Backspace
+- **Reroute** a line by selecting it and clicking a hollow handle to add a bend. Drag a bend to move it, double-click it to remove it. The editor toggles an arrowhead at either end
+- **Delete** removes the selection, on either Delete or Backspace, or with the trash button
 - **Save** and **Load** a `.modl.json` file, and **Export trace** for the session's command log
 
 ### Driving it from an agent

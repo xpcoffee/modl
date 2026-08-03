@@ -12,7 +12,7 @@ import {
   type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { connectionTypeFor, descendantsOf, isEntity } from '@modl/core';
+import { DEFAULT_ENTITY_SIZE, connectionTypeFor, descendantsOf, isEntity } from '@modl/core';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 import {
@@ -25,6 +25,8 @@ import {
 import { EntityNode } from './EntityNode.js';
 import { GroupNode } from './GroupNode.js';
 import { ConnectionEdge } from './ConnectionEdge.js';
+import { ArrowMarkers } from './ArrowMarkers.js';
+import { SelectionActions } from './SelectionActions.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
 
 const NODE_TYPES = { entity: EntityNode, group: GroupNode };
@@ -42,7 +44,9 @@ export function Canvas() {
   const editingId = useEditingId();
   const { screenToFlowPosition } = useReactFlow();
 
-  const options = useMemo(() => ({ editingId }), [editingId]);
+  // A selection box in flight keeps element editors shut.
+  const [boxSelecting, setBoxSelecting] = useState(false);
+  const options = useMemo(() => ({ editingId, boxSelecting }), [editingId, boxSelecting]);
   const derived = useMemo(() => deriveNodes(state, options), [state, options]);
   const edges = useMemo(() => deriveEdges(state, options), [state, options]);
 
@@ -160,12 +164,17 @@ export function Canvas() {
         return;
       }
 
+      // Centred on the pointer, since that is where the user aimed.
+      const at = screenToFlowPosition({ x: event.clientX, y: event.clientY });
       store.dispatch({
         type: 'create-entity',
         id: crypto.randomUUID(),
         entityType: 'component',
         title: 'New component',
-        position: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+        position: {
+          x: at.x - DEFAULT_ENTITY_SIZE.width / 2,
+          y: at.y - DEFAULT_ENTITY_SIZE.height / 2,
+        },
       });
     },
     [screenToFlowPosition],
@@ -218,6 +227,7 @@ export function Canvas() {
 
   return (
     <div className="canvas" data-testid="canvas">
+      <ArrowMarkers />
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -229,6 +239,8 @@ export function Canvas() {
         onConnect={onConnect}
         onDoubleClick={onDoubleClick}
         onPaneClick={stopEditing}
+        onSelectionStart={() => setBoxSelecting(true)}
+        onSelectionEnd={() => setBoxSelecting(false)}
         // Double-click creates an element, so it must not also zoom.
         zoomOnDoubleClick={false}
         // Both keys delete, matching what either keyboard leads you to expect.
@@ -240,6 +252,7 @@ export function Canvas() {
       >
         <Background />
         <Controls />
+        <SelectionActions />
       </ReactFlow>
     </div>
   );

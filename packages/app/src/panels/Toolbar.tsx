@@ -38,10 +38,6 @@ export function Toolbar() {
     });
   };
 
-  const deleteSelected = () => {
-    for (const id of state.selection) store.dispatch({ type: 'delete-element', id });
-  };
-
   /**
    * Starts a container around whatever is selected, or an empty one when
    * nothing is. It opens expanded so there is a box to drag elements into,
@@ -107,15 +103,6 @@ export function Toolbar() {
       <button type="button" data-testid="add-entity" onClick={addEntity}>
         Add
       </button>
-      <button
-        type="button"
-        data-testid="delete-selected"
-        onClick={deleteSelected}
-        disabled={state.selection.length === 0}
-      >
-        Delete
-      </button>
-
       <button
         type="button"
         data-testid="group-selected"

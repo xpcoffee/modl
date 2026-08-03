@@ -66,8 +66,10 @@ export function GroupNode({ data, selected }: NodeProps<Node<EntityNodeData>>) {
           <span className="group-node__empty">drop elements here</span>
         )}
 
-        {selected ? (
-          <div className="group-node__editor">
+      </header>
+
+      {data.soleSelection ? (
+        <div className="group-node__editor">
             <ElementEditor
               id={data.id}
               kind="entity"
@@ -77,7 +79,7 @@ export function GroupNode({ data, selected }: NodeProps<Node<EntityNodeData>>) {
             />
           </div>
         ) : (
-          <div className="group-node__hover">
+        <div className="group-node__hover">
             <ElementHover
               elementType={data.elementType}
               description={data.description}
@@ -85,7 +87,6 @@ export function GroupNode({ data, selected }: NodeProps<Node<EntityNodeData>>) {
             />
           </div>
         )}
-      </header>
 
       <Handle type="source" position={Position.Right} />
     </div>

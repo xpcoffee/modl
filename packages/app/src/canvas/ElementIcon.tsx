@@ -6,14 +6,13 @@ import type { ConnectionType, EntityType } from '@modl/core';
  * without hovering. The hover card still spells the type out in words.
  */
 const PATHS: Record<EntityType | ConnectionType, { label: string; path: ReactNode }> = {
-  // Component: a cog, the thing that does work. The dashed ring reads as
-  // teeth at 14px, where drawn teeth turn to mush.
+  // Component: a cube, a built thing. A ring read too much like a state.
   component: {
     label: 'component',
     path: (
       <>
-        <circle cx="12" cy="12" r="3" />
-        <circle cx="12" cy="12" r="7.5" strokeDasharray="2.4 2.4" />
+        <path d="M12 2.6 21 7.3v9.4L12 21.4 3 16.7V7.3Z" />
+        <path d="M3 7.3 12 12l9-4.7M12 12v9.4" />
       </>
     ),
   },
