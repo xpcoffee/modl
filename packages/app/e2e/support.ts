@@ -1,0 +1,47 @@
+import type { Page } from '@playwright/test';
+import type { Command, Document, TraceEntry } from '@domain-mapper/core';
+
+export const IDS = {
+  ui: '11111111-1111-4111-8111-111111111111',
+  gateway: '22222222-2222-4222-8222-222222222222',
+  ledger: '33333333-3333-4333-8333-333333333333',
+  authorise: '44444444-4444-4444-8444-444444444444',
+  post: '55555555-5555-4555-8555-555555555555',
+} as const;
+
+/** Loads the app and waits for the runtime API to come up. */
+export async function open(page: Page): Promise<void> {
+  await page.goto('/');
+  await page.waitForFunction(() => window.__domainMapper?.ready === true);
+  await page.evaluate(() => window.__domainMapper.reset());
+}
+
+export async function dispatch(page: Page, commands: Command[]): Promise<void> {
+  await page.evaluate((batch) => window.__domainMapper.dispatchAll(batch), commands);
+}
+
+export async function getDocument(page: Page): Promise<Document> {
+  return page.evaluate(() => window.__domainMapper.getDocument());
+}
+
+export async function getTrace(page: Page): Promise<TraceEntry[]> {
+  return page.evaluate(() => window.__domainMapper.getTrace());
+}
+
+export async function serialize(page: Page): Promise<string> {
+  return page.evaluate(() => window.__domainMapper.serialize());
+}
+
+/** A three-component domain with two interactions. */
+export function sampleDomain(): Command[] {
+  return [
+    { type: 'create-entity', id: IDS.ui, entityType: 'component', title: 'Checkout UI', position: { x: 0, y: 0 } },
+    { type: 'create-entity', id: IDS.gateway, entityType: 'component', title: 'Payment gateway', position: { x: 280, y: 0 } },
+    { type: 'create-entity', id: IDS.ledger, entityType: 'component', title: 'Ledger', position: { x: 560, y: 0 } },
+    { type: 'create-connection', id: IDS.authorise, connectionType: 'interaction', from: [IDS.ui], to: [IDS.gateway], title: 'authorise' },
+    { type: 'create-connection', id: IDS.post, connectionType: 'interaction', from: [IDS.gateway], to: [IDS.ledger], title: 'post entry' },
+    { type: 'set-tag', id: IDS.ui, key: 'team', value: 'web' },
+    { type: 'set-tag', id: IDS.gateway, key: 'team', value: 'payments' },
+    { type: 'set-tag', id: IDS.ledger, key: 'team', value: 'payments' },
+  ];
+}
