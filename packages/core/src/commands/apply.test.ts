@@ -175,6 +175,44 @@ describe('metadata and tags', () => {
   });
 });
 
+describe('set-element-type', () => {
+  it('changes an entity type', () => {
+    const state = must(base, { type: 'set-element-type', id: A, elementType: 'state' });
+    expect(state.document.model.elements[A]).toMatchObject({ kind: 'entity', type: 'state' });
+  });
+
+  it('changes a connection type', () => {
+    const state = must(base, link(LINK, [A], [B]), {
+      type: 'set-element-type',
+      id: LINK,
+      elementType: 'transition',
+    });
+    expect(state.document.model.elements[LINK]).toMatchObject({ type: 'transition' });
+  });
+
+  it('schema-invalid: rejects a connection type on an entity', () => {
+    const result = apply(base, { type: 'set-element-type', id: A, elementType: 'transition' });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('schema-invalid');
+  });
+
+  it('schema-invalid: rejects an entity type on a connection', () => {
+    const state = must(base, link(LINK, [A], [B]));
+    const result = apply(state, { type: 'set-element-type', id: LINK, elementType: 'component' });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('schema-invalid');
+  });
+
+  it('unknown-element: rejects a missing id', () => {
+    const result = apply(base, { type: 'set-element-type', id: MISSING, elementType: 'state' });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('unknown-element');
+  });
+});
+
 describe('delete-element', () => {
   it('removes the element and its layout', () => {
     const state = must(base, { type: 'delete-element', id: A });

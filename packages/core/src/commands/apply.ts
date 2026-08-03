@@ -7,6 +7,7 @@ import {
   type Element,
   type Id,
 } from '../model/types.js';
+import { isConnectionType, isEntityType } from '../model/paradigm.js';
 import { parseFilter } from '../query/filter.js';
 import { loadDocument } from '../serialize/serialize.js';
 import type {
@@ -143,6 +144,42 @@ export function apply(state: AppState, command: Command): CommandResult {
       return ok(withElement(state, { ...element, tags }, state.document.layout), [
         { type: 'element-updated', id: command.id },
       ]);
+    }
+
+    case 'set-element-type': {
+      const element = state.document.model.elements[command.id];
+      if (!element) return unknown(command.type, command.id);
+
+      // A type belongs to a kind: an entity cannot become a 'transition'.
+      if (isEntity(element)) {
+        if (!isEntityType(command.elementType)) {
+          return fail(
+            command.type,
+            'schema-invalid',
+            `"${command.elementType}" is not an entity type`,
+          );
+        }
+        return ok(
+          withElement(state, { ...element, type: command.elementType }, state.document.layout),
+          [{ type: 'element-updated', id: command.id }],
+        );
+      }
+
+      if (isConnection(element)) {
+        if (!isConnectionType(command.elementType)) {
+          return fail(
+            command.type,
+            'schema-invalid',
+            `"${command.elementType}" is not a connection type`,
+          );
+        }
+        return ok(
+          withElement(state, { ...element, type: command.elementType }, state.document.layout),
+          [{ type: 'element-updated', id: command.id }],
+        );
+      }
+
+      return fail(command.type, 'wrong-kind', `element ${command.id} carries no type`);
     }
 
     case 'set-endpoints': {

@@ -1,6 +1,7 @@
 export * from './model/types.js';
 export * from './model/schema.js';
 export * from './model/validate.js';
+export * from './model/paradigm.js';
 export * from './naming/readable-name.js';
 export { ADJECTIVES, NOUNS } from './naming/words.js';
 export * from './serialize/serialize.js';

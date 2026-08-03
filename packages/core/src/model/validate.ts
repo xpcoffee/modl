@@ -1,4 +1,5 @@
 import { documentSchema } from './schema.js';
+import { PARADIGM_CONNECTION } from './paradigm.js';
 import {
   FORMAT_VERSION,
   isConnection,
@@ -35,13 +36,6 @@ export interface ValidationResult {
   errors: Issue[];
   warnings: Issue[];
 }
-
-/** Connection type implied by each entity type. See docs/domain-model.md. */
-const PARADIGM_CONNECTION = {
-  state: 'transition',
-  step: 'relation',
-  component: 'interaction',
-} as const;
 
 /**
  * Checks a parsed document. Never throws.
