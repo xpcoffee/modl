@@ -1,0 +1,298 @@
+:root {
+  --bg: #12141a;
+  --panel: #1b1e26;
+  --border: #2c313d;
+  --text: #e6e8ee;
+  --muted: #8b93a7;
+  --accent: #5b8def;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font: 14px/1.5 ui-sans-serif, system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Toolbar */
+
+.toolbar,
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbar__brand {
+  margin-right: 8px;
+}
+
+.toolbar__divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+}
+
+.toolbar__spacer {
+  flex: 1;
+}
+
+.toolbar__count,
+.toolbar__message {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+button {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #232733;
+  color: var(--text);
+  cursor: pointer;
+}
+
+button:hover:enabled {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+input,
+textarea {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #12141a;
+  color: var(--text);
+  font: inherit;
+  width: 100%;
+}
+
+/* Filter */
+
+.filter-bar__field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  max-width: 480px;
+}
+
+.filter-bar__field span {
+  color: var(--muted);
+}
+
+.filter-bar__error {
+  color: #f0a05a;
+  font-size: 12px;
+}
+
+.filter-bar__keys {
+  display: flex;
+  gap: 4px;
+}
+
+.filter-bar__keys button {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+/* Canvas */
+
+.canvas {
+  flex: 1;
+  min-width: 0;
+}
+
+.entity-node {
+  position: relative;
+  width: 180px;
+  min-height: 72px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #232733;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.entity-node.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgb(91 141 239 / 30%);
+}
+
+.entity-node.is-dimmed {
+  opacity: 0.25;
+}
+
+.entity-node__title {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* Tags and readable name reveal on hover, per the spec. */
+.entity-node__hover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #12141a;
+  font-size: 11px;
+  color: var(--muted);
+  display: none;
+  z-index: 10;
+}
+
+.entity-node:hover .entity-node__hover {
+  display: block;
+}
+
+.entity-node__tags {
+  margin: 4px 0 0;
+  padding-left: 14px;
+}
+
+/* Inspector */
+
+.inspector {
+  width: 300px;
+  flex-shrink: 0;
+  padding: 12px;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.inspector__empty {
+  color: var(--muted);
+}
+
+.inspector__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.inspector__kind {
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.inspector__name {
+  color: var(--accent);
+}
+
+.inspector__id {
+  display: block;
+  margin-top: 16px;
+  font-size: 10px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.field {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.field > span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.tag-list {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+}
+
+.tag-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.tag-list button {
+  padding: 0 6px;
+  line-height: 1.2;
+}
+
+.tag-add {
+  display: flex;
+  gap: 4px;
+}
+
+/* React Flow ships light-theme defaults, so the dark surface needs these. */
+.react-flow__edge-text {
+  fill: var(--text);
+  font-size: 11px;
+}
+
+.react-flow__edge-textbg {
+  fill: var(--panel);
+}
+
+.react-flow__edge-path {
+  stroke: var(--muted);
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--accent);
+}
+
+.react-flow__handle {
+  width: 8px;
+  height: 8px;
+  background: var(--panel);
+  border: 1px solid var(--muted);
+}
+
+.react-flow__controls-button {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  fill: var(--text);
+}
+
+.react-flow__controls-button:hover {
+  background: #2a2f3d;
+}
+
+.react-flow__attribution {
+  display: none;
+}
