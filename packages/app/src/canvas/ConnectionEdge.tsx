@@ -16,10 +16,36 @@ import { ElementIcon } from './ElementIcon.js';
 import { InlineTitle } from './InlineTitle.js';
 import { stopEditing } from './editing.js';
 
-/** A polyline through the waypoints, rounded at each bend. */
+/**
+ * A smooth curve through every waypoint, so adding a bend reshapes the line
+ * rather than turning it into a polyline.
+ *
+ * Catmull-Rom through the points, converted to cubic beziers. The two ghost
+ * points outside the ends set the tangents there, keeping the line leaving
+ * the source and entering the target horizontally the way the plain bezier
+ * does.
+ */
 function routedPath(from: Point, waypoints: Point[], to: Point): string {
-  const points = [from, ...waypoints, to];
-  return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  const inner = [from, ...waypoints, to];
+  const reach = Math.min(80, Math.max(20, Math.abs(to.x - from.x) / 3));
+  const points = [
+    { x: from.x - reach, y: from.y },
+    ...inner,
+    { x: to.x + reach, y: to.y },
+  ];
+
+  let path = `M ${from.x} ${from.y}`;
+  for (let i = 1; i < points.length - 2; i += 1) {
+    const p0 = points[i - 1]!;
+    const p1 = points[i]!;
+    const p2 = points[i + 1]!;
+    const p3 = points[i + 2]!;
+
+    const c1 = { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 };
+    const c2 = { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 };
+    path += ` C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p2.x} ${p2.y}`;
+  }
+  return path;
 }
 
 /**

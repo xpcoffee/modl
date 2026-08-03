@@ -20,12 +20,10 @@ export function ElementHover({
       <span className="hover-card__type" data-testid="hover-type">
         {elementType}
       </span>
-      {description ? (
+      {description && (
         <p className="hover-card__description" data-testid="hover-description">
           {description}
         </p>
-      ) : (
-        <p className="hover-card__description hover-card__description--empty">no description</p>
       )}
       {entries.length > 0 && (
         <ul className="hover-card__tags">
