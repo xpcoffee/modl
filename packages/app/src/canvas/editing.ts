@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type { Id } from '@domain-mapper/core';
+import type { Id } from '@modl/core';
 
 /**
  * Which element is being renamed in place.

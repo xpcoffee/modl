@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { parseFilter, tagKeys, tagValues } from '@domain-mapper/core';
+import { parseFilter, tagKeys, tagValues } from '@modl/core';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 

@@ -12,7 +12,7 @@ Read [the domain model](../domain-model.md) for the structure and [decision 001]
 - Create, move, edit, delete entities. Connect entities many-to-many.
 - Titles, descriptions, key-value tags. Titles always visible; type badge, description, and tags on hover.
 - Filter by tag expression, which dims elements that do not match
-- Save to and load from a `.dmap.json` file
+- Save to and load from a `.modl.json` file
 - Command bus, session trace, replay
 - Runtime API and the agent test harness
 
@@ -56,7 +56,7 @@ packages/
       canvas/           React Flow wiring, node and edge components
       panels/           inspector, filter bar, toolbar
       store/            command dispatch, trace collection
-      runtime/          window.__domainMapper
+      runtime/          window.__modl
     e2e/                Playwright specs
 ```
 
@@ -128,7 +128,7 @@ A trace exports as JSON and imports back. Timestamps are recorded for humans and
 Always available on the running app, in every build.
 
 ```ts
-window.__domainMapper = {
+window.__modl = {
   dispatch(command: Command): CommandResult;
   dispatchAll(commands: Command[]): CommandResult[];
   getState(): AppState;
@@ -206,7 +206,7 @@ A panel editing the selected element.
 
 ### F7: Save and load
 
-- Save downloads a `.dmap.json` matching `getDocument()` byte for byte
+- Save downloads a `.modl.json` matching `getDocument()` byte for byte
 - Loading a file replaces the document and appends `load-document`
 - Loading a malformed file reports the validation errors and leaves the current document untouched
 

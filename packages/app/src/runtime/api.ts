@@ -1,4 +1,4 @@
-import type { AppState, Command, CommandResult, Document, TraceEntry } from '@domain-mapper/core';
+import type { AppState, Command, CommandResult, Document, TraceEntry } from '@modl/core';
 import { store, replayFromJson } from '../store/store.js';
 
 export interface DomainMapperApi {
@@ -16,7 +16,7 @@ export interface DomainMapperApi {
 
 declare global {
   interface Window {
-    __domainMapper: DomainMapperApi;
+    __modl: DomainMapperApi;
   }
 }
 
@@ -26,7 +26,7 @@ declare global {
  * is a stated requirement rather than a debug aid.
  */
 export function installRuntimeApi(): void {
-  window.__domainMapper = {
+  window.__modl = {
     dispatch: store.dispatch,
     dispatchAll: store.dispatchAll,
     getState: store.getState,
@@ -42,5 +42,5 @@ export function installRuntimeApi(): void {
 
 /** Flipped after first render so a spec can wait for a usable page. */
 export function markReady(): void {
-  window.__domainMapper.ready = true;
+  window.__modl.ready = true;
 }

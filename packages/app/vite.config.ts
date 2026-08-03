@@ -11,6 +11,6 @@ export default defineConfig({
     fs: { allow: ['..', '../..'] },
   },
   optimizeDeps: {
-    exclude: ['@domain-mapper/core'],
+    exclude: ['@modl/core'],
   },
 });

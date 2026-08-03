@@ -10,7 +10,7 @@ import {
   type CommandResult,
   type Document,
   type TraceEntry,
-} from '@domain-mapper/core';
+} from '@modl/core';
 
 /**
  * Holds session state and the trace. The UI dispatches commands and never

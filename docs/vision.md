@@ -34,4 +34,4 @@ Fan-in and fan-out points, drawn as a circle or a diamond by user choice. They l
 
 Whiteboards handle ad-hoc brainstorming well and produce drawings that are hard to reuse. Teams redraw a system rather than extend last quarter's diagram, because the drawing holds no structure worth extending. Existing tools also lack tagging and filtering, so a diagram cannot be focused on one aspect, and they lack levels of abstraction, so one drawing serves one audience.
 
-domain-mapper records structure while the user draws. The drawing is one view of that structure. Other systems read the same structure as a pseudo-source of truth.
+modl records structure while the user draws. The drawing is one view of that structure. Other systems read the same structure as a pseudo-source of truth.

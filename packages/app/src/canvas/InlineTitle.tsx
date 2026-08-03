@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { store } from '../store/store.js';
-import type { Id } from '@domain-mapper/core';
+import type { Id } from '@modl/core';
 
 /**
  * Renames an element in place. Enter and blur commit, Escape discards.

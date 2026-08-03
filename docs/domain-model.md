@@ -1,6 +1,6 @@
 # Domain model
 
-The reference for the structure domain-mapper produces. An engineer or agent can read this file alone and generate a valid document from another source (an existing diagram, a codebase scan, a spreadsheet) without touching the whiteboard.
+The reference for the structure modl produces. An engineer or agent can read this file alone and generate a valid document from another source (an existing diagram, a codebase scan, a spreadsheet) without touching the whiteboard.
 
 Everything here is stable across iterations. Where iteration 1 only implements part of it, the file says so.
 
@@ -74,7 +74,7 @@ A connection between entities of different paradigms is legal. The connection ty
 
 ## Document format
 
-One JSON file. `.dmap.json` by convention.
+One JSON file. `.modl.json` by convention.
 
 ```json
 {
@@ -160,7 +160,9 @@ Validation returns `{ errors: Issue[]; warnings: Issue[] }`, where each `Issue` 
 
 A group is an entity that other elements name in their `groupId`. Any entity becomes one as soon as something points at it, so there is no separate group type and no flag to keep in step.
 
-Collapsing a group hides its members and leaves the group on the board. Expanding it draws the members inside a container. That is what zooming means here: one document, read at the level of detail the reader wants.
+Collapsing a group hides its members and leaves the group on the board. Expanding it draws the members inside a container sized by the entity's own `layout` rectangle, which the reader resizes. That is what zooming means here: one document, read at the level of detail the reader wants.
+
+Membership follows the box. Dropping an element inside a container joins it; dragging one past the edge takes it out. Sizing the container from its members instead would mean a member dragged away carries the box with it and can never leave.
 
 Two rules follow from this and both live in `packages/core/src/query/groups.ts`:
 

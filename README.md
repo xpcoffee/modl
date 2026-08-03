@@ -1,4 +1,4 @@
-# domain-mapper
+# modl
 
 > currently an AI PoC
 
@@ -54,7 +54,7 @@ Run these from the repo root.
 | `npm run verify` | Typecheck, then the full test suite. The one to run before calling something done |
 | `npm test` | Unit tests across every workspace, headless, about 200ms |
 | `npm run typecheck` | `tsc --build` across the project references |
-| `npm test --workspace @domain-mapper/core` | Tests for one package |
+| `npm test --workspace @modl/core` | Tests for one package |
 | `UPDATE_GOLDEN=1 npm test` | Rewrites golden files after a deliberate change. Read the diff before committing it |
 
 Single test file, watched:
@@ -92,25 +92,25 @@ Use that path rather than `npx playwright install`, which fetches whatever versi
 - **Drag** a node to move it. The command is recorded on drop, so the trace holds the position you meant
 - **Multi-select** with Control-click or Cmd-click. Dragging moves the whole selection
 - **Connect** two components by dragging from the handle on a node's right edge to another node. The connection takes the paradigm of what it points at
-- **Select** a node or edge to edit its type, title, description, and tags in the inspector. Tags take hold as you type
-- **Hover** an element for its type badge, description, and tags
-- **Group** two or more selected elements, then collapse and expand to move between levels of detail. Connections into a collapsed group re-point at the group
+- **Select** a node or edge to edit it in place: click the type chip to change paradigm, type into the description, click a tag to rename or retype it, `+ tag` to add one
+- **Hover** an element for its description and tags. A type icon is always visible: a cog for a component, a ring for a state, a footprint for a step
+- **Group** any selection, or none, to start a container. Drag elements in and out of it, resize it by its corners, and collapse or expand to move between levels of detail. Connections into a collapsed group re-point at the group
 - **Filter** with expressions like `team=payments`, `-deprecated`, or `team=payments tier=1`. Non-matching elements dim rather than disappear, and the input suggests recorded values
 - **Delete** removes the selection, on either Delete or Backspace
-- **Save** and **Load** a `.dmap.json` file, and **Export trace** for the session's command log
+- **Save** and **Load** a `.modl.json` file, and **Export trace** for the session's command log
 
 ### Driving it from an agent
 
-Every build exposes the command bus on `window.__domainMapper`:
+Every build exposes the command bus on `window.__modl`:
 
 ```js
-window.__domainMapper.dispatchAll([
+window.__modl.dispatchAll([
   { type: 'create-entity', id: crypto.randomUUID(), entityType: 'component',
     title: 'Checkout UI', position: { x: 0, y: 0 } },
 ]);
-window.__domainMapper.getDocument();   // the structure
-window.__domainMapper.getTrace();      // every command, applied or rejected
-window.__domainMapper.replay(trace);   // fold a trace back into state
+window.__modl.getDocument();   // the structure
+window.__modl.getTrace();      // every command, applied or rejected
+window.__modl.replay(trace);   // fold a trace back into state
 ```
 
 For a quick visual check with the dev server running:

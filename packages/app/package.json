@@ -1,5 +1,5 @@
 {
-  "name": "@domain-mapper/app",
+  "name": "@modl/app",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@domain-mapper/core": "*",
+    "@modl/core": "*",
     "@xyflow/react": "^12.11.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"

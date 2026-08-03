@@ -1,5 +1,5 @@
 /**
- * The structure domain-mapper produces. See docs/domain-model.md.
+ * The structure modl produces. See docs/domain-model.md.
  *
  * The model is flat: every element lives in one map keyed by id, and
  * relationships are fields holding ids. Nothing nests.

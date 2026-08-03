@@ -1,5 +1,5 @@
 {
-  "name": "domain-mapper",
+  "name": "modl",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,9 +13,9 @@
     "test": "npm run test --workspaces --if-present",
     "typecheck": "tsc --build",
     "verify": "npm run typecheck && npm test && npm run test:e2e",
-    "test:e2e": "npm run test:e2e --workspace @domain-mapper/app",
-    "dev": "npm run dev --workspace @domain-mapper/app",
-    "build": "npm run build --workspace @domain-mapper/app"
+    "test:e2e": "npm run test:e2e --workspace @modl/app",
+    "dev": "npm run dev --workspace @modl/app",
+    "build": "npm run build --workspace @modl/app"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

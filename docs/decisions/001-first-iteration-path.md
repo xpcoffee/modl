@@ -78,7 +78,7 @@ React Flow moves a node internally during a drag. A `move-element` command fires
 
 ### 7. Layout is separate from the model, in the same file
 
-One `.dmap.json` holds `model` and `layout` as sibling sections, keyed by the same ids.
+One `.modl.json` holds `model` and `layout` as sibling sections, keyed by the same ids.
 
 **Why**: a consumer generating structure from a codebase scan has no positions to offer, and a consumer reading structure does not care where a box sits. Separating them lets `layout` be absent entirely. Keeping them in one file means a user saves and loads one thing.
 

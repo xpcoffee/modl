@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { store } from './store.js';
-import type { AppState } from '@domain-mapper/core';
+import type { AppState } from '@modl/core';
 
 /** Subscribes a component to session state. */
 export function useAppState(): AppState {
