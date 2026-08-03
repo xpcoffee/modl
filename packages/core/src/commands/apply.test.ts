@@ -250,6 +250,118 @@ describe('delete-element', () => {
   });
 });
 
+describe('groups', () => {
+  const GROUP = '66666666-6666-4666-8666-666666666666';
+
+  it('group-elements creates a group holding the members', () => {
+    const state = must(base, {
+      type: 'group-elements',
+      id: GROUP,
+      title: 'Payments',
+      memberIds: [A, B],
+      position: { x: 10, y: 10 },
+    });
+    expect(state.document.model.elements[GROUP]).toMatchObject({ kind: 'entity', title: 'Payments' });
+    expect(state.document.model.elements[A]?.groupId).toBe(GROUP);
+    expect(state.document.model.elements[B]?.groupId).toBe(GROUP);
+    expect(state.selection).toEqual([GROUP]);
+  });
+
+  it('empty-endpoints: rejects a group with no members', () => {
+    const result = apply(base, {
+      type: 'group-elements',
+      id: GROUP,
+      title: 'Empty',
+      memberIds: [],
+      position: { x: 0, y: 0 },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('empty-endpoints');
+  });
+
+  it('set-group moves an element into a group', () => {
+    const state = must(base, entity(C, 'Ledger'), { type: 'set-group', id: C, groupId: A });
+    expect(state.document.model.elements[C]?.groupId).toBe(A);
+  });
+
+  it('set-group clears membership with null', () => {
+    const state = must(
+      base,
+      { type: 'set-group', id: B, groupId: A },
+      { type: 'set-group', id: B, groupId: null },
+    );
+    expect(state.document.model.elements[B]?.groupId).toBeNull();
+  });
+
+  it('group-cycle: rejects an element joining itself', () => {
+    const result = apply(base, { type: 'set-group', id: A, groupId: A });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('group-cycle');
+  });
+
+  it('group-cycle: rejects a group joining its own descendant', () => {
+    const state = must(base, { type: 'set-group', id: B, groupId: A });
+    const result = apply(state, { type: 'set-group', id: A, groupId: B });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('group-cycle');
+  });
+
+  it('not-a-group: rejects a connection as a group', () => {
+    const state = must(base, link(LINK, [A], [B]));
+    const result = apply(state, { type: 'set-group', id: A, groupId: LINK });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('not-a-group');
+  });
+
+  it('ungroup lifts members to the parent of the group', () => {
+    const state = must(
+      base,
+      { type: 'group-elements', id: GROUP, title: 'Payments', memberIds: [A, B], position: { x: 0, y: 0 } },
+      { type: 'ungroup', id: GROUP },
+    );
+    expect(state.document.model.elements[A]?.groupId).toBeNull();
+    expect(state.document.model.elements[GROUP]).toBeDefined();
+  });
+
+  it('not-a-group: rejects ungrouping an element with no members', () => {
+    const result = apply(base, { type: 'ungroup', id: A });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('not-a-group');
+  });
+
+  it('deleting a group lifts its members rather than orphaning them', () => {
+    const state = must(
+      base,
+      { type: 'group-elements', id: GROUP, title: 'Payments', memberIds: [A, B], position: { x: 0, y: 0 } },
+      { type: 'delete-element', id: GROUP },
+    );
+    expect(state.document.model.elements[GROUP]).toBeUndefined();
+    expect(state.document.model.elements[A]?.groupId).toBeNull();
+  });
+
+  it('set-expanded records and clears expansion', () => {
+    let state = must(base, { type: 'set-expanded', id: A, expanded: true });
+    expect(state.expanded).toEqual([A]);
+    state = must(state, { type: 'set-expanded', id: A, expanded: false });
+    expect(state.expanded).toEqual([]);
+  });
+
+  it('deleting an expanded group drops it from the expansion set', () => {
+    const state = must(
+      base,
+      { type: 'group-elements', id: GROUP, title: 'Payments', memberIds: [A], position: { x: 0, y: 0 } },
+      { type: 'set-expanded', id: GROUP, expanded: true },
+      { type: 'delete-element', id: GROUP },
+    );
+    expect(state.expanded).toEqual([]);
+  });
+});
+
 describe('set-filter', () => {
   it('stores a valid expression', () => {
     const state = must(base, { type: 'set-filter', expression: 'team=web' });

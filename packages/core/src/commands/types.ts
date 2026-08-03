@@ -16,6 +16,8 @@ export interface AppState {
   /** Active tag filter expression. Empty matches everything. */
   filter: string;
   selection: Id[];
+  /** Groups currently showing their members. Collapsed is the default. */
+  expanded: Id[];
 }
 
 /**
@@ -39,6 +41,10 @@ export type Command =
   | { type: 'set-element-type'; id: Id; elementType: EntityType | ConnectionType }
   | { type: 'set-endpoints'; id: Id; from: Id[]; to: Id[] }
   | { type: 'delete-element'; id: Id }
+  | { type: 'set-group'; id: Id; groupId: Id | null }
+  | { type: 'group-elements'; id: Id; title: string; memberIds: Id[]; position: Point }
+  | { type: 'ungroup'; id: Id }
+  | { type: 'set-expanded'; id: Id; expanded: boolean }
   | { type: 'set-selection'; ids: Id[] }
   | { type: 'set-filter'; expression: string }
   | { type: 'set-view'; pan: Point; zoom: number }
@@ -56,7 +62,9 @@ export type ErrorCode =
   | 'groups-unsupported'
   | 'schema-invalid'
   | 'version-unsupported'
-  | 'wrong-kind';
+  | 'wrong-kind'
+  | 'group-cycle'
+  | 'not-a-group';
 
 export interface CommandError {
   code: ErrorCode;
@@ -70,6 +78,8 @@ export type DomainEvent =
   | { type: 'element-updated'; id: Id }
   | { type: 'element-moved'; id: Id; position: Point }
   | { type: 'element-deleted'; id: Id }
+  | { type: 'group-changed'; id: Id; groupId: Id | null }
+  | { type: 'expansion-changed'; id: Id; expanded: boolean }
   | { type: 'selection-changed'; ids: Id[] }
   | { type: 'filter-changed'; expression: string }
   | { type: 'view-changed'; view: View }

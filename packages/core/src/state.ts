@@ -8,5 +8,6 @@ export function initialState(documentId: Id, title?: string): AppState {
     document: emptyDocument(documentId, title),
     filter: '',
     selection: [],
+    expanded: [],
   };
 }

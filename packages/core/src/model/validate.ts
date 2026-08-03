@@ -1,5 +1,6 @@
 import { documentSchema } from './schema.js';
 import { PARADIGM_CONNECTION } from './paradigm.js';
+import { cyclicGroupIds } from '../query/groups.js';
 import {
   FORMAT_VERSION,
   isConnection,
@@ -18,7 +19,7 @@ export type IssueCode =
   | 'id-key-mismatch'
   | 'unknown-reference'
   | 'group-cycle'
-  | 'groups-unsupported'
+  | 'not-a-group'
   // warnings
   | 'paradigm-mismatch'
   | 'empty-endpoints'
@@ -82,11 +83,22 @@ export function validateDocument(input: unknown): ValidationResult {
     }
 
     if (element.groupId !== null) {
-      errors.push({
-        code: 'groups-unsupported',
-        elementId: element.id,
-        message: 'groupId must be null until groups arrive in iteration 2',
-      });
+      if (!known.has(element.groupId)) {
+        errors.push({
+          code: 'unknown-reference',
+          elementId: element.id,
+          message: `groupId ${element.groupId} names no element in the document`,
+        });
+      } else {
+        const group = elements[element.groupId];
+        if (group && !isEntity(group)) {
+          errors.push({
+            code: 'not-a-group',
+            elementId: element.id,
+            message: `groupId ${element.groupId} names a ${group.kind}, groups are entities`,
+          });
+        }
+      }
     }
 
     if (isConnection(element)) {
@@ -108,6 +120,14 @@ export function validateDocument(input: unknown): ValidationResult {
       }
       warnings.push(...paradigmWarnings(element, elements));
     }
+  }
+
+  for (const id of cyclicGroupIds(elements)) {
+    errors.push({
+      code: 'group-cycle',
+      elementId: id,
+      message: 'groupId chain closes a loop',
+    });
   }
 
   const connected = new Set<Id>();

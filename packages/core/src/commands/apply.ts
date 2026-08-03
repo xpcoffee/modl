@@ -9,6 +9,7 @@ import {
 } from '../model/types.js';
 import { isConnectionType, isEntityType } from '../model/paradigm.js';
 import { parseFilter } from '../query/filter.js';
+import { membersOf, wouldCycle } from '../query/groups.js';
 import { loadDocument } from '../serialize/serialize.js';
 import type {
   AppState,
@@ -212,6 +213,14 @@ export function apply(state: AppState, command: Command): CommandResult {
       };
       remove(command.id);
 
+      // Members of a deleted group move up to its parent, so no groupId is
+      // left pointing at something that no longer exists.
+      for (const candidate of Object.values(elements)) {
+        if (candidate.groupId !== command.id) continue;
+        elements[candidate.id] = { ...candidate, groupId: element.groupId };
+        events.push({ type: 'group-changed', id: candidate.id, groupId: element.groupId });
+      }
+
       // Deleting an entity strips it from every connection, and a connection
       // left with no source or no target goes with it.
       for (const candidate of Object.values(elements)) {
@@ -234,9 +243,131 @@ export function apply(state: AppState, command: Command): CommandResult {
           ...state,
           document: { ...state.document, model: { elements }, layout },
           selection: state.selection.filter((id) => !removed.has(id)),
+          expanded: state.expanded.filter((id) => !removed.has(id)),
         },
         events,
       );
+    }
+
+    case 'set-group': {
+      const element = state.document.model.elements[command.id];
+      if (!element) return unknown(command.type, command.id);
+
+      if (command.groupId !== null) {
+        const group = state.document.model.elements[command.groupId];
+        if (!group) return unknown(command.type, command.groupId);
+        if (!isEntity(group)) {
+          return fail(command.type, 'not-a-group', `element ${command.groupId} is not an entity`);
+        }
+        if (wouldCycle(state.document.model.elements, command.id, command.groupId)) {
+          return fail(
+            command.type,
+            'group-cycle',
+            `putting ${command.id} inside ${command.groupId} closes a loop`,
+          );
+        }
+      }
+
+      return ok(
+        withElement(state, { ...element, groupId: command.groupId }, state.document.layout),
+        [{ type: 'group-changed', id: command.id, groupId: command.groupId }],
+      );
+    }
+
+    case 'group-elements': {
+      if (state.document.model.elements[command.id]) {
+        return fail(command.type, 'duplicate-id', `element ${command.id} already exists`);
+      }
+      if (command.memberIds.length === 0) {
+        return fail(command.type, 'empty-endpoints', 'a group needs at least one member');
+      }
+      for (const memberId of command.memberIds) {
+        if (!state.document.model.elements[memberId]) return unknown(command.type, memberId);
+      }
+
+      const group: Element = {
+        id: command.id,
+        kind: 'entity',
+        type: 'component',
+        title: command.title,
+        description: '',
+        tags: {},
+        groupId: null,
+      };
+
+      const elements: Record<Id, Element> = {
+        ...state.document.model.elements,
+        [command.id]: group,
+      };
+      const events: DomainEvent[] = [{ type: 'element-created', id: command.id }];
+
+      for (const memberId of command.memberIds) {
+        const member = elements[memberId];
+        if (!member) continue;
+        elements[memberId] = { ...member, groupId: command.id };
+        events.push({ type: 'group-changed', id: memberId, groupId: command.id });
+      }
+
+      return ok(
+        {
+          ...state,
+          document: {
+            ...state.document,
+            model: { elements },
+            layout: {
+              ...state.document.layout,
+              [command.id]: {
+                x: command.position.x,
+                y: command.position.y,
+                width: DEFAULT_ENTITY_SIZE.width,
+                height: DEFAULT_ENTITY_SIZE.height,
+              },
+            },
+          },
+          selection: [command.id],
+        },
+        events,
+      );
+    }
+
+    case 'ungroup': {
+      const group = state.document.model.elements[command.id];
+      if (!group) return unknown(command.type, command.id);
+
+      const members = membersOf(state.document.model.elements, command.id);
+      if (members.length === 0) {
+        return fail(command.type, 'not-a-group', `element ${command.id} holds no members`);
+      }
+
+      // Members move up to whatever contained the group, so nothing is orphaned.
+      const elements = { ...state.document.model.elements };
+      const events: DomainEvent[] = [];
+      for (const member of members) {
+        elements[member.id] = { ...member, groupId: group.groupId };
+        events.push({ type: 'group-changed', id: member.id, groupId: group.groupId });
+      }
+
+      return ok(
+        {
+          ...state,
+          document: { ...state.document, model: { elements } },
+          expanded: state.expanded.filter((id) => id !== command.id),
+        },
+        events,
+      );
+    }
+
+    case 'set-expanded': {
+      const element = state.document.model.elements[command.id];
+      if (!element) return unknown(command.type, command.id);
+
+      const expanded = new Set(state.expanded);
+      if (command.expanded) expanded.add(command.id);
+      else expanded.delete(command.id);
+
+      return ok({ ...state, expanded: [...expanded].sort() }, [
+        { type: 'expansion-changed', id: command.id, expanded: command.expanded },
+      ]);
     }
 
     case 'set-selection': {
@@ -275,12 +406,12 @@ export function apply(state: AppState, command: Command): CommandResult {
         const code: ErrorCode =
           first?.code === 'version-unsupported'
             ? 'version-unsupported'
-            : first?.code === 'groups-unsupported'
-              ? 'groups-unsupported'
+            : first?.code === 'group-cycle'
+              ? 'group-cycle'
               : 'schema-invalid';
         return fail(command.type, code, result.errors.map((e) => e.message).join('; '));
       }
-      return ok({ document: result.document, filter: '', selection: [] }, [
+      return ok({ document: result.document, filter: '', selection: [], expanded: [] }, [
         { type: 'document-loaded', id: result.document.id },
       ]);
     }

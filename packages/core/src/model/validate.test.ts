@@ -74,12 +74,39 @@ describe('errors', () => {
     expect(result.errors[0]?.elementId).toBe(AUTHORISE);
   });
 
-  it('groups-unsupported: groupId is set before groups exist', () => {
+  it('accepts an element inside a group', () => {
     const document = fixture();
     document['model']['elements'][UI]['groupId'] = GATEWAY;
     const result = validateDocument(document);
-    expect(codes(result.errors)).toContain('groups-unsupported');
+    expect(result.errors).toEqual([]);
+    expect(isLoadable(result)).toBe(true);
+  });
+
+  it('unknown-reference: groupId names no element', () => {
+    const document = fixture();
+    document['model']['elements'][UI]['groupId'] = '99999999-9999-4999-8999-999999999999';
+    expect(codes(validateDocument(document).errors)).toContain('unknown-reference');
+  });
+
+  it('not-a-group: groupId names a connection', () => {
+    const document = fixture();
+    document['model']['elements'][UI]['groupId'] = AUTHORISE;
+    expect(codes(validateDocument(document).errors)).toContain('not-a-group');
+  });
+
+  it('group-cycle: two elements name each other', () => {
+    const document = fixture();
+    document['model']['elements'][UI]['groupId'] = GATEWAY;
+    document['model']['elements'][GATEWAY]['groupId'] = UI;
+    const result = validateDocument(document);
+    expect(codes(result.errors)).toContain('group-cycle');
     expect(isLoadable(result)).toBe(false);
+  });
+
+  it('group-cycle: an element names itself', () => {
+    const document = fixture();
+    document['model']['elements'][UI]['groupId'] = UI;
+    expect(codes(validateDocument(document).errors)).toContain('group-cycle');
   });
 
   it('stops at the version check so later errors stay quiet', () => {
