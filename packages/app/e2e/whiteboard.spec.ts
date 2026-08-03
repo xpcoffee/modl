@@ -652,3 +652,129 @@ test.describe('agent harness', () => {
     expect(result.divergences).toBe(0);
   });
 });
+
+test.describe('selection actions', () => {
+  test('delete sits under the selection rather than in the toolbar', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await expect(page.locator('.toolbar [data-testid="delete-selected"]')).toHaveCount(0);
+    await expect(page.getByTestId('selection-actions')).toHaveCount(0);
+
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+    await expect(page.getByTestId('selection-actions')).toBeVisible();
+  });
+
+  test('deletes a single selection', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ledger}`).click();
+
+    await page.getByTestId('delete-selected').click();
+
+    expect((await getDocument(page)).model.elements[IDS.ledger]).toBeUndefined();
+  });
+
+  test('deletes a multi-selection and says how many', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+    await page.getByTestId(`entity-${IDS.ledger}`).click({ modifiers: ['ControlOrMeta'] });
+
+    await expect(page.getByTestId('delete-selected')).toHaveAttribute(
+      'aria-label',
+      'Delete 2 elements',
+    );
+    await page.getByTestId('delete-selected').click();
+
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.gateway]).toBeUndefined();
+    expect(document.model.elements[IDS.ledger]).toBeUndefined();
+  });
+
+  test('a multi-selection opens no element editor', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+    await expect(page.getByTestId(`editor-${IDS.gateway}`)).toBeVisible();
+
+    await page.getByTestId(`entity-${IDS.ledger}`).click({ modifiers: ['ControlOrMeta'] });
+
+    await expect(page.getByTestId(`editor-${IDS.gateway}`)).toHaveCount(0);
+    await expect(page.getByTestId(`editor-${IDS.ledger}`)).toHaveCount(0);
+  });
+});
+
+test.describe('creation', () => {
+  test('a double-clicked component is centred on the pointer', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    const before = new Set(Object.keys((await getDocument(page)).model.elements));
+
+    const pane = page.locator('.react-flow__pane');
+    const box = (await pane.boundingBox())!;
+    const click = { x: 160, y: box.height - 90 };
+    await pane.dblclick({ position: click });
+
+    const created = Object.keys((await getDocument(page)).model.elements).find(
+      (id) => !before.has(id),
+    )!;
+
+    // Compare on screen: the node's centre should be where the pointer was.
+    const node = await page.locator(`.react-flow__node[data-id="${created}"]`).boundingBox();
+    expect(Math.abs(node!.x + node!.width / 2 - (box.x + click.x))).toBeLessThan(2);
+    expect(Math.abs(node!.y + node!.height / 2 - (box.y + click.y))).toBeLessThan(2);
+  });
+});
+
+test.describe('connections', () => {
+  test('arrowheads are off until switched on', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`connection-${IDS.authorise}`).click();
+
+    await page.getByTestId(`editor-arrow-end-${IDS.authorise}`).click();
+
+    const document = await getDocument(page);
+    expect(document.layout[IDS.authorise]).toMatchObject({ arrowEnd: true });
+    await expect(
+      page.locator(`.react-flow__edge[data-id^="${IDS.authorise}"] .react-flow__edge-path`),
+    ).toHaveAttribute('marker-end', 'url(#modl-arrow-end)');
+  });
+
+  test('a waypoint reroutes the line', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`connection-${IDS.authorise}`).click();
+
+    await page.getByTestId(`waypoint-add-${IDS.authorise}-0`).click();
+
+    const document = await getDocument(page);
+    expect((document.layout[IDS.authorise] as { waypoints: unknown[] }).waypoints).toHaveLength(1);
+    await expect(page.getByTestId(`waypoint-${IDS.authorise}-0`)).toBeVisible();
+  });
+
+  test('double-clicking a waypoint removes it', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'set-waypoints', id: IDS.authorise, waypoints: [{ x: 200, y: 120 }] },
+    ]);
+    await page.getByTestId(`connection-${IDS.authorise}`).click();
+
+    await page.getByTestId(`waypoint-${IDS.authorise}-0`).dblclick();
+
+    const document = await getDocument(page);
+    expect((document.layout[IDS.authorise] as { waypoints: unknown[] }).waypoints).toHaveLength(0);
+  });
+
+  test('waypoints and arrowheads survive save and load', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'set-waypoints', id: IDS.authorise, waypoints: [{ x: 200, y: 120 }] },
+      { type: 'set-arrowheads', id: IDS.authorise, start: false, end: true },
+    ]);
+    const saved = await serialize(page);
+
+    await page.getByTestId('file-input').setInputFiles({
+      name: 'routed.modl.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(saved),
+    });
+
+    await expect(page.getByTestId('toolbar-message')).toContainText('Loaded');
+    expect(await serialize(page)).toBe(saved);
+  });
+});
