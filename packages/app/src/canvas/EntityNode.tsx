@@ -1,10 +1,11 @@
-import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
+import { Handle, NodeResizer, Position, type Node, type NodeProps } from '@xyflow/react';
 import { store } from '../store/store.js';
 import type { EntityNodeData } from './derive.js';
 import { ElementEditor } from './ElementEditor.js';
 import { ElementHover } from './ElementHover.js';
 import { ElementIcon } from './ElementIcon.js';
 import { InlineTitle } from './InlineTitle.js';
+import { MIN_ENTITY_SIZE } from './derive.js';
 import { stopEditing } from './editing.js';
 
 /**
@@ -18,6 +19,20 @@ export function EntityNode({ data, selected }: NodeProps<Node<EntityNodeData>>) 
       data-testid={`entity-${data.id}`}
       data-type={data.elementType}
     >
+      <NodeResizer
+        isVisible={!!selected}
+        minWidth={MIN_ENTITY_SIZE.width}
+        minHeight={MIN_ENTITY_SIZE.height}
+        onResizeEnd={(_, params) =>
+          store.dispatch({
+            type: 'resize-element',
+            id: data.id,
+            width: params.width,
+            height: params.height,
+          })
+        }
+      />
+
       <Handle type="target" position={Position.Left} />
 
       {/* Expand sits where collapse sits on an open container, so the control

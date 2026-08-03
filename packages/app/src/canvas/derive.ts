@@ -67,6 +67,8 @@ interface Rect {
 const GROUP_PADDING = { top: 34, side: 20, bottom: 20 } as const;
 /** An empty container still needs somewhere to drop things. */
 export const MIN_GROUP_SIZE = { width: 260, height: 180 } as const;
+/** Small enough to be useful, large enough to still hold a title. */
+export const MIN_ENTITY_SIZE = { width: 120, height: 60 } as const;
 const FALLBACK_RECT: Rect = { x: 0, y: 0, width: 180, height: 72 };
 
 function rectOf(state: AppState, id: Id): Rect {
@@ -158,7 +160,7 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Entit
       position: { x: rect.x - parentOrigin.x, y: rect.y - parentOrigin.y },
       // No `extent: parent`, so a member can be dragged out of its container.
       ...(groupId && parentRect ? { parentId: groupId } : {}),
-      ...(isContainer ? { style: { width: rect.width, height: rect.height } } : {}),
+      style: { width: rect.width, height: rect.height },
       selected: selected.has(entity.id),
       // A selected element lifts above the rest so its editor is not covered.
       ...(selected.has(entity.id) ? { zIndex: 1000 } : {}),

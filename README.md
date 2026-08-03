@@ -91,9 +91,9 @@ Use that path rather than `npx playwright install`, which fetches whatever versi
 
 ### What you can do in it
 
-- **Add** on the toolbar, or double-click empty canvas
+- **Add** on the toolbar, or double-click empty canvas. Both use the type in the toolbar dropdown
 - **Rename** by double-clicking an element or a connection label. Enter commits, Escape discards
-- **Drag** a node to move it. The command is recorded on drop, so the trace holds the position you meant
+- **Drag** a node to move it, or its corners to resize it. Both are recorded on release, so the trace holds the result you meant
 - **Multi-select** with Control-click or Cmd-click. Dragging moves the whole selection
 - **Connect** two components by dragging from the handle on a node's right edge to another node. The connection takes the paradigm of what it points at
 - **Select** a node or edge to edit it in place: click the type chip to change paradigm, type into the description, click a tag to rename or retype it, `+ tag` to add one. A trash button appears under the selection, for one element or many
