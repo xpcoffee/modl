@@ -1,17 +1,32 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="#5b8def" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="#5b8def" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
   <title>modl</title>
 
-  <!-- Bowsprit, reaching forward off the bow -->
-  <path d="M9 44 L2 39" />
+  <!-- Bowsprit and jib, reaching forward off the bow -->
+  <path d="M7 46 L1 39" />
+  <path d="M3.5 41.5 L13 45" />
 
-  <!-- Hull, bow to the left -->
-  <path d="M5 44 H59 C57 51 51 56 43 56 H21 C13 56 7 51 5 44 Z" />
+  <!-- Hull: long and low, with a raised stern castle aft -->
+  <path d="M4 46 H60" />
+  <path d="M4 46 L10 55 H50 L60 46" />
+  <path d="M60 46 V39 H53" />
+  <!-- Gun deck -->
+  <path d="M8 50.5 H54" />
 
-  <!-- Foremast and its sail -->
-  <path d="M26 44 V15" />
-  <path d="M24 18 V41 H11 Z" />
+  <!-- Foremast -->
+  <path d="M18 46 V14" />
+  <path d="M11 18 H25 M11 29 H25" />
+  <path d="M12 18 V27.5 H24 V18" />
+  <path d="M12 29 V41 H24 V29" />
 
-  <!-- Mainmast and its sail -->
-  <path d="M45 44 V8" />
-  <path d="M43 11 V41 H30 Z" />
+  <!-- Mainmast, the tallest -->
+  <path d="M33 46 V7" />
+  <path d="M25 11 H41 M25 24 H41" />
+  <path d="M26 11 V22 H40 V11" />
+  <path d="M26 24 V41 H40 V24" />
+
+  <!-- Mizzenmast -->
+  <path d="M47 46 V16" />
+  <path d="M41 20 H53 M41 31 H53" />
+  <path d="M42 20 V29 H52 V20" />
+  <path d="M42 31 V41 H52 V31" />
 </svg>
