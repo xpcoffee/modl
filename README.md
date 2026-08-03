@@ -1,8 +1,12 @@
+<img src="packages/app/public/modl.svg" alt="" width="72" align="left" hspace="12" />
+
 # modl
 
 > currently an AI PoC
 
 A visual tool for structuring, visualizing and extending domains/mental models.
+
+<br clear="left" />
 
 ## Problem
 

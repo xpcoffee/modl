@@ -86,7 +86,10 @@ export function Toolbar() {
 
   return (
     <header className="toolbar" data-testid="toolbar">
-      <strong className="toolbar__brand">modl</strong>
+      <strong className="toolbar__brand">
+        <img src="./modl.svg" alt="" width="20" height="20" />
+        modl
+      </strong>
 
       <select
         data-testid="entity-type"
