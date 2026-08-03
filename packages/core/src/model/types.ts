@@ -57,7 +57,11 @@ export interface EntityLayout {
 }
 
 export interface ConnectionLayout {
+  /** Hand-placed bends, in order from source to target. */
   waypoints: Point[];
+  /** Arrowheads are presentation: `from` and `to` already carry direction. */
+  arrowStart?: boolean;
+  arrowEnd?: boolean;
 }
 
 export type ElementLayout = EntityLayout | ConnectionLayout;

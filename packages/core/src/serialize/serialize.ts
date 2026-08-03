@@ -78,7 +78,11 @@ function orderLayout(layout: ElementLayout): Record<string, unknown> {
   if (isEntityLayout(layout)) {
     return { x: layout.x, y: layout.y, width: layout.width, height: layout.height };
   }
-  return { waypoints: layout.waypoints.map((point) => ({ x: point.x, y: point.y })) };
+  return {
+    waypoints: layout.waypoints.map((point) => ({ x: point.x, y: point.y })),
+    ...(layout.arrowStart === undefined ? {} : { arrowStart: layout.arrowStart }),
+    ...(layout.arrowEnd === undefined ? {} : { arrowEnd: layout.arrowEnd }),
+  };
 }
 
 export type ParseResult =

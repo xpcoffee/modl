@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { apply, applyAll } from './apply.js';
 import { isGroup } from '../query/groups.js';
 import { initialState } from '../state.js';
+import { parseDocument, serializeDocument } from '../serialize/serialize.js';
 import type { AppState, Command } from './types.js';
 
 const DOC = '00000000-0000-4000-8000-000000000000';
@@ -322,6 +323,100 @@ describe('resize-element', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe('wrong-kind');
+  });
+});
+
+describe('connection layout', () => {
+  it('stores waypoints in order', () => {
+    const state = must(base, link(LINK, [A], [B]), {
+      type: 'set-waypoints',
+      id: LINK,
+      waypoints: [
+        { x: 100, y: 50 },
+        { x: 160, y: 90 },
+      ],
+    });
+    expect(state.document.layout[LINK]).toMatchObject({
+      waypoints: [
+        { x: 100, y: 50 },
+        { x: 160, y: 90 },
+      ],
+    });
+  });
+
+  it('keeps arrowheads when waypoints change', () => {
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      { type: 'set-arrowheads', id: LINK, start: false, end: true },
+      { type: 'set-waypoints', id: LINK, waypoints: [{ x: 1, y: 2 }] },
+    );
+    expect(state.document.layout[LINK]).toMatchObject({ arrowEnd: true, waypoints: [{ x: 1, y: 2 }] });
+  });
+
+  it('keeps waypoints when arrowheads change', () => {
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      { type: 'set-waypoints', id: LINK, waypoints: [{ x: 1, y: 2 }] },
+      { type: 'set-arrowheads', id: LINK, start: true, end: true },
+    );
+    expect(state.document.layout[LINK]).toMatchObject({
+      waypoints: [{ x: 1, y: 2 }],
+      arrowStart: true,
+      arrowEnd: true,
+    });
+  });
+
+  it('clears waypoints with an empty list', () => {
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      { type: 'set-waypoints', id: LINK, waypoints: [{ x: 1, y: 2 }] },
+      { type: 'set-waypoints', id: LINK, waypoints: [] },
+    );
+    expect(state.document.layout[LINK]).toMatchObject({ waypoints: [] });
+  });
+
+  it('wrong-kind: rejects waypoints on an entity', () => {
+    const result = apply(base, { type: 'set-waypoints', id: A, waypoints: [] });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('wrong-kind');
+  });
+
+  it('wrong-kind: rejects arrowheads on an entity', () => {
+    const result = apply(base, { type: 'set-arrowheads', id: A, start: true, end: true });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('wrong-kind');
+  });
+
+  it('schema-invalid: rejects a waypoint that is not finite', () => {
+    const state = must(base, link(LINK, [A], [B]));
+    const result = apply(state, {
+      type: 'set-waypoints',
+      id: LINK,
+      waypoints: [{ x: Number.NaN, y: 0 }],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('schema-invalid');
+  });
+
+  it('round trips through the serializer', () => {
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      { type: 'set-waypoints', id: LINK, waypoints: [{ x: 10, y: 20 }] },
+      { type: 'set-arrowheads', id: LINK, start: false, end: true },
+    );
+    const text = serializeDocument(state.document);
+    const parsed = parseDocument(text);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(serializeDocument(parsed.document)).toBe(text);
+    expect(parsed.document.layout[LINK]).toMatchObject({ arrowEnd: true });
   });
 });
 

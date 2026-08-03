@@ -240,6 +240,62 @@ export function apply(state: AppState, command: Command): CommandResult {
       );
     }
 
+    case 'set-waypoints': {
+      const element = state.document.model.elements[command.id];
+      if (!element) return unknown(command.type, command.id);
+      if (!isConnection(element)) {
+        return fail(command.type, 'wrong-kind', `element ${command.id} is not a connection`);
+      }
+      if (command.waypoints.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y))) {
+        return fail(command.type, 'schema-invalid', 'a waypoint needs finite coordinates');
+      }
+
+      const previous = state.document.layout[command.id];
+      const existing = previous && 'waypoints' in previous ? previous : { waypoints: [] };
+
+      return ok(
+        {
+          ...state,
+          document: {
+            ...state.document,
+            layout: {
+              ...state.document.layout,
+              [command.id]: {
+                ...existing,
+                waypoints: command.waypoints.map((p) => ({ x: p.x, y: p.y })),
+              },
+            },
+          },
+        },
+        [{ type: 'element-updated', id: command.id }],
+      );
+    }
+
+    case 'set-arrowheads': {
+      const element = state.document.model.elements[command.id];
+      if (!element) return unknown(command.type, command.id);
+      if (!isConnection(element)) {
+        return fail(command.type, 'wrong-kind', `element ${command.id} is not a connection`);
+      }
+
+      const previous = state.document.layout[command.id];
+      const existing = previous && 'waypoints' in previous ? previous : { waypoints: [] };
+
+      return ok(
+        {
+          ...state,
+          document: {
+            ...state.document,
+            layout: {
+              ...state.document.layout,
+              [command.id]: { ...existing, arrowStart: command.start, arrowEnd: command.end },
+            },
+          },
+        },
+        [{ type: 'element-updated', id: command.id }],
+      );
+    }
+
     case 'set-endpoints': {
       const element = state.document.model.elements[command.id];
       if (!element) return unknown(command.type, command.id);

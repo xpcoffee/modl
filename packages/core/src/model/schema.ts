@@ -60,6 +60,8 @@ export const entityLayoutSchema = z.object({
 
 export const connectionLayoutSchema = z.object({
   waypoints: z.array(pointSchema),
+  arrowStart: z.boolean().optional(),
+  arrowEnd: z.boolean().optional(),
 });
 
 export const elementLayoutSchema = z.union([entityLayoutSchema, connectionLayoutSchema]);

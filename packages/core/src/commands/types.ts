@@ -40,6 +40,8 @@ export type Command =
   | { type: 'remove-tag'; id: Id; key: string }
   | { type: 'rename-tag'; id: Id; from: string; to: string }
   | { type: 'resize-element'; id: Id; width: number; height: number }
+  | { type: 'set-waypoints'; id: Id; waypoints: Point[] }
+  | { type: 'set-arrowheads'; id: Id; start: boolean; end: boolean }
   | { type: 'set-element-type'; id: Id; elementType: EntityType | ConnectionType }
   | { type: 'set-endpoints'; id: Id; from: Id[]; to: Id[] }
   | { type: 'delete-element'; id: Id }
