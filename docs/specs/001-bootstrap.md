@@ -2,7 +2,7 @@
 
 The first iteration. A walking skeleton: one paradigm, flat, end to end, with the command and trace plumbing that every later feature depends on.
 
-Read [the domain model](../domain-model.md) for the structure and [decision 001](../decisions/001-first-iteration-path.md) for why the path looks like this. Deferred material lives in [the vision](../vision.md).
+Read [the domain model](../domain-model.md) for the structure and [the decisions](../decisions/) for why the path looks like this. Deferred material lives in [the vision](../vision.md).
 
 ## Scope
 
