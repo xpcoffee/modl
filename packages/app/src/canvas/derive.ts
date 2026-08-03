@@ -12,7 +12,7 @@ import {
   type EntityType,
   type Id,
   type Point,
-} from '@domain-mapper/core';
+} from '@modl/core';
 import type { Edge, Node } from '@xyflow/react';
 
 export interface EntityNodeData extends Record<string, unknown> {
@@ -28,6 +28,9 @@ export interface EntityNodeData extends Record<string, unknown> {
   expanded: boolean;
   /** Absolute origin of the containing group, for converting drag positions. */
   parentOrigin: Point;
+  /** Where this element was drawn, so a drag can work out how far it moved. */
+  origin: Point;
+  isContainer: boolean;
 }
 
 export interface ConnectionEdgeData extends Record<string, unknown> {
@@ -54,6 +57,8 @@ interface Rect {
 
 /** Room for the group header and a margin around its members. */
 const GROUP_PADDING = { top: 34, side: 20, bottom: 20 } as const;
+/** An empty container still needs somewhere to drop things. */
+export const MIN_GROUP_SIZE = { width: 260, height: 180 } as const;
 const FALLBACK_RECT: Rect = { x: 0, y: 0, width: 180, height: 72 };
 
 function rectOf(state: AppState, id: Id): Rect {
@@ -77,32 +82,22 @@ function measure(state: AppState, expanded: ReadonlySet<Id>): Map<Id, Rect> {
     if (cached) return cached;
 
     const own = rectOf(state, id);
-    const showsMembers = expanded.has(id) && isGroup(elements, id);
-    if (!showsMembers) {
+    if (!expanded.has(id)) {
       rects.set(id, own);
       return own;
     }
 
-    const members = membersOf(elements, id).filter(isEntity);
-    if (members.length === 0) {
-      rects.set(id, own);
-      return own;
-    }
-
-    const memberRects = members.map((member) => sizeOf(member.id));
-    const minX = Math.min(...memberRects.map((r) => r.x));
-    const minY = Math.min(...memberRects.map((r) => r.y));
-    const maxX = Math.max(...memberRects.map((r) => r.x + r.width));
-    const maxY = Math.max(...memberRects.map((r) => r.y + r.height));
-
-    const rect: Rect = {
-      x: minX - GROUP_PADDING.side,
-      y: minY - GROUP_PADDING.top,
-      width: maxX - minX + GROUP_PADDING.side * 2,
-      height: maxY - minY + GROUP_PADDING.top + GROUP_PADDING.bottom,
+    // An expanded entity draws as a container sized by its own rectangle,
+    // which the user resizes. Membership is then simply what sits inside the
+    // box, so dragging an element past the edge takes it out of the group.
+    const box: Rect = {
+      x: own.x,
+      y: own.y,
+      width: Math.max(own.width, MIN_GROUP_SIZE.width),
+      height: Math.max(own.height, MIN_GROUP_SIZE.height),
     };
-    rects.set(id, rect);
-    return rect;
+    rects.set(id, box);
+    return box;
   };
 
   for (const element of Object.values(elements)) {
@@ -146,14 +141,15 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Entit
     // A member sits inside its container, so React Flow wants a relative position.
     const parentRect = groupId ? rects.get(groupId) : undefined;
     const parentOrigin = parentRect ? { x: parentRect.x, y: parentRect.y } : { x: 0, y: 0 };
-    const isExpandedGroup = expanded.has(entity.id) && isGroup(elements, entity.id);
+    const isContainer = expanded.has(entity.id);
 
     return {
       id: entity.id,
-      type: isExpandedGroup ? 'group' : 'entity',
+      type: isContainer ? 'group' : 'entity',
       position: { x: rect.x - parentOrigin.x, y: rect.y - parentOrigin.y },
-      ...(groupId && parentRect ? { parentId: groupId, extent: 'parent' as const } : {}),
-      ...(isExpandedGroup ? { style: { width: rect.width, height: rect.height } } : {}),
+      // No `extent: parent`, so a member can be dragged out of its container.
+      ...(groupId && parentRect ? { parentId: groupId } : {}),
+      ...(isContainer ? { style: { width: rect.width, height: rect.height } } : {}),
       selected: selected.has(entity.id),
       data: {
         id: entity.id,
@@ -166,10 +162,51 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Entit
         memberCount: membersOf(elements, entity.id).length,
         expanded: expanded.has(entity.id),
         parentOrigin,
+        origin: { x: rect.x, y: rect.y },
+        isContainer,
       },
     };
   });
 }
+
+/**
+ * Absolute rectangles of every container on the board, outermost last, so a
+ * drop can find the innermost container it landed in.
+ */
+export function containerRects(state: AppState): { id: Id; rect: Rect }[] {
+  const elements = state.document.model.elements;
+  const expanded = new Set(state.expanded);
+  const rects = measure(state, expanded);
+
+  return Object.values(elements)
+    .filter(isEntity)
+    .filter((entity) => expanded.has(entity.id) && isRendered(elements, entity.id, expanded))
+    .map((entity) => ({ id: entity.id, rect: rects.get(entity.id) ?? FALLBACK_RECT }))
+    // Deepest first, so a nested container wins over the one holding it.
+    .sort((a, b) => depthOf(elements, b.id) - depthOf(elements, a.id));
+}
+
+/** The innermost container holding this point, if any. */
+export function containerAt(
+  state: AppState,
+  point: Point,
+  ignore: ReadonlySet<Id>,
+): Id | null {
+  for (const { id, rect } of containerRects(state)) {
+    if (ignore.has(id)) continue;
+    if (
+      point.x >= rect.x &&
+      point.x <= rect.x + rect.width &&
+      point.y >= rect.y &&
+      point.y <= rect.y + rect.height
+    ) {
+      return id;
+    }
+  }
+  return null;
+}
+
+export type { Rect };
 
 /**
  * One React Flow edge per source-target pair. Endpoints inside a collapsed

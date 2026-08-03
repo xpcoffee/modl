@@ -5,7 +5,7 @@ import {
   parseDocument,
   selectIds,
   type EntityType,
-} from '@domain-mapper/core';
+} from '@modl/core';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 
@@ -42,25 +42,32 @@ export function Toolbar() {
     for (const id of state.selection) store.dispatch({ type: 'delete-element', id });
   };
 
-  /** The new group sits at the top-left of what it collapses. */
+  /**
+   * Starts a container around whatever is selected, or an empty one when
+   * nothing is. It opens expanded so there is a box to drag elements into,
+   * and an entity that never gains a member stays an ordinary entity.
+   */
   const groupSelected = () => {
     const positions = state.selection
       .map((id) => state.document.layout[id])
       .filter((entry): entry is { x: number; y: number; width: number; height: number } =>
         entry !== undefined && 'x' in entry,
       );
+    // group-elements sizes the box around its members itself.
     const position =
       positions.length > 0
-        ? { x: Math.min(...positions.map((p) => p.x)), y: Math.min(...positions.map((p) => p.y)) }
-        : { x: 40, y: 40 };
+        ? { x: positions[0]!.x, y: positions[0]!.y }
+        : { x: 60, y: 60 };
 
+    const id = crypto.randomUUID();
     store.dispatch({
       type: 'group-elements',
-      id: crypto.randomUUID(),
+      id,
       title: 'New group',
       memberIds: state.selection,
       position,
     });
+    store.dispatch({ type: 'set-expanded', id, expanded: true });
   };
 
   const ungroupSelected = () => {
@@ -83,7 +90,7 @@ export function Toolbar() {
 
   return (
     <header className="toolbar" data-testid="toolbar">
-      <strong className="toolbar__brand">domain-mapper</strong>
+      <strong className="toolbar__brand">modl</strong>
 
       <select
         data-testid="entity-type"
@@ -113,8 +120,7 @@ export function Toolbar() {
         type="button"
         data-testid="group-selected"
         onClick={groupSelected}
-        disabled={state.selection.length < 2}
-        title="Collapse the selected elements into a new group"
+        title="Start a group around the selection, or an empty one"
       >
         Group
       </button>
@@ -133,7 +139,7 @@ export function Toolbar() {
       <button
         type="button"
         data-testid="save"
-        onClick={() => download('domain.dmap.json', store.serialize())}
+        onClick={() => download('domain.modl.json', store.serialize())}
       >
         Save
       </button>

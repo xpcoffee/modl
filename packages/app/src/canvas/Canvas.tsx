@@ -12,11 +12,12 @@ import {
   type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { connectionTypeFor, isEntity } from '@domain-mapper/core';
+import { connectionTypeFor, descendantsOf, isEntity } from '@modl/core';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 import {
   connectionIdFromEdge,
+  containerAt,
   deriveEdges,
   deriveNodes,
   type EntityNodeData,
@@ -66,20 +67,56 @@ export function Canvas() {
 
   const onNodeDragStop = useCallback(
     (_: unknown, __: Node, dragged: Node<EntityNodeData>[]) => {
-      // Every selected node moves together, so each one needs its own command.
+      const state = store.getState();
+      const elements = state.document.model.elements;
+
       for (const node of dragged) {
-        // A node inside a group reports a position relative to it, and the
+        // A node inside a container reports a position relative to it, and the
         // document stores absolute coordinates.
-        const origin = node.data.parentOrigin ?? { x: 0, y: 0 };
-        store.dispatch({
-          type: 'move-element',
-          id: node.id,
-          position: { x: node.position.x + origin.x, y: node.position.y + origin.y },
-        });
+        const parent = node.data.parentOrigin ?? { x: 0, y: 0 };
+        const to = { x: node.position.x + parent.x, y: node.position.y + parent.y };
+        const from = node.data.origin ?? to;
+        const delta = { x: to.x - from.x, y: to.y - from.y };
+
+        store.dispatch({ type: 'move-element', id: node.id, position: to });
+
+        // A container's rectangle is derived from where its members sit, so
+        // moving the container has to carry them along or it springs back.
+        if (node.data.isContainer && (delta.x !== 0 || delta.y !== 0)) {
+          for (const memberId of descendantsOf(elements, node.id)) {
+            const layout = state.document.layout[memberId];
+            if (!layout || !('x' in layout)) continue;
+            store.dispatch({
+              type: 'move-element',
+              id: memberId,
+              position: { x: layout.x + delta.x, y: layout.y + delta.y },
+            });
+          }
+        }
+      }
+
+      // Where a node was dropped decides which container it belongs to, which
+      // is how an element joins or leaves a group.
+      for (const node of dragged) {
+        const parent = node.data.parentOrigin ?? { x: 0, y: 0 };
+        const centre = {
+          x: node.position.x + parent.x + (node.measured?.width ?? 0) / 2,
+          y: node.position.y + parent.y + (node.measured?.height ?? 0) / 2,
+        };
+        const own = new Set([node.id, ...descendantsOf(elements, node.id)]);
+        const container = containerAt(store.getState(), centre, own);
+        const current = elements[node.id]?.groupId ?? null;
+        if (container !== current) {
+          store.dispatch({ type: 'set-group', id: node.id, groupId: container });
+        }
       }
     },
     [],
   );
+
+  const onResizeEnd = useCallback((id: string, width: number, height: number) => {
+    store.dispatch({ type: 'resize-element', id, width, height });
+  }, []);
 
   const onConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
