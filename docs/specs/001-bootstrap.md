@@ -10,15 +10,17 @@ Read [the domain model](../domain-model.md) for the structure and [decision 001]
 
 - Entities of type `component` and connections of type `interaction`
 - Create, move, edit, delete entities. Connect entities many-to-many.
-- Titles, descriptions, key-value tags. Titles always visible, tags and ids on hover.
+- Titles, descriptions, key-value tags. Titles always visible; type badge, description, and tags on hover.
 - Filter by tag expression, which dims elements that do not match
 - Save to and load from a `.dmap.json` file
 - Command bus, session trace, replay
 - Runtime API and the agent test harness
 
+Added after the first round of review: element types across all three paradigms, groups with collapse and expand, inline rename, and a PR preview deployment.
+
 **Out**
 
-Groups and zoom, forks, the `state` and `step` paradigms, paradigm warnings, colours, description expand-on-hover, multi-select, undo.
+Forks, colours, and undo.
 
 Undo is out because the command log makes it cheap to add later, and it needs inverse commands that are easier to write once the command set stops changing.
 

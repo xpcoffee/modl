@@ -162,29 +162,203 @@ select {
   overflow-wrap: anywhere;
 }
 
-/* Tags and readable name reveal on hover, per the spec. */
-.entity-node__hover {
+/* Type badge, revealed on hover. */
+.entity-node__badge,
+.edge-label__badge {
   position: absolute;
-  top: calc(100% + 6px);
+  top: -9px;
+  left: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #12141a;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 0.1s;
+  pointer-events: none;
+}
+
+.entity-node:hover .entity-node__badge,
+.edge-label:hover .edge-label__badge {
+  opacity: 1;
+}
+
+/* Description and tags, revealed on hover. */
+.entity-node__hover,
+.edge-label__hover {
+  position: absolute;
+  top: calc(100% + 8px);
   left: 0;
-  right: 0;
+  min-width: 100%;
+  display: none;
+  z-index: 10;
+}
+
+.entity-node:hover .entity-node__hover,
+.edge-label:hover .edge-label__hover {
+  display: block;
+}
+
+.hover-card {
   padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: #12141a;
   font-size: 11px;
   color: var(--muted);
+  text-align: left;
+  width: max-content;
+  max-width: 260px;
+}
+
+.hover-card__type {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #232733;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.hover-card__description {
+  margin: 0;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.hover-card__description--empty {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.hover-card__tags {
+  margin: 4px 0 0;
+  padding-left: 14px;
+}
+
+.inline-title {
+  width: 100%;
+  text-align: center;
+  font: inherit;
+}
+
+.entity-node__expand {
+  position: absolute;
+  right: -10px;
+  bottom: -10px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1.4;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0b1020;
+  font-weight: 600;
+}
+
+/* Groups */
+
+/* React Flow gives its built-in group type a border and background of its
+   own, which would sit inside ours. */
+.react-flow__node-group {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+.group-node {
+  width: 100%;
+  height: 100%;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: rgb(91 141 239 / 5%);
+}
+
+.group-node.is-selected {
+  border-color: var(--accent);
+  border-style: solid;
+}
+
+.group-node.is-dimmed {
+  opacity: 0.25;
+}
+
+.group-node__header {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.group-node__toggle {
+  padding: 0 6px;
+  line-height: 1.3;
+  font-size: 12px;
+}
+
+.group-node__title {
+  font-weight: 500;
+}
+
+.group-node__badge {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.group-node__hover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
   display: none;
   z-index: 10;
 }
 
-.entity-node:hover .entity-node__hover {
+.group-node__header:hover .group-node__hover {
   display: block;
 }
 
-.entity-node__tags {
-  margin: 4px 0 0;
-  padding-left: 14px;
+/* Connection labels */
+
+.edge-label {
+  position: absolute;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 11px;
+  pointer-events: all;
+}
+
+.edge-label:hover {
+  border-color: var(--border);
+}
+
+.edge-label.is-dimmed {
+  opacity: 0.25;
+}
+
+.edge-label .inline-title {
+  width: 120px;
+  font-size: 11px;
+}
+
+.connection-edge.is-dimmed {
+  opacity: 0.25;
+}
+
+.connection-edge.is-selected {
+  stroke: var(--accent);
 }
 
 /* Inspector */

@@ -1,5 +1,11 @@
 import { useRef, useState } from 'react';
-import { ENTITY_TYPES, parseDocument, selectIds, type EntityType } from '@domain-mapper/core';
+import {
+  ENTITY_TYPES,
+  isGroup,
+  parseDocument,
+  selectIds,
+  type EntityType,
+} from '@domain-mapper/core';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 
@@ -35,6 +41,35 @@ export function Toolbar() {
   const deleteSelected = () => {
     for (const id of state.selection) store.dispatch({ type: 'delete-element', id });
   };
+
+  /** The new group sits at the top-left of what it collapses. */
+  const groupSelected = () => {
+    const positions = state.selection
+      .map((id) => state.document.layout[id])
+      .filter((entry): entry is { x: number; y: number; width: number; height: number } =>
+        entry !== undefined && 'x' in entry,
+      );
+    const position =
+      positions.length > 0
+        ? { x: Math.min(...positions.map((p) => p.x)), y: Math.min(...positions.map((p) => p.y)) }
+        : { x: 40, y: 40 };
+
+    store.dispatch({
+      type: 'group-elements',
+      id: crypto.randomUUID(),
+      title: 'New group',
+      memberIds: state.selection,
+      position,
+    });
+  };
+
+  const ungroupSelected = () => {
+    for (const id of state.selection) store.dispatch({ type: 'ungroup', id });
+  };
+
+  const canUngroup = state.selection.some((id) =>
+    isGroup(state.document.model.elements, id),
+  );
 
   const openFile = async (file: File) => {
     const result = parseDocument(await file.text());
@@ -72,6 +107,25 @@ export function Toolbar() {
         disabled={state.selection.length === 0}
       >
         Delete
+      </button>
+
+      <button
+        type="button"
+        data-testid="group-selected"
+        onClick={groupSelected}
+        disabled={state.selection.length < 2}
+        title="Collapse the selected elements into a new group"
+      >
+        Group
+      </button>
+      <button
+        type="button"
+        data-testid="ungroup-selected"
+        onClick={ungroupSelected}
+        disabled={!canUngroup}
+        title="Lift the members of the selected group out of it"
+      >
+        Ungroup
       </button>
 
       <span className="toolbar__divider" />

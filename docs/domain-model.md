@@ -138,8 +138,8 @@ Two tiers, and they behave differently.
 | `version-unsupported` | `formatVersion` is missing or from a newer release |
 | `id-key-mismatch` | An element's map key differs from its `id` |
 | `unknown-reference` | A `from`, `to`, or `groupId` names an id absent from `elements` |
-| `groups-unsupported` | `groupId` is non-null before groups ship in iteration 2 |
-| `group-cycle` | `groupId` forms a cycle (iteration 2) |
+| `not-a-group` | `groupId` names a connection or a fork, and a group is an entity |
+| `group-cycle` | `groupId` chain closes a loop, including an element naming itself |
 
 Version checking short-circuits: an unreadable `formatVersion` returns on its own, because errors found by a parser that does not know the format mislead more than they help.
 
@@ -156,12 +156,27 @@ A connection pointing at targets from several paradigms produces no `paradigm-mi
 
 Validation returns `{ errors: Issue[]; warnings: Issue[] }`, where each `Issue` carries a code, an element id, and a message. Nothing throws.
 
+## Groups
+
+A group is an entity that other elements name in their `groupId`. Any entity becomes one as soon as something points at it, so there is no separate group type and no flag to keep in step.
+
+Collapsing a group hides its members and leaves the group on the board. Expanding it draws the members inside a container. That is what zooming means here: one document, read at the level of detail the reader wants.
+
+Two rules follow from this and both live in `packages/core/src/query/groups.ts`:
+
+- An element is drawn only when every group above it is expanded. A member of a collapsed group is not on the board at all.
+- A connection re-points at the outermost collapsed group hiding its endpoint. When both ends collapse into the same group, the connection is not drawn, because it says nothing at that zoom level.
+
+Expansion is session state rather than document state. Which groups a reader has open is their view of the domain, and two people reading the same file should not fight over it.
+
+`groupId` accepts nesting to any depth. A chain that closes a loop is a `group-cycle` error, and the reducer rejects the command that would create one, so a loop cannot be reached through the UI.
+
+Deleting a group lifts its members to whatever contained the group. Nothing is left pointing at an id that no longer exists.
+
 ## Iteration 1 coverage
 
-Implemented: `Entity`, `Connection`, the full document format, readable names, validation of everything except group cycles.
+Implemented: `Entity`, `Connection`, groups with collapse and expand, the full document format, readable names, validation.
 
-Present in the schema and fixed at a single value: `groupId` is always `null`. Writing a non-null value is an error until groups arrive.
+Not implemented: `Fork`. The type exists in the schema and no command creates one.
 
-Not implemented: `Fork` (the type exists, and no command creates one), group collapse and expand, paradigm warnings in the UI.
-
-The file format does not change when these arrive, so documents written in iteration 1 stay readable.
+The file format does not change when forks arrive, so documents written now stay readable.

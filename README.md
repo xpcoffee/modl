@@ -87,12 +87,16 @@ Use that path rather than `npx playwright install`, which fetches whatever versi
 
 ### What you can do in it
 
-- **Add component** on the toolbar, or double-click empty canvas
+- **Add** on the toolbar, or double-click empty canvas
+- **Rename** by double-clicking an element or a connection label. Enter commits, Escape discards
 - **Drag** a node to move it. The command is recorded on drop, so the trace holds the position you meant
-- **Connect** two components by dragging from the handle on a node's right edge to another node
-- **Select** a node or edge to edit its title, description, and tags in the inspector
-- **Hover** a node to see its readable name and tags
-- **Filter** with expressions like `team=payments`, `-deprecated`, or `team=payments tier=1`. Non-matching elements dim rather than disappear
+- **Multi-select** with Control-click or Cmd-click. Dragging moves the whole selection
+- **Connect** two components by dragging from the handle on a node's right edge to another node. The connection takes the paradigm of what it points at
+- **Select** a node or edge to edit its type, title, description, and tags in the inspector. Tags take hold as you type
+- **Hover** an element for its type badge, description, and tags
+- **Group** two or more selected elements, then collapse and expand to move between levels of detail. Connections into a collapsed group re-point at the group
+- **Filter** with expressions like `team=payments`, `-deprecated`, or `team=payments tier=1`. Non-matching elements dim rather than disappear, and the input suggests recorded values
+- **Delete** removes the selection, on either Delete or Backspace
 - **Save** and **Load** a `.dmap.json` file, and **Export trace** for the session's command log
 
 ### Driving it from an agent
@@ -117,6 +121,8 @@ node packages/app/e2e/screenshot.mjs /tmp/board.png "team=payments"
 
 ## Status
 
-Iteration 1 is complete and runnable: model, commands, trace and replay, filtering, the React Flow canvas, the inspector, and save/load. 101 unit tests and 18 browser tests.
+Runnable: model, commands, trace and replay, all three paradigms, groups with collapse and expand, filtering, the canvas, the inspector, and save/load. 147 unit tests and 43 browser tests.
 
-Groups and zoom, forks, the state-machine and wizard paradigms, paradigm warnings, colours, and undo are iteration 2. See [the vision](docs/vision.md).
+Forks, colours, and undo are still open. See [the vision](docs/vision.md).
+
+Every pull request builds a preview to `https://xpcoffee.github.io/modl/pr-<number>/` and links it from a comment.
