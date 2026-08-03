@@ -833,3 +833,95 @@ test.describe('connections', () => {
     expect(await serialize(page)).toBe(saved);
   });
 });
+
+test.describe('entity sizing and creation type', () => {
+  test('a long title stays clear of the top row', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      {
+        type: 'set-metadata',
+        id: IDS.ui,
+        title: 'A checkout component with a very long name indeed that wraps',
+      },
+    ]);
+
+    const icon = (await page
+      .locator(`[data-testid="entity-${IDS.ui}"] .entity-node__icon`)
+      .boundingBox())!;
+    const title = (await page
+      .locator(`[data-testid="entity-${IDS.ui}"] .entity-node__title`)
+      .boundingBox())!;
+
+    // The title starts below the icon rather than running under it.
+    expect(title.y).toBeGreaterThanOrEqual(icon.y + icon.height - 1);
+  });
+
+  test('an entity can be resized', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ledger}`).click();
+
+    const before = (await getDocument(page)).layout[IDS.ledger] as { width: number };
+    const handle = page.locator(
+      `.react-flow__node[data-id="${IDS.ledger}"] .react-flow__resize-control.bottom.right.handle`,
+    );
+    const box = (await handle.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 120, box.y + 60, { steps: 10 });
+    await page.mouse.up();
+
+    const after = (await getDocument(page)).layout[IDS.ledger] as { width: number };
+    expect(after.width).toBeGreaterThan(before.width);
+  });
+
+  test('double-click creates the type chosen in the toolbar', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId('entity-type').selectOption('step');
+    const before = new Set(Object.keys((await getDocument(page)).model.elements));
+
+    await page.locator('.react-flow__pane').dblclick({ position: { x: 140, y: 560 } });
+
+    const document = await getDocument(page);
+    const created = Object.keys(document.model.elements).find((id) => !before.has(id))!;
+    expect(document.model.elements[created]).toMatchObject({ type: 'step' });
+  });
+});
+
+test.describe('moving a collapsed group', () => {
+  const GROUP = '88888888-8888-4888-8888-888888888888';
+
+  test('carries its members, so expanding shows them in place', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      {
+        type: 'group-elements',
+        id: GROUP,
+        title: 'Payments',
+        memberIds: [IDS.gateway, IDS.ledger],
+        position: { x: 280, y: 0 },
+      },
+    ]);
+
+    const before = await getDocument(page);
+    const groupBefore = before.layout[GROUP] as { x: number; y: number };
+    const memberBefore = before.layout[IDS.gateway] as { x: number; y: number };
+    const offset = { x: memberBefore.x - groupBefore.x, y: memberBefore.y - groupBefore.y };
+
+    // Collapsed: only the group is on the board.
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).toHaveCount(0);
+    await fit(page);
+    await page.locator(`.react-flow__node[data-id="${GROUP}"]`).hover();
+    await page.mouse.down();
+    await page.mouse.move(260, 520, { steps: 12 });
+    await page.mouse.up();
+
+    const after = await getDocument(page);
+    const groupAfter = after.layout[GROUP] as { x: number; y: number };
+    const memberAfter = after.layout[IDS.gateway] as { x: number; y: number };
+
+    expect(groupAfter.x).not.toBe(groupBefore.x);
+    // The member kept its place inside the group rather than staying behind.
+    expect(memberAfter.x - groupAfter.x).toBeCloseTo(offset.x, 5);
+    expect(memberAfter.y - groupAfter.y).toBeCloseTo(offset.y, 5);
+  });
+});
