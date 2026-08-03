@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { parseDocument, selectIds } from '@domain-mapper/core';
+import { ENTITY_TYPES, parseDocument, selectIds, type EntityType } from '@domain-mapper/core';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 
@@ -17,6 +17,7 @@ export function Toolbar() {
   const state = useAppState();
   const fileInput = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState('');
+  const [entityType, setEntityType] = useState<EntityType>('component');
 
   const visible = selectIds(state.document.model.elements, state.filter).size;
   const total = Object.keys(state.document.model.elements).length;
@@ -25,8 +26,8 @@ export function Toolbar() {
     store.dispatch({
       type: 'create-entity',
       id: crypto.randomUUID(),
-      entityType: 'component',
-      title: 'New component',
+      entityType,
+      title: `New ${entityType}`,
       position: { x: 40 + total * 30, y: 40 + total * 20 },
     });
   };
@@ -49,8 +50,20 @@ export function Toolbar() {
     <header className="toolbar" data-testid="toolbar">
       <strong className="toolbar__brand">domain-mapper</strong>
 
+      <select
+        data-testid="entity-type"
+        aria-label="Type for new elements"
+        value={entityType}
+        onChange={(event) => setEntityType(event.target.value as EntityType)}
+      >
+        {ENTITY_TYPES.map((type) => (
+          <option key={type} value={type}>
+            {type}
+          </option>
+        ))}
+      </select>
       <button type="button" data-testid="add-entity" onClick={addEntity}>
-        Add component
+        Add
       </button>
       <button
         type="button"
