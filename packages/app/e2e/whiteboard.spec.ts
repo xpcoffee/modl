@@ -132,6 +132,208 @@ test.describe('direct manipulation', () => {
   });
 });
 
+test.describe('double click', () => {
+  test('on empty canvas creates a component', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.locator('.react-flow__pane').dblclick({ position: { x: 120, y: 560 } });
+
+    const document = await getDocument(page);
+    expect(Object.values(document.model.elements).filter((e) => e.kind === 'entity')).toHaveLength(4);
+  });
+
+  test('on empty canvas does not zoom', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    const before = await page.evaluate(() => window.__domainMapper.getState().document.view.zoom);
+
+    await page.locator('.react-flow__pane').dblclick({ position: { x: 120, y: 560 } });
+
+    const viewport = await page.locator('.react-flow__viewport').getAttribute('style');
+    expect(viewport).toContain('scale(' + String(before));
+  });
+
+  test('on a component renames it instead of creating another', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.getByTestId(`entity-${IDS.ui}`).dblclick();
+
+    const rename = page.getByTestId(`rename-${IDS.ui}`);
+    await expect(rename).toBeVisible();
+    await rename.fill('Renamed inline');
+    await rename.press('Enter');
+
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.ui]?.title).toBe('Renamed inline');
+    expect(Object.values(document.model.elements).filter((e) => e.kind === 'entity')).toHaveLength(3);
+  });
+
+  test('on a connection renames it', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.getByTestId(`connection-${IDS.authorise}`).dblclick();
+
+    const rename = page.getByTestId(`rename-${IDS.authorise}`);
+    await expect(rename).toBeVisible();
+    await rename.fill('captures funds');
+    await rename.press('Enter');
+
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.authorise]?.title).toBe('captures funds');
+  });
+
+  test('Escape discards a rename', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.getByTestId(`entity-${IDS.ui}`).dblclick();
+    await page.getByTestId(`rename-${IDS.ui}`).fill('Discarded');
+    await page.getByTestId(`rename-${IDS.ui}`).press('Escape');
+
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.ui]?.title).toBe('Checkout UI');
+  });
+});
+
+test.describe('delete keys', () => {
+  for (const key of ['Delete', 'Backspace']) {
+    test(`${key} removes the selected element`, async ({ page }) => {
+      await dispatch(page, sampleDomain());
+      await page.getByTestId(`entity-${IDS.ledger}`).click();
+
+      await page.keyboard.press(key);
+
+      const document = await getDocument(page);
+      expect(document.model.elements[IDS.ledger]).toBeUndefined();
+    });
+  }
+});
+
+test.describe('hover', () => {
+  test('shows the description rather than the readable name', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'set-metadata', id: IDS.ui, description: 'Browser-side checkout flow.' },
+    ]);
+
+    await page.getByTestId(`entity-${IDS.ui}`).hover();
+
+    await expect(page.getByTestId('hover-description')).toContainText('Browser-side checkout flow.');
+  });
+
+  test('shows a type badge', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.getByTestId(`entity-${IDS.ui}`).hover();
+
+    await expect(page.getByTestId(`badge-${IDS.ui}`)).toHaveText('component');
+  });
+
+  test('shows a type badge on a connection', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.getByTestId(`connection-${IDS.authorise}`).hover();
+
+    await expect(page.getByTestId(`badge-${IDS.authorise}`)).toHaveText('interaction');
+  });
+});
+
+test.describe('groups', () => {
+  const GROUP = '77777777-7777-4777-8777-777777777777';
+
+  async function groupPaymentsSide(page: import('@playwright/test').Page) {
+    await dispatch(page, [
+      ...sampleDomain(),
+      {
+        type: 'group-elements',
+        id: GROUP,
+        title: 'Payments',
+        memberIds: [IDS.gateway, IDS.ledger],
+        position: { x: 280, y: 0 },
+      },
+    ]);
+  }
+
+  test('a collapsed group hides its members and shows a count', async ({ page }) => {
+    await groupPaymentsSide(page);
+
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).toHaveCount(0);
+    await expect(page.getByTestId(`entity-${GROUP}`)).toBeVisible();
+    await expect(page.getByTestId(`expand-${GROUP}`)).toContainText('2');
+  });
+
+  test('a connection into a collapsed group re-points at the group', async ({ page }) => {
+    await groupPaymentsSide(page);
+
+    // authorise ran UI -> gateway, and gateway is now hidden inside the group.
+    const edge = page.locator(`.react-flow__edge[data-testid="rf__edge-${IDS.authorise}:${IDS.ui}:${GROUP}"]`);
+    await expect(edge).toHaveCount(1);
+  });
+
+  test('a connection wholly inside a collapsed group is not drawn', async ({ page }) => {
+    await groupPaymentsSide(page);
+
+    // post entry ran gateway -> ledger, both inside the group now.
+    await expect(page.getByTestId(`connection-${IDS.post}`)).toHaveCount(0);
+  });
+
+  test('expanding shows the members inside a container', async ({ page }) => {
+    await groupPaymentsSide(page);
+
+    await page.getByTestId(`expand-${GROUP}`).click();
+
+    await expect(page.getByTestId(`group-${GROUP}`)).toBeVisible();
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).toBeVisible();
+    await expect(page.getByTestId(`connection-${IDS.post}`)).toBeVisible();
+  });
+
+  test('collapsing puts the members away again', async ({ page }) => {
+    await groupPaymentsSide(page);
+    await page.getByTestId(`expand-${GROUP}`).click();
+
+    await page.getByTestId(`collapse-${GROUP}`).click();
+
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).toHaveCount(0);
+    await expect(page.getByTestId(`entity-${GROUP}`)).toBeVisible();
+  });
+
+  test('the toolbar groups a selection', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+    await page.getByTestId(`entity-${IDS.ledger}`).click({ modifiers: ['ControlOrMeta'] });
+
+    await page.getByTestId('group-selected').click();
+
+    const document = await getDocument(page);
+    const group = Object.values(document.model.elements).find((e) => e.title === 'New group');
+    expect(group).toBeDefined();
+    expect(document.model.elements[IDS.gateway]?.groupId).toBe(group?.id);
+  });
+
+  test('ungrouping lifts the members out', async ({ page }) => {
+    await groupPaymentsSide(page);
+    await page.getByTestId(`entity-${GROUP}`).click();
+
+    await page.getByTestId('ungroup-selected').click();
+
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.gateway]?.groupId).toBeNull();
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).toBeVisible();
+  });
+
+  test('a grouped document round trips through save and load', async ({ page }) => {
+    await groupPaymentsSide(page);
+    const saved = await serialize(page);
+
+    await page.getByTestId('file-input').setInputFiles({
+      name: 'grouped.dmap.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(saved),
+    });
+
+    await expect(page.getByTestId('toolbar-message')).toContainText('Loaded');
+    expect(await serialize(page)).toBe(saved);
+  });
+});
+
 test.describe('inspector', () => {
   test('edits the title of the selected element', async ({ page }) => {
     await dispatch(page, sampleDomain());

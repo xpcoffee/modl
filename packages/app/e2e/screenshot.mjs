@@ -37,6 +37,20 @@ await page.evaluate(
 
 if (filter) await page.getByTestId('filter-input').fill(filter);
 
+if (process.env.GROUPED) {
+  const group = '77777777-7777-4777-8777-777777777777';
+  const expand = process.env.EXPANDED !== undefined;
+  await page.evaluate(
+    ([id, a, b, open]) =>
+      window.__domainMapper.dispatchAll([
+        { type: 'group-elements', id, title: 'Payments', memberIds: [a, b], position: { x: 280, y: 0 } },
+        { type: 'set-expanded', id, expanded: open },
+        { type: 'set-selection', ids: [] },
+      ]),
+    [group, gateway, ledger, expand],
+  );
+}
+
 await page.waitForTimeout(500);
 await page.screenshot({ path: output });
 await browser.close();
