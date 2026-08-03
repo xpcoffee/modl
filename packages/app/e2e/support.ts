@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import type { Command, Document, TraceEntry } from '@domain-mapper/core';
+import type { Command, Document, TraceEntry } from '@modl/core';
 
 export const IDS = {
   ui: '11111111-1111-4111-8111-111111111111',
@@ -12,24 +12,33 @@ export const IDS = {
 /** Loads the app and waits for the runtime API to come up. */
 export async function open(page: Page): Promise<void> {
   await page.goto('/');
-  await page.waitForFunction(() => window.__domainMapper?.ready === true);
-  await page.evaluate(() => window.__domainMapper.reset());
+  await page.waitForFunction(() => window.__modl?.ready === true);
+  await page.evaluate(() => window.__modl.reset());
 }
 
 export async function dispatch(page: Page, commands: Command[]): Promise<void> {
-  await page.evaluate((batch) => window.__domainMapper.dispatchAll(batch), commands);
+  await page.evaluate((batch) => window.__modl.dispatchAll(batch), commands);
+}
+
+/**
+ * Refits the camera. `fitView` runs on mount only, so a domain built after
+ * load can sit outside the viewport and land outside hit-testing.
+ */
+export async function fit(page: Page): Promise<void> {
+  await page.locator('.react-flow__controls-fitview').click();
+  await page.waitForTimeout(300);
 }
 
 export async function getDocument(page: Page): Promise<Document> {
-  return page.evaluate(() => window.__domainMapper.getDocument());
+  return page.evaluate(() => window.__modl.getDocument());
 }
 
 export async function getTrace(page: Page): Promise<TraceEntry[]> {
-  return page.evaluate(() => window.__domainMapper.getTrace());
+  return page.evaluate(() => window.__modl.getTrace());
 }
 
 export async function serialize(page: Page): Promise<string> {
-  return page.evaluate(() => window.__domainMapper.serialize());
+  return page.evaluate(() => window.__modl.serialize());
 }
 
 /** A three-component domain with two interactions. */

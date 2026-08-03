@@ -6,13 +6,13 @@
  */
 import { chromium } from '@playwright/test';
 
-const output = process.argv[2] ?? '/tmp/domain-mapper.png';
+const output = process.argv[2] ?? '/tmp/modl.png';
 const filter = process.argv[3] ?? '';
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 780 } });
 
 await page.goto('http://localhost:5173/');
-await page.waitForFunction(() => window.__domainMapper?.ready === true);
+await page.waitForFunction(() => window.__modl?.ready === true);
 
 const ui = '11111111-1111-4111-8111-111111111111';
 const gateway = '22222222-2222-4222-8222-222222222222';
@@ -20,7 +20,7 @@ const ledger = '33333333-3333-4333-8333-333333333333';
 
 await page.evaluate(
   ([a, b, c]) =>
-    window.__domainMapper.dispatchAll([
+    window.__modl.dispatchAll([
       { type: 'create-entity', id: a, entityType: 'component', title: 'Checkout UI', position: { x: 0, y: 0 } },
       { type: 'create-entity', id: b, entityType: 'component', title: 'Payment gateway', position: { x: 300, y: 0 } },
       { type: 'create-entity', id: c, entityType: 'component', title: 'Ledger', position: { x: 600, y: 120 } },
@@ -42,7 +42,7 @@ if (process.env.GROUPED) {
   const expand = process.env.EXPANDED !== undefined;
   await page.evaluate(
     ([id, a, b, open]) =>
-      window.__domainMapper.dispatchAll([
+      window.__modl.dispatchAll([
         { type: 'group-elements', id, title: 'Payments', memberIds: [a, b], position: { x: 280, y: 0 } },
         { type: 'set-expanded', id, expanded: open },
         { type: 'set-selection', ids: [] },
