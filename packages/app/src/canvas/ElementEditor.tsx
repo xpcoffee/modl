@@ -7,6 +7,7 @@ import {
   type Id,
 } from '@modl/core';
 import { store } from '../store/store.js';
+import { DeleteButton } from './DeleteButton.js';
 import { ElementIcon } from './ElementIcon.js';
 
 /**
@@ -183,6 +184,10 @@ export function ElementEditor({
           )}
         </li>
       </ul>
+
+      <footer className="element-editor__footer">
+        <DeleteButton count={1} />
+      </footer>
     </div>
   );
 }

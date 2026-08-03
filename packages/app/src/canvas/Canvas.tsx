@@ -252,7 +252,7 @@ export function Canvas() {
       >
         <Background />
         <Controls />
-        <SelectionActions />
+        <SelectionActions nodes={nodes} />
       </ReactFlow>
     </div>
   );

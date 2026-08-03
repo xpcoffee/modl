@@ -44,6 +44,9 @@ body {
 }
 
 .toolbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   margin-right: 8px;
 }
 
@@ -416,8 +419,7 @@ select {
 .group-node__editor,
 .edge-label__editor {
   position: absolute;
-  /* Clear of the actions bar, which sits directly under the selection. */
-  top: calc(100% + 42px);
+  top: calc(100% + 8px);
   left: 0;
   z-index: 20;
   cursor: default;
@@ -648,22 +650,35 @@ select {
   pointer-events: all;
 }
 
-.selection-actions button {
+.delete-button {
   display: flex;
   align-items: center;
   gap: 4px;
-  transform: translateX(-50%);
   padding: 4px 8px;
   border-radius: 8px;
   color: #f08a8a;
 }
 
-.selection-actions button:hover {
+.delete-button:hover {
   border-color: #f08a8a;
   background: #2a2024;
 }
 
-.selection-actions svg {
+.delete-button svg {
   width: 15px;
   height: 15px;
+}
+
+/* Centred under the multi-selection. */
+.selection-actions .delete-button {
+  transform: translateX(-50%);
+}
+
+/* Last row of the editor, so delete sits below the panel it belongs to. */
+.element-editor__footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
 }
