@@ -162,29 +162,6 @@ select {
   overflow-wrap: anywhere;
 }
 
-/* Type badge, revealed on hover. */
-.entity-node__badge,
-.edge-label__badge {
-  position: absolute;
-  top: -9px;
-  left: 8px;
-  padding: 1px 6px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: #12141a;
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  opacity: 0;
-  transition: opacity 0.1s;
-  pointer-events: none;
-}
-
-.entity-node:hover .entity-node__badge,
-.edge-label:hover .edge-label__badge {
-  opacity: 1;
-}
-
 /* Description and tags, revealed on hover. */
 .entity-node__hover,
 .edge-label__hover {
@@ -308,14 +285,6 @@ select {
   font-weight: 500;
 }
 
-.group-node__badge {
-  padding: 1px 6px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 10px;
-  color: var(--muted);
-}
-
 .group-node__hover {
   position: absolute;
   top: calc(100% + 6px);
@@ -361,85 +330,6 @@ select {
   stroke: var(--accent);
 }
 
-/* Inspector */
-
-.inspector {
-  width: 300px;
-  flex-shrink: 0;
-  padding: 12px;
-  background: var(--panel);
-  border-left: 1px solid var(--border);
-  overflow-y: auto;
-}
-
-.inspector__empty {
-  color: var(--muted);
-}
-
-.inspector__header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.inspector__kind {
-  text-transform: uppercase;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
-
-.inspector__name {
-  color: var(--accent);
-}
-
-.inspector__id {
-  display: block;
-  margin-top: 16px;
-  font-size: 10px;
-  color: var(--muted);
-  overflow-wrap: anywhere;
-}
-
-.field {
-  display: block;
-  margin-bottom: 12px;
-}
-
-.field > span {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.tag-list {
-  list-style: none;
-  margin: 0 0 6px;
-  padding: 0;
-}
-
-.tag-list li {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 0;
-}
-
-.tag-list__key,
-.tag-list__value {
-  min-width: 0;
-  flex: 1;
-  font-size: 12px;
-}
-
-.tag-list button {
-  padding: 0 6px;
-  line-height: 1.2;
-  flex-shrink: 0;
-}
-
 /* React Flow ships light-theme defaults, so the dark surface needs these. */
 .react-flow__edge-text {
   fill: var(--text);
@@ -477,4 +367,189 @@ select {
 
 .react-flow__attribution {
   display: none;
+}
+
+/* Type icons */
+
+.element-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.entity-node__icon {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+
+.group-node__icon,
+.edge-label__icon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.edge-label__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.group-node__empty {
+  color: var(--muted);
+  font-style: italic;
+  font-size: 11px;
+}
+
+/* In-situ editor, anchored to the selected element */
+
+.entity-node__editor,
+.group-node__editor,
+.edge-label__editor {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  cursor: default;
+}
+
+.group-node__editor {
+  top: calc(100% + 2px);
+}
+
+.element-editor {
+  width: 240px;
+  padding: 8px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  text-align: left;
+  font-size: 12px;
+}
+
+.element-editor__row {
+  position: relative;
+  margin-bottom: 6px;
+}
+
+.element-editor__type {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.element-editor__types {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #12141a;
+  min-width: 150px;
+}
+
+.element-editor__types button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 4px 6px;
+  font-size: 12px;
+  text-align: left;
+}
+
+.element-editor__types button:hover {
+  background: #232733;
+}
+
+.element-editor__types .is-current {
+  color: var(--accent);
+}
+
+.element-editor__description {
+  font-size: 12px;
+  resize: vertical;
+}
+
+.element-editor__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #12141a;
+}
+
+.tag-chip input {
+  width: auto;
+  min-width: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 11px;
+}
+
+.tag-chip input:focus {
+  outline: 1px solid var(--accent);
+  border-radius: 3px;
+}
+
+.tag-chip__equals {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.tag-chip button {
+  padding: 0 3px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+.element-editor__add-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* React Flow's resize handles on a dark surface */
+
+.react-flow__resize-control.handle {
+  background: var(--accent);
+  border-color: var(--accent);
+  width: 8px;
+  height: 8px;
+}
+
+.react-flow__resize-control.line {
+  border-color: var(--accent);
 }

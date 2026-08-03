@@ -1,6 +1,8 @@
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, type Edge, type EdgeProps } from '@xyflow/react';
 import type { ConnectionEdgeData } from './derive.js';
+import { ElementEditor } from './ElementEditor.js';
 import { ElementHover } from './ElementHover.js';
+import { ElementIcon } from './ElementIcon.js';
 import { InlineTitle } from './InlineTitle.js';
 import { stopEditing } from './editing.js';
 
@@ -53,20 +55,31 @@ export function ConnectionEdge({
               testId={`rename-${data.connectionId}`}
             />
           ) : (
-            <span className="edge-label__title">{data?.title}</span>
+            <span className="edge-label__title">
+              {data ? <ElementIcon elementType={data.elementType} className="edge-label__icon" /> : null}
+              {data?.title}
+            </span>
           )}
 
-          <span className="edge-label__badge" data-testid={`badge-${data?.connectionId}`}>
-            {data?.elementType}
-          </span>
-
-          <div className="edge-label__hover">
-            <ElementHover
-              elementType={data?.elementType ?? ''}
-              description={data?.description ?? ''}
-              tags={data?.tags ?? {}}
-            />
-          </div>
+          {selected && data ? (
+            <div className="edge-label__editor">
+              <ElementEditor
+                id={data.connectionId}
+                kind="connection"
+                elementType={data.elementType}
+                description={data.description}
+                tags={data.tags}
+              />
+            </div>
+          ) : (
+            <div className="edge-label__hover">
+              <ElementHover
+                elementType={data?.elementType ?? ''}
+                description={data?.description ?? ''}
+                tags={data?.tags ?? {}}
+              />
+            </div>
+          )}
         </div>
       </EdgeLabelRenderer>
     </>
