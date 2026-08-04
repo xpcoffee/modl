@@ -1,5 +1,6 @@
 import type { AppState, Command, CommandResult, Document, TraceEntry } from '@modl/core';
 import { store, replayFromJson } from '../store/store.js';
+import { forgetStyle } from '../canvas/styleMemory.js';
 
 export interface DomainMapperApi {
   dispatch(command: Command): CommandResult;
@@ -35,7 +36,11 @@ export function installRuntimeApi(): void {
     getTrace: store.getTrace,
     replay: store.replayTrace,
     replayJson: replayFromJson,
-    reset: store.reset,
+    reset: () => {
+      // The remembered style is session state too; a fresh session starts plain.
+      forgetStyle();
+      store.reset();
+    },
     ready: false,
   };
 }

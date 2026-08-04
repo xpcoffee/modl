@@ -1,6 +1,8 @@
 import {
+  ARROWHEADS,
   DEFAULT_ENTITY_SIZE,
   CONNECTION_NODE_SIZE,
+  STROKE_STYLES,
   isConnection,
   isEntity,
   isConnectionNode,
@@ -8,9 +10,12 @@ import {
   type Direction,
   type Document,
   type Element,
+  type ElementKind,
+  type ElementStyle,
   type Id,
   type Point,
 } from '../model/types.js';
+import { COLOR_PATTERN } from '../model/schema.js';
 import { isConnectionType, isEntityType } from '../model/paradigm.js';
 import { parseFilter } from '../query/filter.js';
 import { membersOf, wouldCycle } from '../query/groups.js';
@@ -23,6 +28,7 @@ import type {
   CommandType,
   DomainEvent,
   ErrorCode,
+  StylePatch,
 } from './types.js';
 
 function fail(commandType: CommandType, code: ErrorCode, message: string): CommandResult {
@@ -40,6 +46,8 @@ export function apply(state: AppState, command: Command): CommandResult {
       if (state.document.model.elements[command.id]) {
         return fail(command.type, 'duplicate-id', `element ${command.id} already exists`);
       }
+      const style = patchedStyle(command.type, 'entity', undefined, command.style ?? {});
+      if (!style.ok) return { ok: false, error: style.error };
       const entity: Element = {
         id: command.id,
         kind: 'entity',
@@ -49,6 +57,7 @@ export function apply(state: AppState, command: Command): CommandResult {
         tags: {},
         sources: [],
         groupId: null,
+        ...(style.style === undefined ? {} : { style: style.style }),
       };
       return ok(
         withElement(state, entity, {
@@ -68,6 +77,8 @@ export function apply(state: AppState, command: Command): CommandResult {
       if (state.document.model.elements[command.id]) {
         return fail(command.type, 'duplicate-id', `element ${command.id} already exists`);
       }
+      const style = patchedStyle(command.type, 'connection-node', undefined, command.style ?? {});
+      if (!style.ok) return { ok: false, error: style.error };
       const node: Element = {
         id: command.id,
         kind: 'connection-node',
@@ -77,6 +88,7 @@ export function apply(state: AppState, command: Command): CommandResult {
         tags: {},
         sources: [],
         groupId: null,
+        ...(style.style === undefined ? {} : { style: style.style }),
       };
       return ok(
         withElement(state, node, {
@@ -104,6 +116,8 @@ export function apply(state: AppState, command: Command): CommandResult {
       }
       const endpointError = checkEndpoints(state, command.type, command.from, command.to);
       if (endpointError) return { ok: false, error: endpointError };
+      const style = patchedStyle(command.type, 'connection', undefined, command.style ?? {});
+      if (!style.ok) return { ok: false, error: style.error };
 
       const connection: Element = {
         id: command.id,
@@ -117,6 +131,7 @@ export function apply(state: AppState, command: Command): CommandResult {
         from: [...command.from],
         to: [...command.to],
         direction: command.direction ?? 'forward',
+        ...(style.style === undefined ? {} : { style: style.style }),
       };
       return ok(withElement(state, connection, state.document.layout), [
         { type: 'element-created', id: command.id },
@@ -368,6 +383,23 @@ export function apply(state: AppState, command: Command): CommandResult {
 
       const direction: Direction = command.end ? (command.start ? 'both' : 'forward') : 'none';
       return ok(withElement(state, { ...element, direction }, state.document.layout), [
+        { type: 'element-updated', id: command.id },
+      ]);
+    }
+
+    case 'set-style': {
+      const element = state.document.model.elements[command.id];
+      if (!element) return unknown(command.type, command.id);
+
+      const outcome = patchedStyle(command.type, element.kind, element.style, command.style);
+      if (!outcome.ok) return { ok: false, error: outcome.error };
+
+      const { style, ...rest } = element;
+      void style;
+      const updated = (
+        outcome.style === undefined ? rest : { ...rest, style: outcome.style }
+      ) as Element;
+      return ok(withElement(state, updated, state.document.layout), [
         { type: 'element-updated', id: command.id },
       ]);
     }
@@ -746,6 +778,60 @@ function checkEndpoints(
     }
   }
   return null;
+}
+
+/**
+ * Applies a style patch and validates it against the element's kind, since a
+ * trace or the runtime API can carry any string where a colour should be.
+ * `undefined` leaves a field alone, `null` clears it, and a style with
+ * nothing left in it comes back as `undefined` so the element drops the field
+ * instead of serializing `"style": {}`.
+ */
+function patchedStyle(
+  commandType: CommandType,
+  kind: ElementKind,
+  current: ElementStyle | undefined,
+  patch: StylePatch,
+): { ok: true; style: ElementStyle | undefined } | { ok: false; error: CommandError } {
+  const invalid = (code: ErrorCode, message: string) =>
+    ({ ok: false, error: { code, message, commandType } }) as const;
+
+  if (patch.fill !== undefined && patch.fill !== null && kind === 'connection') {
+    return invalid('wrong-kind', 'a connection has no fill');
+  }
+  if (patch.arrowhead !== undefined && patch.arrowhead !== null && kind !== 'connection') {
+    return invalid('wrong-kind', `only a connection carries an arrowhead, not a ${kind}`);
+  }
+  for (const [field, value] of [
+    ['fill', patch.fill],
+    ['stroke', patch.stroke],
+  ] as const) {
+    if (typeof value === 'string' && !COLOR_PATTERN.test(value)) {
+      return invalid('schema-invalid', `${field} must be a lowercase #rrggbb colour`);
+    }
+  }
+  if (
+    typeof patch.strokeStyle === 'string' &&
+    !(STROKE_STYLES as readonly string[]).includes(patch.strokeStyle)
+  ) {
+    return invalid('schema-invalid', `there is no stroke style "${patch.strokeStyle}"`);
+  }
+  if (
+    typeof patch.arrowhead === 'string' &&
+    !(ARROWHEADS as readonly string[]).includes(patch.arrowhead)
+  ) {
+    return invalid('schema-invalid', `there is no arrowhead "${patch.arrowhead}"`);
+  }
+
+  const next: ElementStyle = { ...current };
+  for (const field of ['fill', 'stroke', 'strokeStyle', 'arrowhead'] as const) {
+    const value = patch[field];
+    if (value === undefined) continue;
+    if (value === null) delete next[field];
+    else next[field] = value as never;
+  }
+
+  return { ok: true, style: Object.keys(next).length === 0 ? undefined : next };
 }
 
 /** Turning a connection round takes its chosen contact points with it. */

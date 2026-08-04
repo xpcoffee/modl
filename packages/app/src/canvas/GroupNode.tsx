@@ -7,6 +7,7 @@ import { ElementIcon } from './ElementIcon.js';
 import { InlineTitle } from './InlineTitle.js';
 import { MIN_GROUP_SIZE } from './derive.js';
 import { stopEditing } from './editing.js';
+import { boxCss } from './styling.js';
 
 /**
  * An expanded entity: a container that holds whatever is dropped into it.
@@ -19,6 +20,7 @@ export function GroupNode({ data, selected }: NodeProps<Node<EntityNodeData>>) {
   return (
     <div
       className={`group-node${selected ? ' is-selected' : ''}${data.dimmed ? ' is-dimmed' : ''}`}
+      style={boxCss(data.style)}
       data-testid={`group-${data.id}`}
       data-expanded="true"
     >

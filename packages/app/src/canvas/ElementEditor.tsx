@@ -10,6 +10,7 @@ import {
 import { store } from '../store/store.js';
 import { DeleteButton } from './DeleteButton.js';
 import { ElementIcon, type JunctionLabel } from './ElementIcon.js';
+import { StyleEditor } from './StyleEditor.js';
 
 /**
  * Editing surface attached to the selected element, so details are changed
@@ -164,6 +165,8 @@ export function ElementEditor({
           </button>
         </div>
       )}
+
+      <StyleEditor ids={[id]} />
 
       <textarea
         className="element-editor__description"

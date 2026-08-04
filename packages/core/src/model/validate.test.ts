@@ -197,3 +197,34 @@ describe('warnings', () => {
     expect(codes(validateDocument(document).warnings)).not.toContain('paradigm-mismatch');
   });
 });
+
+describe('styles', () => {
+  it('schema-invalid: a colour that is not lowercase #rrggbb', () => {
+    const document = fixture();
+    document['model']['elements'][UI]['style'] = { fill: 'RED' };
+    expect(codes(validateDocument(document).errors)).toContain('schema-invalid');
+  });
+
+  it('schema-invalid: a fill on a connection', () => {
+    const document = fixture();
+    document['model']['elements'][AUTHORISE]['style'] = { fill: '#5b8def' };
+    expect(codes(validateDocument(document).errors)).toContain('schema-invalid');
+  });
+
+  it('schema-invalid: an arrowhead on an entity', () => {
+    const document = fixture();
+    document['model']['elements'][UI]['style'] = { arrowhead: 'open' };
+    expect(codes(validateDocument(document).errors)).toContain('schema-invalid');
+  });
+
+  it('accepts a styled entity and connection', () => {
+    const document = fixture();
+    document['model']['elements'][UI]['style'] = {
+      fill: '#5b8def',
+      stroke: '#46a758',
+      strokeStyle: 'dotted',
+    };
+    document['model']['elements'][AUTHORISE]['style'] = { arrowhead: 'diamond' };
+    expect(validateDocument(document).errors).toEqual([]);
+  });
+});

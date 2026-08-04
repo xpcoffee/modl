@@ -63,6 +63,7 @@ function orderElement(element: Element): Record<string, unknown> {
       ...(source.note === undefined ? {} : { note: source.note }),
     })),
     groupId: element.groupId,
+    ...(element.style === undefined ? {} : { style: orderStyle(element.style) }),
   };
 
   if (isEntity(element)) return { ...base, type: element.type, ...tail };
@@ -77,6 +78,15 @@ function orderElement(element: Element): Record<string, unknown> {
     };
   }
   return { ...base, shape: element.shape, ...tail };
+}
+
+function orderStyle(style: NonNullable<Element['style']>): Record<string, unknown> {
+  return {
+    ...(style.fill === undefined ? {} : { fill: style.fill }),
+    ...(style.stroke === undefined ? {} : { stroke: style.stroke }),
+    ...(style.strokeStyle === undefined ? {} : { strokeStyle: style.strokeStyle }),
+    ...(style.arrowhead === undefined ? {} : { arrowhead: style.arrowhead }),
+  };
 }
 
 function orderTags(tags: Record<string, string[]>): Record<string, string[]> {

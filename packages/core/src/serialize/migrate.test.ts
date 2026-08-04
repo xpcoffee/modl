@@ -168,3 +168,34 @@ describe('3 -> 4', () => {
     });
   });
 });
+
+describe('4 -> 5', () => {
+  const V4 = {
+    formatVersion: 4,
+    id: 'doc',
+    title: 'Four',
+    model: {
+      elements: {
+        a: { id:'a', kind:'entity', type:'component', title:'A',
+             description:'', tags:{}, sources:[], groupId:null },
+      },
+    },
+    layout: {},
+    view: { pan: { x: 0, y: 0 }, zoom: 1 },
+  };
+
+  it('loads a version 4 document unchanged apart from the version', () => {
+    const result = migrateDocument(V4);
+    expect(result).toMatchObject({ ok: true, from: 4, migrated: true });
+    if (!result.ok) return;
+    expect((result.document as typeof V4).model.elements['a']).toEqual(V4.model.elements['a']);
+    expect((result.document as { formatVersion: number }).formatVersion).toBe(FORMAT_VERSION);
+  });
+
+  it('saves a version 4 file at version 5', () => {
+    const result = parseDocument(JSON.stringify(V4));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(JSON.parse(serializeDocument(result.document)).formatVersion).toBe(FORMAT_VERSION);
+  });
+});

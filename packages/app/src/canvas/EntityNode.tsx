@@ -7,6 +7,7 @@ import { ElementIcon } from './ElementIcon.js';
 import { InlineTitle } from './InlineTitle.js';
 import { MIN_ENTITY_SIZE } from './derive.js';
 import { stopEditing } from './editing.js';
+import { boxCss } from './styling.js';
 
 /**
  * A domain entity. The title and a type icon show always, the description and
@@ -16,6 +17,7 @@ export function EntityNode({ data, selected }: NodeProps<Node<EntityNodeData>>) 
   return (
     <div
       className={`entity-node${selected ? ' is-selected' : ''}${data.dimmed ? ' is-dimmed' : ''}`}
+      style={boxCss(data.style)}
       data-testid={`entity-${data.id}`}
       data-type={data.elementType}
     >

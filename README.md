@@ -104,6 +104,7 @@ Use that path rather than `npx playwright install`, which fetches whatever versi
 - **Group** any selection, or none, to start a container. Drag elements in and out of it, resize it by its corners, and collapse or expand to move between levels of detail. Connections into a collapsed group re-point at the group
 - **Filter** with expressions like `team=payments`, `-deprecated`, or `team=payments tier=1`. Non-matching elements dim rather than disappear, and the input suggests recorded values
 - **Reroute** a line by selecting it and clicking a hollow handle to add a bend. Drag a bend to move it, double-click it to remove it. The editor toggles an arrowhead at either end
+- **Style** the selection from the same editor: a fill colour for components (drawn mostly transparent), a stroke colour and line style for anything, and the arrowhead glyph for connections. A multi-selection edits everything it can: fill applies to the selected components, arrowheads to the selected connections. The last choice follows onto whatever you create next
 - **Delete** removes the selection, on either Delete or Backspace, or with the trash button
 - **Save** and **Load** a `.modl.json` file, and **Export trace** for the session's command log
 
@@ -142,8 +143,8 @@ node packages/app/e2e/screenshot.mjs /tmp/board.png "team=payments"
 
 ## Status
 
-Runnable: model, commands, trace and replay, all three paradigms, groups with collapse and expand, filtering, the canvas, the inspector, and save/load. 147 unit tests and 43 browser tests.
+Runnable: model, commands, trace and replay, all three paradigms, groups with collapse and expand, filtering, colours and styles, the canvas, the inspector, and save/load. 242 unit tests and 128 browser tests.
 
-Colours and undo are still open. See [the vision](docs/vision.md).
+Undo is still open. See [the vision](docs/vision.md).
 
 Every pull request builds a preview to `https://xpcoffee.github.io/modl/pr-<number>/` and links it from a comment.

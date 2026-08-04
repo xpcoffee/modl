@@ -7,6 +7,7 @@ import { ElementHover } from './ElementHover.js';
 import { InlineTitle } from './InlineTitle.js';
 import { MIN_NODE_SIZE } from './derive.js';
 import { stopEditing } from './editing.js';
+import { boxCss } from './styling.js';
 
 /**
  * A junction where connections fan in or fan out, drawn as a circle or a
@@ -66,7 +67,7 @@ export function ConnectionNodeView({ data, selected }: NodeProps<Node<Connection
         <Handle key={id} type="source" position={position} id={id} className="handle--centre" />
       ))}
 
-      <div className="connection-node__face" />
+      <div className="connection-node__face" style={boxCss(data.style)} />
 
       <div className="connection-node__label">
         {data.editing ? (
