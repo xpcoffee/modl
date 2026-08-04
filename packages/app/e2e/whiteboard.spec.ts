@@ -1845,6 +1845,43 @@ test.describe('lines clearing their element', () => {
     expect(insideCount).toBe(0);
   });
 
+  test('moving an element a little moves its line a little', async ({ page }) => {
+    // The reported case: two boards laid out almost identically, one drawn
+    // with a plain curve and the other with a detour, because the exit angle
+    // fell either side of a cutoff. Nothing about the line may jump.
+    await dispatch(page, [
+      { type: 'create-entity', id: 'a', entityType: 'component', title: 'A', position: { x: 0, y: 0 } },
+      { type: 'create-entity', id: 'b', entityType: 'component', title: 'B', position: { x: 620, y: 40 } },
+      { type: 'create-connection', id: 'c', connectionType: 'interaction', from: ['a'], to: ['b'], title: '' },
+      // Pinned to the top at both ends, so the line has to set off further
+      // and further away from where it is going as the target drops.
+      { type: 'set-connection-sides', id: 'c', source: 'top', target: 'top' },
+    ]);
+
+    const rises: number[] = [];
+    for (let dy = 40; dy <= 400; dy += 20) {
+      await dispatch(page, [{ type: 'move-element', id: 'b', position: { x: 620, y: dy } }]);
+
+      rises.push(
+        await page.locator('.react-flow__edge-path').evaluate((element) => {
+          const path = element as SVGPathElement;
+          const length = path.getTotalLength();
+          const start = path.getPointAtLength(0);
+          let top = start.y;
+          for (let i = 0; i <= 100; i += 1) {
+            top = Math.min(top, path.getPointAtLength((length * i) / 100).y);
+          }
+          return start.y - top;
+        }),
+      );
+    }
+
+    // Each 20px step of the target changes how far the line reaches by less
+    // than the step itself. A cutoff shows up here as one huge jump.
+    const steps = rises.slice(1).map((rise, i) => Math.abs(rise - rises[i]!));
+    expect(Math.max(...steps)).toBeLessThan(20);
+  });
+
   test('a line leaves perpendicular to the side it starts on', async ({ page }) => {
     await dispatch(page, [
       { type: 'create-entity', id: 'a', entityType: 'component', title: 'A', position: { x: 0, y: 0 } },

@@ -25,17 +25,30 @@ function outward(position: Position): Point {
   return { x: 0, y: 1 };
 }
 
-/** True when a line has to set off away from where it is going. */
-function facesAway(normal: Point, at: Point, towards: Point): boolean {
+/**
+ * How far a line's way out points away from where it is going: 0 when the
+ * side faces the other element at all, up to 1 when it faces straight back.
+ */
+function turnedAway(normal: Point, at: Point, towards: Point): number {
   const span = { x: towards.x - at.x, y: towards.y - at.y };
   const length = Math.hypot(span.x, span.y) || 1;
-  return (normal.x * span.x + normal.y * span.y) / length < -0.2;
+  return Math.max(0, -(normal.x * span.x + normal.y * span.y) / length);
 }
 
-/** A point out along the normal, far enough to clear the element. */
-function standoffPoint(at: Point, normal: Point, from: Point, to: Point): Point {
-  const reach = Math.max(50, Math.min(110, Math.hypot(to.x - from.x, to.y - from.y) * 0.4));
-  return { x: at.x + normal.x * reach, y: at.y + normal.y * reach };
+/**
+ * How much further out a line has to set off to get clear of its own element.
+ *
+ * Squared, so a side that only just points the wrong way is barely touched
+ * and one facing straight back gets the whole detour. Two lines placed a
+ * degree apart come out a hair apart, rather than one taking a detour the
+ * other does not.
+ */
+function standoff(normal: Point, at: Point, towards: Point): Point {
+  const away = turnedAway(normal, at, towards);
+  if (away === 0) return { x: 0, y: 0 };
+  const span = Math.hypot(towards.x - at.x, towards.y - at.y);
+  const reach = away * away * Math.min(span * 2, 750);
+  return { x: normal.x * reach, y: normal.y * reach };
 }
 
 /** The two control points of a cubic path, so a line can be shifted off it. */
@@ -51,15 +64,15 @@ function controlsOf(path: string): [Point, Point] | null {
 }
 
 /**
- * The same line, eased sideways.
+ * The same line with its control points moved.
  *
- * Moving both control points by `by` leaves a cubic whose distance from the
- * original is `3·|by|·t(1-t)`: nothing at either end, most in the middle, and
- * a smooth ramp between. Two lines shifted by different amounts stay clear of
- * each other for their whole length, and both are still the bezier React Flow
- * drew, so neither changes shape or leaves its handle.
+ * Every adjustment a line needs is one of these. Moving a control point never
+ * moves the end it belongs to, so the line stays on its handle whatever is
+ * asked of it, and the result is still the cubic React Flow drew rather than a
+ * different kind of curve beside it. Moving both by the same amount slides the
+ * line sideways by `3·|by|·t(1-t)`: nothing at the ends, most in the middle.
  */
-function shifted(path: string, by: Point): string {
+function reshaped(path: string, atSource: Point, atTarget: Point): string {
   const controls = controlsOf(path);
   if (!controls) return path;
   const ends = /^M\s*(\S+,\S+)\s*C\s*\S+,\S+\s+\S+,\S+\s+(\S+,\S+)$/.exec(path.trim());
@@ -67,8 +80,8 @@ function shifted(path: string, by: Point): string {
   const [first, second] = controls;
   return (
     `M ${ends[1]!.replace(',', ' ')}` +
-    ` C ${first.x + by.x} ${first.y + by.y},` +
-    ` ${second.x + by.x} ${second.y + by.y},` +
+    ` C ${first.x + atSource.x} ${first.y + atSource.y},` +
+    ` ${second.x + atTarget.x} ${second.y + atTarget.y},` +
     ` ${ends[2]!.replace(',', ' ')}`
   );
 }
@@ -79,6 +92,8 @@ function shifted(path: string, by: Point): string {
  * more in a bundle. The line already on the board is rank 0 and never moves.
  */
 const SEPARATION = 26;
+
+const ZERO: Point = { x: 0, y: 0 };
 
 /** Sideways from the straight run between two points, always the same way. */
 function aside(from: Point, to: Point, by: number): Point {
@@ -189,40 +204,42 @@ export function ConnectionEdge({
   });
 
   /*
-   * A line only needs rescuing from its own exit when a reader has pinned it
-   * to a side that faces away from where it goes. A side chosen from the
-   * geometry never does that, and a line separated from its neighbours leaves
-   * by a side that still points somewhere sensible, so neither is touched.
+   * Two things move a line off the path React Flow drew, and both are matters
+   * of degree. It sets off further out the more its side faces away from where
+   * it is going, and further aside the more lines already run between the same
+   * two handles. A line whose side points where it is headed and has the pair
+   * to itself is left alone: at nothing to answer for, both come to zero.
+   *
+   * A junction anchors at its centre and has no side to be turned away from.
    */
-  const detour = !data?.rescue
-    ? []
-    : [
-        ...(!data.centredSource && facesAway(outward(sourcePosition), source, target)
-          ? [standoffPoint(source, outward(sourcePosition), source, target)]
-          : []),
-        ...(!data.centredTarget && facesAway(outward(targetPosition), target, source)
-          ? [standoffPoint(target, outward(targetPosition), source, target)]
-          : []),
-      ];
-
-  // Everything else is the path React Flow drew while the line was dragged,
-  // eased aside by however many lines already run between the same handles.
-  const middle = waypoints.length > 0 ? waypoints : detour;
-  const routed = middle.length > 0;
   const rank = data?.rank ?? 0;
+  const sideways = aside(source, target, rank * SEPARATION);
+  const out = {
+    source: data?.centredSource ? ZERO : standoff(outward(sourcePosition), source, target),
+    target: data?.centredTarget ? ZERO : standoff(outward(targetPosition), target, source),
+  };
+
+  const routed = waypoints.length > 0;
   const path = routed
-    ? routedPath(source, middle, target, {
+    ? routedPath(source, waypoints, target, {
         source: outward(sourcePosition),
         target: outward(targetPosition),
       })
-    : shifted(bezier, aside(source, target, rank * SEPARATION));
+    : reshaped(
+        bezier,
+        { x: sideways.x + out.source.x, y: sideways.y + out.source.y },
+        { x: sideways.x + out.target.x, y: sideways.y + out.target.y },
+      );
 
   const handles = addHandles(source, waypoints, target);
-  // The label rides with the line. Halfway along, a shifted cubic sits three
-  // quarters of the shift off the one it came from.
-  const carry = aside(source, target, rank * SEPARATION * 0.75);
+  // The label rides with the line. Halfway along, a cubic sits three eighths
+  // of its two control moves off the one it came from.
+  const carry = {
+    x: (sideways.x * 2 + out.source.x + out.target.x) * 0.375,
+    y: (sideways.y * 2 + out.source.y + out.target.y) * 0.375,
+  };
   const labelPoint = routed
-    ? routeMidpoint(source, middle, target)
+    ? routeMidpoint(source, waypoints, target)
     : { x: bezierLabelX + carry.x, y: bezierLabelY + carry.y };
   const rolledUp = (data?.rolledUp ?? []).length > 0;
 

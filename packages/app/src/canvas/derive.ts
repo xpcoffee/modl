@@ -69,8 +69,6 @@ export interface ConnectionEdgeData extends Record<string, unknown> {
   direction: Direction;
   /** Ids this edge stands in for, empty unless it is a roll-up. */
   rolledUp: Id[];
-  /** True when a reader pinned this line's sides, which may need rescuing. */
-  rescue: boolean;
   /** How many lines already run between this pair of handles. */
   rank: number;
   /** True when that end anchors at a point rather than a side. */
@@ -376,7 +374,6 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           soleSelection: false,
           waypoints: [],
           direction,
-          rescue: false,
           rank: 0,
           rolledUp: ids,
           centredSource: isCentred(elements, first.from),
@@ -440,8 +437,6 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           soleSelection: soleSelection === element.id,
           waypoints: layoutOf(state, element.id).waypoints,
           direction: element.direction,
-          // Only a side a reader pinned may need rescuing from itself.
-          rescue: pinned,
           // How many lines already share this pair of handles.
           rank,
           rolledUp: [],
