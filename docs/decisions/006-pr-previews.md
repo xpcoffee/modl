@@ -46,3 +46,7 @@ The preview is a static page with no server, which is what the app is anyway.
 ## What would reverse this
 
 Wanting previews on fork PRs, which needs `pull_request_target` and the care that comes with running workflows against untrusted code.
+
+## Amended by #8: the permanent site
+
+Pushes to `main` now deploy to the root of the same Pages site (`deploy-main.yml`), so the latest main is always at the bare project URL. The root replace skips the `pr-<number>/` directories, and the previews never touch the root, so the two coexist on one branch. A merge fires the main deploy and the preview cleanup in the same instant and both push `gh-pages`; the main deploy rebases and retries rather than failing on the race.
