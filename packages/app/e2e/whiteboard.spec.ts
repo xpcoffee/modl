@@ -1166,3 +1166,166 @@ test.describe('readable ids and multi-valued tags', () => {
     await expect(page.getByTestId('entity-after-the-bad-one')).toBeVisible();
   });
 });
+
+test.describe('framing on load', () => {
+  /** A document placed far from the origin, where the camera starts. */
+  function farAway() {
+    return {
+      formatVersion: 2,
+      id: 'far-doc',
+      title: 'Far',
+      model: {
+        elements: {
+          'a': { id:'a', kind:'entity', type:'component', title:'Far A',
+                 description:'', tags:{}, sources:[], groupId:null },
+          'b': { id:'b', kind:'entity', type:'component', title:'Far B',
+                 description:'', tags:{}, sources:[], groupId:null },
+          'ab': { id:'ab', kind:'connection', type:'interaction', from:['a'], to:['b'],
+                  title:'x', description:'', tags:{}, sources:[], groupId:null },
+        },
+      },
+      layout: {
+        a: { x: 4000, y: 3000, width: 180, height: 72 },
+        b: { x: 4400, y: 3000, width: 180, height: 72 },
+      },
+      view: { pan: { x: 0, y: 0 }, zoom: 1 },
+    };
+  }
+
+  test('a loaded document is brought into view', async ({ page }) => {
+    await page.evaluate(
+      (doc) => window.__modl.dispatch({ type: 'load-document', document: doc as never }),
+      farAway(),
+    );
+
+    // Placed at 4000,3000, far outside a camera sitting at the origin.
+    await expect(page.getByTestId('entity-a')).toBeInViewport();
+    await expect(page.getByTestId('entity-b')).toBeInViewport();
+  });
+
+  test('creating an element still leaves the camera alone', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    const before = await page.locator('.react-flow__viewport').getAttribute('style');
+
+    await page.locator('.react-flow__pane').dblclick({ position: { x: 200, y: 300 } });
+    await page.waitForTimeout(200);
+
+    expect(await page.locator('.react-flow__viewport').getAttribute('style')).toBe(before);
+  });
+
+  test('loading through the file picker frames it too', async ({ page }) => {
+    await page.getByTestId('file-input').setInputFiles({
+      name: 'far.modl.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(farAway())),
+    });
+
+    await expect(page.getByTestId('toolbar-message')).toContainText('Loaded');
+    await expect(page.getByTestId('entity-a')).toBeInViewport();
+  });
+});
+
+test.describe('forks', () => {
+  const FORK = 'in-stock';
+
+  async function decision(page: import('@playwright/test').Page) {
+    await dispatch(page, [
+      { type: 'create-entity', id: 'submit', entityType: 'step', title: 'Submit', position: { x: 0, y: 120 } },
+      { type: 'create-fork', id: FORK, shape: 'diamond', title: 'in stock?', position: { x: 300, y: 144 } },
+      { type: 'create-entity', id: 'ship', entityType: 'step', title: 'Ship', position: { x: 480, y: 20 } },
+      { type: 'create-entity', id: 'back', entityType: 'step', title: 'Backorder', position: { x: 480, y: 240 } },
+      { type: 'create-connection', id: 'in', connectionType: 'relation', from: ['submit'], to: [FORK], title: '' },
+      { type: 'create-connection', id: 'yes', connectionType: 'relation', from: [FORK], to: ['ship'], title: 'yes' },
+      { type: 'create-connection', id: 'no', connectionType: 'relation', from: [FORK], to: ['back'], title: 'no' },
+    ]);
+    await fit(page);
+  }
+
+  test('draws a junction that connections reach on both sides', async ({ page }) => {
+    await decision(page);
+
+    await expect(page.getByTestId(`fork-${FORK}`)).toBeVisible();
+    await expect(page.getByTestId(`connection-yes`)).toContainText('yes');
+    await expect(page.getByTestId(`connection-no`)).toContainText('no');
+  });
+
+  test('switches between a diamond and a circle', async ({ page }) => {
+    await decision(page);
+    await page.getByTestId(`fork-${FORK}`).click();
+
+    await expect(page.getByTestId(`fork-${FORK}`)).toHaveAttribute('data-shape', 'diamond');
+    await page.getByTestId(`fork-shape-${FORK}`).click();
+
+    await expect(page.getByTestId(`fork-${FORK}`)).toHaveAttribute('data-shape', 'circle');
+    expect((await getDocument(page)).model.elements[FORK]).toMatchObject({ shape: 'circle' });
+  });
+
+  test('renames in place like anything else', async ({ page }) => {
+    await decision(page);
+
+    await page.getByTestId(`fork-${FORK}`).dblclick();
+    const rename = page.getByTestId(`rename-${FORK}`);
+    await expect(rename).toBeVisible();
+    await rename.fill('has stock?');
+    await rename.press('Enter');
+
+    expect((await getDocument(page)).model.elements[FORK]?.title).toBe('has stock?');
+  });
+
+  test('the toolbar adds one', async ({ page }) => {
+    await page.getByTestId('add-fork').click();
+
+    const forks = Object.values((await getDocument(page)).model.elements).filter(
+      (element) => element.kind === 'fork',
+    );
+    expect(forks).toHaveLength(1);
+  });
+
+  test('survives save and load', async ({ page }) => {
+    await decision(page);
+    const saved = await serialize(page);
+
+    await page.getByTestId('file-input').setInputFiles({
+      name: 'decision.modl.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(saved),
+    });
+
+    await expect(page.getByTestId('toolbar-message')).toContainText('Loaded');
+    expect(await serialize(page)).toBe(saved);
+    await expect(page.getByTestId(`fork-${FORK}`)).toBeVisible();
+  });
+});
+
+test.describe('artifacts', () => {
+  test('draws with its own icon and takes no paradigm', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'set-element-type', id: IDS.ledger, elementType: 'artifact' },
+    ]);
+
+    const icon = page.locator(`[data-testid="entity-${IDS.ledger}"] svg[data-icon]`);
+    await expect(icon).toHaveAttribute('data-icon', 'artifact');
+
+    // A connection into an artifact keeps the paradigm it came from.
+    await page.evaluate(() =>
+      window.__modl.dispatch({
+        type: 'create-connection',
+        id: 'writes',
+        connectionType: 'transition',
+        from: ['11111111-1111-4111-8111-111111111111'],
+        to: ['33333333-3333-4333-8333-333333333333'],
+        title: 'writes',
+      } as never),
+    );
+    expect((await getDocument(page)).model.elements['writes']).toMatchObject({ type: 'transition' });
+  });
+
+  test('is offered in the inspector type list', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+
+    await page.getByTestId(`editor-type-${IDS.ui}`).click();
+    await expect(page.getByTestId(`editor-type-${IDS.ui}-artifact`)).toBeVisible();
+  });
+});
