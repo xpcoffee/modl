@@ -1,0 +1,75 @@
+name: deploy-main
+
+# Publishes the main build to the root of the GitHub Pages site, so
+# https://<owner>.github.io/<repo>/ always serves the latest main.
+# PR previews live in pr-<number>/ subdirectories on the same gh-pages
+# branch and are left untouched.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build for the site root
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
+        run: npm run build
+
+      - name: Publish to the gh-pages branch
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Work in a separate worktree so the source checkout stays untouched.
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch origin gh-pages --depth=1
+            git worktree add ../pages origin/gh-pages
+            git -C ../pages checkout -B gh-pages
+          else
+            git worktree add --detach ../pages
+            git -C ../pages checkout --orphan gh-pages
+            git -C ../pages rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          # Replace the root build, keep the PR previews.
+          find ../pages -mindepth 1 -maxdepth 1 ! -name 'pr-*' ! -name '.git' -exec rm -rf {} +
+          cp -r packages/app/dist/. ../pages/
+
+          git -C ../pages add -A
+          if git -C ../pages diff --staged --quiet; then
+            echo "site unchanged"
+            exit 0
+          fi
+          git -C ../pages commit -m "Deploy main ${GITHUB_SHA}"
+
+          # A merge triggers this workflow and the preview cleanup at the same
+          # time, and both push gh-pages; rebase and retry instead of failing.
+          for attempt in 1 2 3; do
+            if git -C ../pages push origin gh-pages; then
+              exit 0
+            fi
+            git -C ../pages fetch origin gh-pages
+            git -C ../pages rebase origin/gh-pages
+          done
+          echo "could not push gh-pages after 3 attempts" >&2
+          exit 1
