@@ -12,12 +12,12 @@ The canvas is a field, in the space-time sense: the dot grid is its visible medi
 
 **The vocabulary.**
 
-- A **ripple** is a radial displacement wave through the dot grid: a narrow wavefront travels out from (or in toward) a point, each dot shifts along the radial line as the front passes, and the wave is damped in both time and distance. It is a distortion of the medium, not water rings: no drawn circles, no fading outlines, only dots moving.
+- A **ripple** is a radial wave through the dot grid, carried by displacement and light together: a narrow wavefront travels out from (or in toward) a point, each dot shifts along the radial line as the front passes and tints toward the accent blue (#5b8def) under a soft halo, and both effects share the same damping in time and distance. Displacement alone was too subtle to read on the dark background. It is still a distortion of the medium, not water rings: no drawn circles, no fading outlines, only the grid's own dots moving and lighting.
 - A **warp** is an element entering or leaving the field: scale and blur over 0.3s, as if condensing out of it or dissolving back in.
 
 **The grammar.**
 
-- A lone click on empty canvas: a small outward ripple. The board heard you; clicking again creates here.
+- A lone click on empty canvas: a small outward ripple, a tap on the field rather than a splash. Roughly a third the reach and amplitude of an element wave, and dimmer. The board heard you; clicking again creates here.
 - Creating an element: warp-in, then an outward ripple from its centre. The ripple starts only after the warp ends, so the mass arrives before it bends the field.
 - Deleting an element: warp-out, then an inward ripple, the field closing over the gap. The model drops the element immediately, so a ghost drawn at its old rectangle plays the exit.
 

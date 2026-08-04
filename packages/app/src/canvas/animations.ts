@@ -31,6 +31,8 @@ export interface Ripple {
   amplitude: number;
   /** How far from the centre the wave travels, in flow pixels. */
   reach: number;
+  /** Peak strength of the light pulse riding the wavefront, 0..1. */
+  intensity: number;
 }
 
 interface Rect {
@@ -93,12 +95,15 @@ function startRipple(centre: Point, kind: RippleKind, size: 'press' | 'element')
   if (motionReduced()) return;
   activeRipples(performance.now());
   if (ripples.length >= MAX_ACTIVE_RIPPLES) return;
+  // A press is a tap on the field, an element is a mass arriving or leaving,
+  // so the press wave is smaller, shorter-reaching, and dimmer.
   ripples.push({
     centre,
     kind,
     start: performance.now(),
-    amplitude: size === 'press' ? 7 : 12,
-    reach: size === 'press' ? 220 : 340,
+    amplitude: size === 'press' ? 4 : 12,
+    reach: size === 'press' ? 120 : 340,
+    intensity: size === 'press' ? 0.7 : 1,
   });
   started += 1;
   emit();
