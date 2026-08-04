@@ -692,3 +692,171 @@ select {
   font-weight: 500;
   cursor: help;
 }
+
+/* Forks: junctions where connections fan in or out */
+
+.connection-node {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.connection-node__face {
+  width: 100%;
+  height: 100%;
+  border: 1.5px solid var(--muted);
+  background: #232733;
+}
+
+.connection-node--circle .connection-node__face {
+  border-radius: 50%;
+}
+
+.connection-node--diamond .connection-node__face {
+  border-radius: 6px;
+  transform: rotate(45deg) scale(0.72);
+}
+
+.connection-node.is-selected .connection-node__face {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgb(91 141 239 / 30%);
+}
+
+.connection-node.is-dimmed {
+  opacity: 0.25;
+}
+
+/* Below the shape, which is too small to hold text and has handles on
+   every side for connections to reach. */
+.connection-node__label {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text);
+  pointer-events: none;
+}
+
+.connection-node__label .inline-title {
+  pointer-events: all;
+}
+
+.connection-node__label .inline-title {
+  width: 140px;
+}
+
+.connection-node__shape {
+  position: absolute;
+  top: -10px;
+  right: -12px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.connection-node__editor {
+  position: absolute;
+  top: calc(100% + 28px);
+  left: 0;
+  z-index: 20;
+  cursor: default;
+}
+
+.connection-node__hover {
+  position: absolute;
+  top: calc(100% + 28px);
+  left: 0;
+  display: none;
+  z-index: 10;
+}
+
+.connection-node:hover .connection-node__hover {
+  display: block;
+}
+
+/* A connection node has one contact point, at its middle. The four handles
+   stacked there differ only in the direction they face, so a line's tangent
+   turns with it. */
+.handle--centre {
+  left: 50% !important;
+  top: 50% !important;
+  right: auto;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  background: var(--panel);
+  border: 1.5px solid var(--muted);
+  opacity: 0;
+}
+
+.connection-node:hover .handle--centre,
+.connection-node.is-selected .handle--centre {
+  opacity: 1;
+}
+
+/* Placing a new element */
+
+.canvas.is-placing .react-flow__pane {
+  cursor: crosshair;
+}
+
+.placement-preview {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 1.5px dashed var(--accent);
+  border-radius: 8px;
+  background: rgb(91 141 239 / 8%);
+  pointer-events: none;
+}
+
+.toolbar__add {
+  position: relative;
+}
+
+.toolbar__add .is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.toolbar__types {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #12141a;
+  min-width: 160px;
+}
+
+.toolbar__types button {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 5px 8px;
+  text-align: left;
+}
+
+.toolbar__types button:hover {
+  background: #232733;
+}
+
+.toolbar__hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.toolbar__types button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}

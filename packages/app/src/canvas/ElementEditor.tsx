@@ -3,12 +3,13 @@ import {
   CONNECTION_TYPES,
   ENTITY_TYPES,
   type ConnectionType,
+  type Direction,
   type EntityType,
   type Id,
 } from '@modl/core';
 import { store } from '../store/store.js';
 import { DeleteButton } from './DeleteButton.js';
-import { ElementIcon } from './ElementIcon.js';
+import { ElementIcon, type JunctionLabel } from './ElementIcon.js';
 
 /**
  * Editing surface attached to the selected element, so details are changed
@@ -23,19 +24,34 @@ export function ElementEditor({
   elementType,
   description,
   tags,
-  arrows,
+  direction,
 }: {
   id: Id;
-  kind: 'entity' | 'connection';
-  elementType: EntityType | ConnectionType;
+  kind: 'entity' | 'connection' | 'node';
+  /**
+   * A connection point has no type to choose, so its chip is a label rather
+   * than a menu, and it carries the reader's word for the shape.
+   */
+  elementType: EntityType | ConnectionType | 'connection node' | 'decision';
   description: string;
   tags: Record<string, string[]>;
-  /** Present for connections, which can carry a head at either end. */
-  arrows?: { start: boolean; end: boolean };
+  /** Present for connections: which way the connection reads. */
+  direction?: Direction;
 }) {
   const [addingTag, setAddingTag] = useState(false);
   const [pickingType, setPickingType] = useState(false);
-  const types: readonly string[] = kind === 'entity' ? ENTITY_TYPES : CONNECTION_TYPES;
+  /**
+   * What this element could be instead.
+   *
+   * An entity and a connection node are different kinds, but from a reader's
+   * seat they are both "the thing in the box", so changing between them
+   * belongs in the same list as changing an entity's type. A connection has
+   * nothing to convert into, so it lists only its own types.
+   */
+  const types: readonly string[] =
+    kind === 'connection'
+      ? CONNECTION_TYPES
+      : [...ENTITY_TYPES, 'connection node', 'decision'];
 
   return (
     <div
@@ -49,7 +65,10 @@ export function ElementEditor({
           type="button"
           className="element-editor__type"
           data-testid={`editor-type-${id}`}
-          aria-label={`Type: ${elementType}. Click to change`}
+          aria-label={
+            types.length > 0 ? `Type: ${elementType}. Click to change` : `Type: ${elementType}`
+          }
+          disabled={types.length === 0}
           onClick={() => setPickingType((open) => !open)}
         >
           <ElementIcon elementType={elementType} />
@@ -65,15 +84,37 @@ export function ElementEditor({
                   data-testid={`editor-type-${id}-${type}`}
                   className={type === elementType ? 'is-current' : undefined}
                   onClick={() => {
-                    store.dispatch({
-                      type: 'set-element-type',
-                      id,
-                      elementType: type as EntityType | ConnectionType,
-                    });
+                    const junction = type === 'connection node' || type === 'decision';
+                    const changesKind =
+                      junction !== (elementType === 'connection node' || elementType === 'decision');
+
+                    store.dispatch(
+                      changesKind
+                        ? {
+                            type: 'convert-element',
+                            id,
+                            to: junction
+                              ? type === 'decision'
+                                ? 'decision'
+                                : 'connection-node'
+                              : (type as EntityType),
+                          }
+                        : junction
+                          ? {
+                              type: 'set-node-shape',
+                              id,
+                              shape: type === 'decision' ? 'diamond' : 'circle',
+                            }
+                          : {
+                              type: 'set-element-type',
+                              id,
+                              elementType: type as EntityType | ConnectionType,
+                            },
+                    );
                     setPickingType(false);
                   }}
                 >
-                  <ElementIcon elementType={type as EntityType | ConnectionType} />
+                  <ElementIcon elementType={type as EntityType | ConnectionType | JunctionLabel} />
                   {type}
                 </button>
               </li>
@@ -82,30 +123,44 @@ export function ElementEditor({
         )}
       </div>
 
-      {arrows && (
+      {direction && (
         <div className="element-editor__arrows" data-testid={`editor-arrows-${id}`}>
-          <span>Arrows</span>
+          {/* A head at each end, toggled separately. Every combination is
+              reachable, and turning on the start alone flips the connection
+              rather than inventing a second way to say backwards. */}
           <button
             type="button"
             data-testid={`editor-arrow-start-${id}`}
-            aria-pressed={arrows.start}
-            className={arrows.start ? 'is-on' : undefined}
+            aria-label="Arrowhead at the start"
+            aria-pressed={direction === 'both'}
+            className={direction === 'both' ? 'is-on' : undefined}
             onClick={() =>
-              store.dispatch({ type: 'set-arrowheads', id, start: !arrows.start, end: arrows.end })
+              store.dispatch({
+                type: 'set-arrowheads',
+                id,
+                start: direction !== 'both',
+                end: direction === 'forward' || direction === 'both',
+              })
             }
           >
-            &#8592; start
+            ←
           </button>
           <button
             type="button"
             data-testid={`editor-arrow-end-${id}`}
-            aria-pressed={arrows.end}
-            className={arrows.end ? 'is-on' : undefined}
+            aria-label="Arrowhead at the end"
+            aria-pressed={direction === 'forward' || direction === 'both'}
+            className={direction === 'forward' || direction === 'both' ? 'is-on' : undefined}
             onClick={() =>
-              store.dispatch({ type: 'set-arrowheads', id, start: arrows.start, end: !arrows.end })
+              store.dispatch({
+                type: 'set-arrowheads',
+                id,
+                start: direction === 'both',
+                end: !(direction === 'forward' || direction === 'both'),
+              })
             }
           >
-            end &#8594;
+            →
           </button>
         </div>
       )}

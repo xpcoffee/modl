@@ -25,7 +25,8 @@ export type IssueCode =
   | 'paradigm-mismatch'
   | 'empty-endpoints'
   | 'orphan-entity'
-  | 'duplicate-title';
+  | 'duplicate-title'
+  | 'connection-node-one-sided';
 
 export interface Issue {
   code: IssueCode;
@@ -152,6 +153,26 @@ export function validateDocument(input: unknown): ValidationResult {
     });
   }
 
+  // A node is a junction. One that only receives, or only sends, is a dead
+  // end that reads as a mistake.
+  for (const element of Object.values(elements)) {
+    if (element.kind !== 'connection-node') continue;
+    let incoming = 0;
+    let outgoing = 0;
+    for (const candidate of Object.values(elements)) {
+      if (!isConnection(candidate)) continue;
+      if (candidate.to.includes(element.id)) incoming += 1;
+      if (candidate.from.includes(element.id)) outgoing += 1;
+    }
+    if (incoming === 0 || outgoing === 0) {
+      warnings.push({
+        code: 'connection-node-one-sided',
+        elementId: element.id,
+        message: `node has ${incoming} incoming and ${outgoing} outgoing connections`,
+      });
+    }
+  }
+
   // Scoped to siblings. The same role name inside two different groups reads
   // naturally, and warning about it pushes producers into awkward names.
   const byTitle = new Map<string, Id[]>();
@@ -186,7 +207,10 @@ function paradigmWarnings(connection: Connection, elements: Record<Id, Element>)
   const expected = new Set<ConnectionType>();
   for (const id of connection.to) {
     const target = elements[id];
-    if (target && isEntity(target)) expected.add(PARADIGM_CONNECTION[target.type]);
+    if (!target || !isEntity(target)) continue;
+    // An artifact has no paradigm, so it never contradicts a connection.
+    const implied = PARADIGM_CONNECTION[target.type];
+    if (implied) expected.add(implied);
   }
 
   if (expected.size === 0 || expected.has(connection.type)) return [];

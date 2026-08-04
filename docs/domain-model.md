@@ -39,14 +39,15 @@ interface Connection extends ElementBase {
   type: ConnectionType;
   from: Id[];                        // many-to-many
   to: Id[];
+  direction: Direction;              // 'forward' | 'both' | 'none'
 }
 
-interface Fork extends ElementBase {
-  kind: 'fork';
+interface ConnectionNode extends ElementBase {
+  kind: 'connection-node';
   shape: ForkShape;
 }
 
-type Element = Entity | Connection | Fork;
+type Element = Entity | Connection | ConnectionNode;
 ```
 
 `kind` discriminates the union. `type` sub-classifies within a kind and carries the paradigm.
@@ -77,7 +78,13 @@ A key holds a list of values, because an element often belongs to more than one 
 
 ### Versions
 
-`formatVersion` is 2. A version 1 document still loads: the reader migrates it, turning single tag values into lists and adding empty `sources`. Saving writes the current version, so a file upgrades the first time it is written.
+`formatVersion` is 4. Older documents still load, and saving writes the current version, so a file upgrades the first time it is written.
+
+| Change | What the reader does |
+|---|---|
+| 1 → 2 | Single tag values become lists, and elements gain empty `sources` |
+| 2 → 3 | Connections gain `direction`, and arrowheads leave `layout`. A line drawn with a head at each end becomes `both`; anything else becomes `forward`, since `from` and `to` already said which way it ran |
+| 3 → 4 | A `fork` becomes a `connection-node`, matching the word a reader sees |
 
 ## Paradigms
 
@@ -88,6 +95,8 @@ Three modelling paradigms coexist in one document. The `type` field records whic
 | State machine | `state` | `transition` | An action moving between states |
 | Wizard | `step` | `relation` | An input or output flowing between steps |
 | Components | `component` | `interaction` | An interaction between components |
+
+A fourth entity type, `artifact`, belongs to no paradigm. A record, file or message is a noun that any of the three can point at, so a connection reaching one keeps whatever type it already had and never produces a warning. Drawing into an artifact falls back to the paradigm of the element the line came from.
 
 A connection between entities of different paradigms is legal. The connection type follows the target paradigm: a `state` to `step` connection is a `relation`, and a `state` to `component` connection is a `transition`. When a user draws from a typed entity, the editor preselects the matching connection type. The user can override it, and overriding produces a warning rather than a rejection.
 
@@ -121,7 +130,7 @@ One JSON file. `.modl.json` by convention.
 ```
 
 - `model.elements` is the structure. A consumer needs nothing else.
-- `layout` is keyed by element id. Entities carry `{x, y, width, height}` plus an optional `expanded: {width, height}`. The first is the size drawn when collapsed; the second is the container box drawn when expanded, which also decides membership. They are independent, so opening a group to work inside it does not swell the node it shrinks back to. Connections carry `{waypoints: {x,y}[]}` for hand-placed bends, plus optional `arrowStart` and `arrowEnd`. Arrowheads sit here rather than in the model because `from` and `to` already carry the direction; a head is presentation. An id missing from `layout` gets a computed default, so a generated document can omit `layout` entirely. The default walks entities in sorted id order and places them on a 4-column grid spaced 240 by 140, at 180 by 72 each. Connections get no default, and the renderer routes them between their endpoints.
+- `layout` is keyed by element id. Entities and forks carry `{x, y, width, height}`; an entity may also carry an optional `expanded: {width, height}`. The first is the size drawn when collapsed, the second the container box drawn when expanded, which also decides membership. They are independent, so opening a group to work inside it does not swell the node it shrinks back to. Connections carry `{waypoints: {x,y}[]}` for hand-placed bends, plus optional `sourceSide` and `targetSide` naming the points a reader dragged the line onto. Which side of a box a line touches says nothing about the domain, so a producer omits them and the renderer picks the nearest sides. An id missing from `layout` gets a computed default, so a generated document can omit `layout` entirely. The default walks entities in sorted id order and places them on a 4-column grid spaced 240 by 140, at 180 by 72 each. Connections get no default, and the renderer routes them between their endpoints.
 - `view` is the camera. Missing means origin at zoom 1.
 - `formatVersion` increments on any breaking change. A loader reading a higher version than it knows refuses the file and says which version it expected.
 
@@ -171,10 +180,56 @@ Version checking short-circuits: an unreadable `formatVersion` returns on its ow
 | `empty-endpoints` | A connection has an empty `from` or `to` |
 | `orphan-entity` | An entity has no connections and holds no members. A container's connections are its members' |
 | `duplicate-title` | Two elements in the same group share a non-empty title. The same role name in two different groups reads naturally |
+| `connection-node-one-sided` | A connection node has connections on only one side |
 
 A connection pointing at targets from several paradigms produces no `paradigm-mismatch`, because a cross-paradigm connection is legal and only one of its endpoints can be satisfied.
 
 Validation returns `{ errors: Issue[]; warnings: Issue[] }`, where each `Issue` carries a code, an element id, and a message. Nothing throws.
+
+## Connection nodes
+
+A connection node is a junction where connections fan in or fan out. It exists so a decision or a join is a thing in the model rather than an arrangement of arrows a reader has to infer.
+
+A diamond-shaped one is a **decision**; a round one is a plain junction. The shape is the author's choice and carries no meaning the model reads.
+
+The name went `fork` → "connection point" → **connection node**. "Fork" described the drawing rather than the thing, and "connection point" read as the handles on the sides of a component. The format follows the interface: two names for one idea cost more than a migration.
+
+A connection node anchors its lines at its middle, whichever shape it is, so a line meets it at a point rather than a side. That is why it draws straight rather than easing in along an axis.
+
+```ts
+interface ConnectionNode extends ElementBase {
+  kind: 'connection-node';
+  shape: 'circle' | 'diamond';   // the author's choice, no meaning attached
+}
+```
+
+The title carries the question or the condition; the connections leaving it carry the answers. A fork is a legal endpoint for a connection at either end, it can sit inside a group, and it can be tagged and filtered like anything else. It cannot hold members: a junction is a point, not a container.
+
+`shape` is presentation, kept on the element rather than in `layout` because it is a choice about what the fork *is* to the author, and it should travel with the fork when a document is read by something that ignores layout.
+
+A connection node with connections on only one side draws a `connection-node-one-sided` warning: a junction that only receives, or only sends, reads as a mistake.
+
+### Direction
+
+`forward` runs from `from` to `to`, `both` is a two-way interaction, and `none` an association with no direction. It defaults to `forward`.
+
+There is no `backward`. A reader who turns on the arrowhead at the `from` end has turned the connection round, so `set-arrowheads` swaps the endpoints and keeps reading forward, carrying the bends and contact points with it. One way of saying a thing beats two.
+
+Direction is part of the model rather than the drawing. Arrowheads were presentation at first, off by default, on the argument that `from` and `to` already carried the direction. That held while a line always left the right side of a box and entered the left, so the geometry said which way it ran. Once a line attaches to whichever side is nearest, an arrowhead is the only thing left telling a reader the direction, and something a reader depends on belongs in the model.
+
+## Many-to-many connections
+
+`from` and `to` are lists, and they mean **independently**. A connection with `from: [A, B]` and `to: [C]` is shorthand for the cross-product: `A -> C` and `B -> C`, two separate statements that happen to share a description.
+
+Joint semantics, where A and B *together* produce something that reaches C, are what a connection node is for:
+
+```
+A ──┐
+     ├──(node)──> C
+B ──┘
+```
+
+The alternative was a flag on the connection saying which reading applies. That puts two ways to express one idea into the model, and it does not compose when the sources are joint but the targets are not. One meaning per shape is easier to read and easier to generate.
 
 ## Groups
 
@@ -195,10 +250,6 @@ Expansion is session state rather than document state. Which groups a reader has
 
 Deleting a group lifts its members to whatever contained the group. Nothing is left pointing at an id that no longer exists.
 
-## Iteration 1 coverage
+## Coverage
 
-Implemented: `Entity`, `Connection`, groups with collapse and expand, the full document format, readable names, validation.
-
-Not implemented: `Fork`. The type exists in the schema and no command creates one.
-
-The file format does not change when forks arrive, so documents written now stay readable.
+Implemented: `Entity` across all four types, `Connection`, `ConnectionNode`, groups with collapse and expand, the full document format, readable names, validation.

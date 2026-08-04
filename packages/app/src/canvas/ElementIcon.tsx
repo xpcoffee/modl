@@ -1,11 +1,14 @@
 import type { ReactNode } from 'react';
 import type { ConnectionType, EntityType } from '@modl/core';
 
+/** The two shapes a connection node can take, named as a reader sees them. */
+export type JunctionLabel = 'connection node' | 'decision';
+
 /**
  * A permanent mark of what an element is, so the paradigm reads at a glance
  * without hovering. The hover card still spells the type out in words.
  */
-const PATHS: Record<EntityType | ConnectionType, { label: string; path: ReactNode }> = {
+const PATHS: Record<EntityType | ConnectionType | JunctionLabel, { label: string; path: ReactNode }> = {
   // Component: a cube, a built thing. A ring read too much like a state.
   component: {
     label: 'component',
@@ -25,6 +28,26 @@ const PATHS: Record<EntityType | ConnectionType, { label: string; path: ReactNod
         <ellipse cx="13.5" cy="18.5" rx="3" ry="2.6" />
       </>
     ),
+  },
+  // Artifact: a page, the thing that moves between components.
+  artifact: {
+    label: 'artifact',
+    path: (
+      <>
+        <path d="M6.5 3.2h7.8L18.5 7.4v13.4H6.5Z" />
+        <path d="M14 3.4v4.2h4.3" />
+        <path d="M9.4 12.4h6.2M9.4 16.2h6.2" />
+      </>
+    ),
+  },
+  // A junction: the shape it draws as on the board.
+  'connection node': {
+    label: 'connection node',
+    path: <circle cx="12" cy="12" r="7" />,
+  },
+  decision: {
+    label: 'decision',
+    path: <path d="M12 3.5 20.5 12 12 20.5 3.5 12Z" />,
   },
   // State: a ring, a place the system rests in.
   state: {
@@ -67,7 +90,7 @@ export function ElementIcon({
   elementType,
   className,
 }: {
-  elementType: EntityType | ConnectionType;
+  elementType: EntityType | ConnectionType | JunctionLabel;
   className?: string;
 }) {
   const icon = PATHS[elementType];

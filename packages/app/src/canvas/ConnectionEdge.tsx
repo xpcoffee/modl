@@ -7,6 +7,7 @@ import {
   type Edge,
   type EdgeProps,
 } from '@xyflow/react';
+import { Position } from '@xyflow/react';
 import type { Point } from '@modl/core';
 import { store } from '../store/store.js';
 import type { ConnectionEdgeData } from './derive.js';
@@ -16,23 +17,120 @@ import { ElementIcon } from './ElementIcon.js';
 import { InlineTitle } from './InlineTitle.js';
 import { stopEditing } from './editing.js';
 
+/** The way out of an element, given the side a line leaves from. */
+function outward(position: Position): Point {
+  if (position === Position.Left) return { x: -1, y: 0 };
+  if (position === Position.Right) return { x: 1, y: 0 };
+  if (position === Position.Top) return { x: 0, y: -1 };
+  return { x: 0, y: 1 };
+}
+
+/**
+ * How far a line's way out points away from where it is going: 0 when the
+ * side faces the other element at all, up to 1 when it faces straight back.
+ */
+function turnedAway(normal: Point, at: Point, towards: Point): number {
+  const span = { x: towards.x - at.x, y: towards.y - at.y };
+  const length = Math.hypot(span.x, span.y) || 1;
+  return Math.max(0, -(normal.x * span.x + normal.y * span.y) / length);
+}
+
+/**
+ * As far out as a line ever sets off before turning. What it is getting around
+ * is its own element, and that stays the same size however far away the other
+ * end is, so past this there is nothing left to gain.
+ */
+const FURTHEST = 250;
+
+/**
+ * How much further out a line has to set off to get clear of its own element.
+ *
+ * Squared, so a side that only just points the wrong way is barely touched
+ * and one facing straight back gets the whole detour. Two lines placed a
+ * degree apart come out a hair apart, rather than one taking a detour the
+ * other does not.
+ */
+function standoff(normal: Point, at: Point, towards: Point): Point {
+  const away = turnedAway(normal, at, towards);
+  if (away === 0) return { x: 0, y: 0 };
+  const span = Math.hypot(towards.x - at.x, towards.y - at.y);
+  const reach = Math.min(away * away * span * 2, FURTHEST);
+  return { x: normal.x * reach, y: normal.y * reach };
+}
+
+/** The two control points of a cubic path, so a line can be shifted off it. */
+function controlsOf(path: string): [Point, Point] | null {
+  const parts = /^M\s*(\S+),(\S+)\s*C\s*(\S+),(\S+)\s+(\S+),(\S+)\s+(\S+),(\S+)$/.exec(path.trim());
+  if (!parts) return null;
+  const numbers = parts.slice(1).map(Number);
+  if (numbers.some(Number.isNaN)) return null;
+  return [
+    { x: numbers[2]!, y: numbers[3]! },
+    { x: numbers[4]!, y: numbers[5]! },
+  ];
+}
+
+/**
+ * The same line with its control points moved.
+ *
+ * Every adjustment a line needs is one of these. Moving a control point never
+ * moves the end it belongs to, so the line stays on its handle whatever is
+ * asked of it, and the result is still the cubic React Flow drew rather than a
+ * different kind of curve beside it. Moving both by the same amount slides the
+ * line sideways by `3·|by|·t(1-t)`: nothing at the ends, most in the middle.
+ */
+function reshaped(path: string, atSource: Point, atTarget: Point): string {
+  const controls = controlsOf(path);
+  if (!controls) return path;
+  const ends = /^M\s*(\S+,\S+)\s*C\s*\S+,\S+\s+\S+,\S+\s+(\S+,\S+)$/.exec(path.trim());
+  if (!ends) return path;
+  const [first, second] = controls;
+  return (
+    `M ${ends[1]!.replace(',', ' ')}` +
+    ` C ${first.x + atSource.x} ${first.y + atSource.y},` +
+    ` ${second.x + atTarget.x} ${second.y + atTarget.y},` +
+    ` ${ends[2]!.replace(',', ' ')}`
+  );
+}
+
+/**
+ * How far a line moves aside to clear the ones already between the same pair
+ * of handles. Small, and the same step each time, so a third line reads as one
+ * more in a bundle. The line already on the board is rank 0 and never moves.
+ */
+const SEPARATION = 26;
+
+const ZERO: Point = { x: 0, y: 0 };
+
+/** Sideways from the straight run between two points, always the same way. */
+function aside(from: Point, to: Point, by: number): Point {
+  const span = { x: to.x - from.x, y: to.y - from.y };
+  const length = Math.hypot(span.x, span.y) || 1;
+  return { x: (-span.y / length) * by, y: (span.x / length) * by };
+}
+
 /**
  * A smooth curve through every waypoint, so adding a bend reshapes the line
  * rather than turning it into a polyline.
  *
- * Catmull-Rom through the points, converted to cubic beziers. The two ghost
- * points outside the ends set the tangents there, keeping the line leaving
- * the source and entering the target horizontally the way the plain bezier
- * does.
+ * Catmull-Rom through the points, converted to cubic beziers. Each end gets a
+ * point pushed straight out along its normal, and a ghost beyond that, so the
+ * line leaves and arrives perpendicular to the side it touches.
  */
-function routedPath(from: Point, waypoints: Point[], to: Point): string {
-  const inner = [from, ...waypoints, to];
-  const reach = Math.min(80, Math.max(20, Math.abs(to.x - from.x) / 3));
-  const points = [
-    { x: from.x - reach, y: from.y },
-    ...inner,
-    { x: to.x + reach, y: to.y },
-  ];
+function routedPath(
+  from: Point,
+  waypoints: Point[],
+  to: Point,
+  exits: { source: Point; target: Point },
+): string {
+  // Matches React Flow's own control offset, so a line drawn here sits along
+  // the curve it would have drawn rather than cutting across it.
+  const reach = Math.hypot(to.x - from.x, to.y - from.y) * 0.25;
+  // Ghosts sit behind each end along its own normal, which sets the tangent
+  // there: a hand-bent line still leaves the way the plain bezier would.
+  const before = { x: from.x - exits.source.x * reach, y: from.y - exits.source.y * reach };
+  const after = { x: to.x - exits.target.x * reach, y: to.y - exits.target.y * reach };
+  const points = [before, from, ...waypoints, to, after];
 
   let path = `M ${from.x} ${from.y}`;
   for (let i = 1; i < points.length - 2; i += 1) {
@@ -95,6 +193,7 @@ export function ConnectionEdge({
   const connectionId = data?.connectionId ?? id;
   const waypoints = data?.waypoints ?? [];
 
+  // Ends sit exactly on their handles, always.
   const source = { x: sourceX, y: sourceY };
   const target = { x: targetX, y: targetY };
 
@@ -105,19 +204,50 @@ export function ConnectionEdge({
     targetX,
     targetY,
     targetPosition,
+    // Two junctions anchor at points, so the line between them runs straight.
+    // With a box at either end the curvature has to stay: it is what carries
+    // the line clear of the box before it turns.
+    ...(data?.centredSource && data?.centredTarget ? { curvature: 0 } : {}),
   });
 
-  // Parallel connections bow apart so three between one pair of components do
-  // not land on top of each other.
-  const spread = data?.spread ?? 0;
-  const bowed = spread === 0 ? [] : [{ x: (sourceX + targetX) / 2, y: (sourceY + targetY) / 2 + spread }];
+  /*
+   * Two things move a line off the path React Flow drew, and both are matters
+   * of degree. It sets off further out the more its side faces away from where
+   * it is going, and further aside the more lines already run between the same
+   * two handles. A line whose side points where it is headed and has the pair
+   * to itself is left alone: at nothing to answer for, both come to zero.
+   *
+   * A junction anchors at its centre and has no side to be turned away from.
+   */
+  const rank = data?.rank ?? 0;
+  const sideways = aside(source, target, rank * SEPARATION);
+  const out = {
+    source: data?.centredSource ? ZERO : standoff(outward(sourcePosition), source, target),
+    target: data?.centredTarget ? ZERO : standoff(outward(targetPosition), target, source),
+  };
 
-  const routed = waypoints.length > 0 || bowed.length > 0;
-  const path = routed ? routedPath(source, waypoints.length > 0 ? waypoints : bowed, target) : bezier;
+  const routed = waypoints.length > 0;
+  const path = routed
+    ? routedPath(source, waypoints, target, {
+        source: outward(sourcePosition),
+        target: outward(targetPosition),
+      })
+    : reshaped(
+        bezier,
+        { x: sideways.x + out.source.x, y: sideways.y + out.source.y },
+        { x: sideways.x + out.target.x, y: sideways.y + out.target.y },
+      );
+
   const handles = addHandles(source, waypoints, target);
+  // The label rides with the line. Halfway along, a cubic sits three eighths
+  // of its two control moves off the one it came from.
+  const carry = {
+    x: (sideways.x * 2 + out.source.x + out.target.x) * 0.375,
+    y: (sideways.y * 2 + out.source.y + out.target.y) * 0.375,
+  };
   const labelPoint = routed
-    ? routeMidpoint(source, waypoints.length > 0 ? waypoints : bowed, target)
-    : { x: bezierLabelX, y: bezierLabelY };
+    ? routeMidpoint(source, waypoints, target)
+    : { x: bezierLabelX + carry.x, y: bezierLabelY + carry.y };
   const rolledUp = (data?.rolledUp ?? []).length > 0;
 
   const dimmed = data?.dimmed ?? false;
@@ -149,8 +279,10 @@ export function ConnectionEdge({
         id={id}
         path={path}
         className={`connection-edge${selected ? ' is-selected' : ''}${dimmed ? ' is-dimmed' : ''}`}
-        {...(data?.arrowStart ? { markerStart: 'url(#modl-arrow-start)' } : {})}
-        {...(data?.arrowEnd ? { markerEnd: 'url(#modl-arrow-end)' } : {})}
+        {...(data?.direction === 'both' ? { markerStart: 'url(#modl-arrow-start)' } : {})}
+        {...(data?.direction === 'forward' || data?.direction === 'both'
+          ? { markerEnd: 'url(#modl-arrow-end)' }
+          : {})}
       />
 
       <EdgeLabelRenderer>
@@ -235,7 +367,7 @@ export function ConnectionEdge({
                 elementType={data.elementType}
                 description={data.description}
                 tags={data.tags}
-                arrows={{ start: data.arrowStart, end: data.arrowEnd }}
+                direction={data.direction}
               />
             </div>
           ) : (

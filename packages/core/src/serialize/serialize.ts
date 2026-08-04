@@ -1,10 +1,12 @@
 import {
   DEFAULT_ENTITY_SIZE,
   DEFAULT_VIEW,
+  CONNECTION_NODE_SIZE,
   FORMAT_VERSION,
   isConnection,
   isEntity,
   isEntityLayout,
+  isConnectionNode,
   type Document,
   type Element,
   type ElementLayout,
@@ -65,7 +67,14 @@ function orderElement(element: Element): Record<string, unknown> {
 
   if (isEntity(element)) return { ...base, type: element.type, ...tail };
   if (isConnection(element)) {
-    return { ...base, type: element.type, from: [...element.from], to: [...element.to], ...tail };
+    return {
+      ...base,
+      type: element.type,
+      from: [...element.from],
+      to: [...element.to],
+      direction: element.direction,
+      ...tail,
+    };
   }
   return { ...base, shape: element.shape, ...tail };
 }
@@ -93,8 +102,8 @@ function orderLayout(layout: ElementLayout): Record<string, unknown> {
   }
   return {
     waypoints: layout.waypoints.map((point) => ({ x: point.x, y: point.y })),
-    ...(layout.arrowStart === undefined ? {} : { arrowStart: layout.arrowStart }),
-    ...(layout.arrowEnd === undefined ? {} : { arrowEnd: layout.arrowEnd }),
+    ...(layout.sourceSide === undefined ? {} : { sourceSide: layout.sourceSide }),
+    ...(layout.targetSide === undefined ? {} : { targetSide: layout.targetSide }),
   };
 }
 
@@ -162,7 +171,12 @@ export function withDefaultLayout(
       .sort()
       .filter((id) => {
         const element = elements[id];
-        return element !== undefined && isEntity(element) && element.groupId === groupId;
+        // Connection nodes are placed too: a junction with no position is invisible.
+        return (
+          element !== undefined &&
+          (isEntity(element) || isConnectionNode(element)) &&
+          element.groupId === groupId
+        );
       });
 
   /** Places a branch and reports the room it needed. */
@@ -171,12 +185,14 @@ export function withDefaultLayout(
     const existing = resolved[id];
     const already = existing && 'x' in existing ? existing : undefined;
     const origin = already ? { x: already.x, y: already.y } : at;
+    const element = elements[id];
+    const ownSize = element && isConnectionNode(element) ? CONNECTION_NODE_SIZE : DEFAULT_ENTITY_SIZE;
 
     if (members.length === 0) {
       if (!already) {
-        resolved[id] = { ...origin, ...DEFAULT_ENTITY_SIZE };
+        resolved[id] = { ...origin, ...ownSize };
       }
-      const box = (resolved[id] ?? { ...origin, ...DEFAULT_ENTITY_SIZE }) as {
+      const box = (resolved[id] ?? { ...origin, ...ownSize }) as {
         width: number;
         height: number;
       };

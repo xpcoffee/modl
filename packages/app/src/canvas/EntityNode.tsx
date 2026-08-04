@@ -33,7 +33,10 @@ export function EntityNode({ data, selected }: NodeProps<Node<EntityNodeData>>) 
         }
       />
 
-      <Handle type="target" position={Position.Left} />
+      <Handle type="source" position={Position.Left} id="left" />
+      <Handle type="source" position={Position.Right} id="right" />
+      <Handle type="source" position={Position.Top} id="top" />
+      <Handle type="source" position={Position.Bottom} id="bottom" />
 
       {/* Expand sits where collapse sits on an open container, so the control
           for a group is in one place whichever way it is showing. */}
@@ -83,7 +86,6 @@ export function EntityNode({ data, selected }: NodeProps<Node<EntityNodeData>>) 
         </div>
       )}
 
-      <Handle type="source" position={Position.Right} />
     </div>
   );
 }

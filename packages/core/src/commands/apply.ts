@@ -1,8 +1,11 @@
 import {
   DEFAULT_ENTITY_SIZE,
+  CONNECTION_NODE_SIZE,
   isConnection,
   isEntity,
+  isConnectionNode,
   type Connection,
+  type Direction,
   type Document,
   type Element,
   type Id,
@@ -61,6 +64,40 @@ export function apply(state: AppState, command: Command): CommandResult {
       );
     }
 
+    case 'create-connection-node': {
+      if (state.document.model.elements[command.id]) {
+        return fail(command.type, 'duplicate-id', `element ${command.id} already exists`);
+      }
+      const node: Element = {
+        id: command.id,
+        kind: 'connection-node',
+        shape: command.shape,
+        title: command.title,
+        description: '',
+        tags: {},
+        sources: [],
+        groupId: null,
+      };
+      return ok(
+        withElement(state, node, {
+          ...state.document.layout,
+          [command.id]: { x: command.position.x, y: command.position.y, ...CONNECTION_NODE_SIZE },
+        }),
+        [{ type: 'element-created', id: command.id }],
+      );
+    }
+
+    case 'set-node-shape': {
+      const element = state.document.model.elements[command.id];
+      if (!element) return unknown(command.type, command.id);
+      if (!isConnectionNode(element)) {
+        return fail(command.type, 'wrong-kind', `element ${command.id} is not a node`);
+      }
+      return ok(withElement(state, { ...element, shape: command.shape }, state.document.layout), [
+        { type: 'element-updated', id: command.id },
+      ]);
+    }
+
     case 'create-connection': {
       if (state.document.model.elements[command.id]) {
         return fail(command.type, 'duplicate-id', `element ${command.id} already exists`);
@@ -79,6 +116,7 @@ export function apply(state: AppState, command: Command): CommandResult {
         groupId: null,
         from: [...command.from],
         to: [...command.to],
+        direction: command.direction ?? 'forward',
       };
       return ok(withElement(state, connection, state.document.layout), [
         { type: 'element-created', id: command.id },
@@ -88,8 +126,8 @@ export function apply(state: AppState, command: Command): CommandResult {
     case 'move-element': {
       const element = state.document.model.elements[command.id];
       if (!element) return unknown(command.type, command.id);
-      if (!isEntity(element)) {
-        return fail(command.type, 'wrong-kind', `element ${command.id} is not an entity`);
+      if (isConnection(element)) {
+        return fail(command.type, 'wrong-kind', `element ${command.id} is a connection`);
       }
       const previous = state.document.layout[command.id];
       // Keeps both sizes, including a container's, so moving is only a move.
@@ -185,6 +223,39 @@ export function apply(state: AppState, command: Command): CommandResult {
       return fail(command.type, 'wrong-kind', `element ${command.id} carries no type`);
     }
 
+    case 'convert-element': {
+      const element = state.document.model.elements[command.id];
+      if (!element) return unknown(command.type, command.id);
+      if (isConnection(element)) {
+        return fail(command.type, 'wrong-kind', `element ${command.id} is a connection`);
+      }
+
+      // Everything a reader wrote survives the change: only what the two
+      // kinds disagree about is replaced. The id stays, so the connections
+      // reaching it are untouched.
+      const { title, description, tags, sources, groupId, id } = element;
+      const shared = { id, title, description, tags, sources, groupId };
+
+      const converted: Element =
+        command.to === 'connection-node' || command.to === 'decision'
+          ? { ...shared, kind: 'connection-node', shape: command.to === 'decision' ? 'diamond' : 'circle' }
+          : { ...shared, kind: 'entity', type: command.to };
+
+      // A junction is a point; an entity is a box. Size follows the kind
+      // unless the reader has already chosen one for that kind.
+      const previous = state.document.layout[command.id];
+      const origin = previous && 'x' in previous ? { x: previous.x, y: previous.y } : { x: 0, y: 0 };
+      const size = converted.kind === 'connection-node' ? CONNECTION_NODE_SIZE : DEFAULT_ENTITY_SIZE;
+
+      return ok(
+        withElement(state, converted, {
+          ...state.document.layout,
+          [command.id]: { ...origin, ...size },
+        }),
+        [{ type: 'element-updated', id: command.id }],
+      );
+    }
+
     case 'rename-tag': {
       const element = state.document.model.elements[command.id];
       if (!element) return unknown(command.type, command.id);
@@ -216,8 +287,8 @@ export function apply(state: AppState, command: Command): CommandResult {
     case 'resize-element': {
       const element = state.document.model.elements[command.id];
       if (!element) return unknown(command.type, command.id);
-      if (!isEntity(element)) {
-        return fail(command.type, 'wrong-kind', `element ${command.id} is not an entity`);
+      if (isConnection(element)) {
+        return fail(command.type, 'wrong-kind', `element ${command.id} is a connection`);
       }
       if (!(command.width > 0) || !(command.height > 0)) {
         return fail(command.type, 'schema-invalid', 'width and height must be positive');
@@ -281,8 +352,38 @@ export function apply(state: AppState, command: Command): CommandResult {
         return fail(command.type, 'wrong-kind', `element ${command.id} is not a connection`);
       }
 
+      // A head at the `from` end alone means the reader has turned the
+      // connection round. Swapping the endpoints keeps one way of saying it:
+      // a connection always runs from `from` to `to`.
+      if (command.start && !command.end) {
+        return ok(
+          withElement(
+            state,
+            { ...element, from: [...element.to], to: [...element.from], direction: 'forward' },
+            flipSides(state.document.layout, command.id),
+          ),
+          [{ type: 'element-updated', id: command.id }],
+        );
+      }
+
+      const direction: Direction = command.end ? (command.start ? 'both' : 'forward') : 'none';
+      return ok(withElement(state, { ...element, direction }, state.document.layout), [
+        { type: 'element-updated', id: command.id },
+      ]);
+    }
+
+    case 'set-connection-sides': {
+      const element = state.document.model.elements[command.id];
+      if (!element) return unknown(command.type, command.id);
+      if (!isConnection(element)) {
+        return fail(command.type, 'wrong-kind', `element ${command.id} is not a connection`);
+      }
+
       const previous = state.document.layout[command.id];
       const existing = previous && 'waypoints' in previous ? previous : { waypoints: [] };
+      const { sourceSide, targetSide, ...rest } = existing;
+      void sourceSide;
+      void targetSide;
 
       return ok(
         {
@@ -291,7 +392,11 @@ export function apply(state: AppState, command: Command): CommandResult {
             ...state.document,
             layout: {
               ...state.document.layout,
-              [command.id]: { ...existing, arrowStart: command.start, arrowEnd: command.end },
+              [command.id]: {
+                ...rest,
+                ...(command.source === null ? {} : { sourceSide: command.source }),
+                ...(command.target === null ? {} : { targetSide: command.target }),
+              },
             },
           },
         },
@@ -621,10 +726,12 @@ function checkEndpoints(
         commandType,
       };
     }
-    if (!isEntity(target)) {
+    // A node is a junction, so it is a legal endpoint. A connection is not:
+    // joining one to another says nothing the model can read.
+    if (isConnection(target)) {
       return {
         code: 'invalid-endpoint',
-        message: `endpoint ${ref} is a ${target.kind}, connections join entities`,
+        message: `endpoint ${ref} is a connection, which cannot be an endpoint`,
         commandType,
       };
     }
@@ -639,6 +746,24 @@ function checkEndpoints(
     }
   }
   return null;
+}
+
+/** Turning a connection round takes its chosen contact points with it. */
+function flipSides(layout: Document['layout'], id: Id): Document['layout'] {
+  const entry = layout[id];
+  if (!entry || !('waypoints' in entry)) return layout;
+
+  const { sourceSide, targetSide, ...rest } = entry;
+  return {
+    ...layout,
+    [id]: {
+      ...rest,
+      // The bends run source to target, so a flip reverses them too.
+      waypoints: [...entry.waypoints].reverse(),
+      ...(targetSide === undefined ? {} : { sourceSide: targetSide }),
+      ...(sourceSide === undefined ? {} : { targetSide: sourceSide }),
+    },
+  };
 }
 
 /** Room for the container header and a margin around what it holds. */

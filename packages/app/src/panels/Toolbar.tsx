@@ -1,13 +1,8 @@
 import { useRef, useState } from 'react';
-import {
-  ENTITY_TYPES,
-  isGroup,
-  parseDocument,
-  selectIds,
-  type EntityType,
-} from '@modl/core';
+import { isGroup, parseDocument, selectIds } from '@modl/core';
 import { store } from '../store/store.js';
-import { setNewElementType, useNewElementType } from '../canvas/newElementType.js';
+import { ElementIcon } from '../canvas/ElementIcon.js';
+import { PLACEABLE, arm, usePending } from '../canvas/placement.js';
 import { useAppState } from '../store/useStore.js';
 
 /** Downloads text as a file. */
@@ -24,20 +19,11 @@ export function Toolbar() {
   const state = useAppState();
   const fileInput = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState('');
-  const entityType = useNewElementType();
+  const pending = usePending();
+  const [picking, setPicking] = useState(false);
 
   const visible = selectIds(state.document.model.elements, state.filter).size;
   const total = Object.keys(state.document.model.elements).length;
-
-  const addEntity = () => {
-    store.dispatch({
-      type: 'create-entity',
-      id: crypto.randomUUID(),
-      entityType,
-      title: `New ${entityType}`,
-      position: { x: 40 + total * 30, y: 40 + total * 20 },
-    });
-  };
 
   /**
    * Starts a container around whatever is selected, or an empty one when
@@ -92,21 +78,52 @@ export function Toolbar() {
         modl
       </strong>
 
-      <select
-        data-testid="entity-type"
-        aria-label="Type for new elements"
-        value={entityType}
-        onChange={(event) => setNewElementType(event.target.value as EntityType)}
-      >
-        {ENTITY_TYPES.map((type) => (
-          <option key={type} value={type}>
-            {type}
-          </option>
-        ))}
-      </select>
-      <button type="button" data-testid="add-entity" onClick={addEntity}>
-        Add
-      </button>
+      <div className="toolbar__add">
+        <button
+          type="button"
+          data-testid="add-element"
+          aria-expanded={picking}
+          className={pending ? 'is-on' : undefined}
+          onClick={() => setPicking((open) => !open)}
+        >
+          Add{pending ? `: ${PLACEABLE.find((entry) => entry.type === pending)?.label}` : ''}
+        </button>
+
+        {picking && (
+          <ul className="toolbar__types" data-testid="add-types">
+            {PLACEABLE.map((entry) => (
+              <li key={entry.type}>
+                <button
+                  type="button"
+                  data-testid={`add-type-${entry.type}`}
+                  onClick={() => {
+                    arm(entry.type);
+                    setPicking(false);
+                  }}
+                >
+                  <ElementIcon
+                    elementType={
+                      entry.type === 'connection-node'
+                        ? 'connection node'
+                        : entry.type === 'decision'
+                          ? 'decision'
+                          : entry.type
+                    }
+                  />
+                  {entry.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {pending && (
+        <span className="toolbar__hint" data-testid="placement-hint">
+          click to place, or drag to size it
+        </span>
+      )}
+
       <button
         type="button"
         data-testid="group-selected"

@@ -1,9 +1,12 @@
 import type {
   ConnectionType,
+  Direction,
   Document,
   EntityType,
+  NodeShape,
   Id,
   Point,
+  Side,
   SourceRef,
   View,
 } from '../model/types.js';
@@ -27,6 +30,8 @@ export interface AppState {
  */
 export type Command =
   | { type: 'create-entity'; id: Id; entityType: EntityType; title: string; position: Point }
+  | { type: 'create-connection-node'; id: Id; shape: NodeShape; title: string; position: Point }
+  | { type: 'set-node-shape'; id: Id; shape: NodeShape }
   | {
       type: 'create-connection';
       id: Id;
@@ -34,6 +39,7 @@ export type Command =
       from: Id[];
       to: Id[];
       title: string;
+      direction?: Direction;
     }
   | { type: 'move-element'; id: Id; position: Point }
   | { type: 'set-metadata'; id: Id; title?: string; description?: string }
@@ -43,7 +49,9 @@ export type Command =
   | { type: 'resize-element'; id: Id; width: number; height: number }
   | { type: 'set-waypoints'; id: Id; waypoints: Point[] }
   | { type: 'set-arrowheads'; id: Id; start: boolean; end: boolean }
+  | { type: 'set-connection-sides'; id: Id; source: Side | null; target: Side | null }
   | { type: 'set-element-type'; id: Id; elementType: EntityType | ConnectionType }
+  | { type: 'convert-element'; id: Id; to: EntityType | 'connection-node' | 'decision' }
   | { type: 'set-endpoints'; id: Id; from: Id[]; to: Id[] }
   | { type: 'delete-element'; id: Id }
   | { type: 'set-group'; id: Id; groupId: Id | null }

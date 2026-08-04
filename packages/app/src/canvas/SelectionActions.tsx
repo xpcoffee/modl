@@ -1,7 +1,7 @@
 import { ViewportPortal, type Node } from '@xyflow/react';
 import { useAppState } from '../store/useStore.js';
 import { DeleteButton } from './DeleteButton.js';
-import type { EntityNodeData } from './derive.js';
+import type { BoardNodeData } from './derive.js';
 
 /**
  * Delete for a multi-selection, under the box that holds it.
@@ -10,7 +10,7 @@ import type { EntityNodeData } from './derive.js';
  * with the element for free. This reads the live React Flow nodes rather than
  * the document, so it keeps up while a drag is in flight.
  */
-export function SelectionActions({ nodes }: { nodes: Node<EntityNodeData>[] }) {
+export function SelectionActions({ nodes }: { nodes: Node<BoardNodeData>[] }) {
   const { selection } = useAppState();
   if (selection.length < 2) return null;
 
@@ -18,7 +18,7 @@ export function SelectionActions({ nodes }: { nodes: Node<EntityNodeData>[] }) {
   const boxes = nodes
     .filter((node) => chosen.has(node.id))
     .map((node) => {
-      const origin = node.data.parentOrigin ?? { x: 0, y: 0 };
+      const origin = (node.data.parentOrigin as { x: number; y: number }) ?? { x: 0, y: 0 };
       return {
         x: node.position.x + origin.x,
         y: node.position.y + origin.y,

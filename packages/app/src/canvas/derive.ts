@@ -2,6 +2,7 @@ import {
   connectionAnchors,
   isConnection,
   isEntity,
+  isConnectionNode,
   isGroup,
   isRendered,
   membersOf,
@@ -9,10 +10,13 @@ import {
   type AppState,
   type ConnectionType,
   type Connection,
+  type Direction,
   type Element,
   type EntityType,
+  type NodeShape,
   type Id,
   type Point,
+  type Side,
 } from '@modl/core';
 import type { Edge, Node } from '@xyflow/react';
 
@@ -36,6 +40,22 @@ export interface EntityNodeData extends Record<string, unknown> {
   isContainer: boolean;
 }
 
+/** A node is a junction, so it carries no type and no members. */
+export interface ConnectionNodeData extends Record<string, unknown> {
+  id: Id;
+  title: string;
+  description: string;
+  shape: NodeShape;
+  tags: Record<string, string[]>;
+  dimmed: boolean;
+  editing: boolean;
+  soleSelection: boolean;
+  parentOrigin: Point;
+  origin: Point;
+}
+
+export type BoardNodeData = EntityNodeData | ConnectionNodeData;
+
 export interface ConnectionEdgeData extends Record<string, unknown> {
   connectionId: Id;
   title: string;
@@ -46,12 +66,14 @@ export interface ConnectionEdgeData extends Record<string, unknown> {
   editing: boolean;
   soleSelection: boolean;
   waypoints: Point[];
-  arrowStart: boolean;
-  arrowEnd: boolean;
+  direction: Direction;
   /** Ids this edge stands in for, empty unless it is a roll-up. */
   rolledUp: Id[];
-  /** Offset from the direct route, so parallel connections stay apart. */
-  spread?: number;
+  /** How many lines already run between this pair of handles. */
+  rank: number;
+  /** True when that end anchors at a point rather than a side. */
+  centredSource: boolean;
+  centredTarget: boolean;
 }
 
 export interface DeriveOptions {
@@ -72,6 +94,8 @@ interface Rect {
 const GROUP_PADDING = { top: 34, side: 20, bottom: 20 } as const;
 /** An empty container still needs somewhere to drop things. */
 export const MIN_GROUP_SIZE = { width: 260, height: 180 } as const;
+/** A connection point stays a point: small, and square so a diamond reads. */
+export const MIN_NODE_SIZE = { width: 40, height: 40 } as const;
 /** Small enough to be useful, large enough to still hold a title. */
 export const MIN_ENTITY_SIZE = { width: 120, height: 60 } as const;
 const FALLBACK_RECT: Rect = { x: 0, y: 0, width: 180, height: 72 };
@@ -118,7 +142,11 @@ function measure(state: AppState, expanded: ReadonlySet<Id>): Map<Id, Rect> {
   };
 
   for (const element of Object.values(elements)) {
-    if (isEntity(element) && isRendered(elements, element.id, expanded)) sizeOf(element.id);
+    // Connection nodes are measured too. Without them a line to a junction
+    // had no geometry to choose sides from and fell back to right-to-left,
+    // which points the wrong way as often as not.
+    if (isConnection(element)) continue;
+    if (isRendered(elements, element.id, expanded)) sizeOf(element.id);
   }
   return rects;
 }
@@ -140,7 +168,7 @@ function depthOf(elements: Record<Id, Element>, id: Id): number {
  * Projects session state into React Flow's shape. The model stays the only
  * writable copy, and this runs on every render.
  */
-export function deriveNodes(state: AppState, options: DeriveOptions): Node<EntityNodeData>[] {
+export function deriveNodes(state: AppState, options: DeriveOptions): Node<BoardNodeData>[] {
   const elements = state.document.model.elements;
   const expanded = new Set(state.expanded);
   const visible = selectIds(elements, state.filter);
@@ -148,12 +176,42 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Entit
   const soleSelection = onlySelected(state, options);
   const rects = measure(state, expanded);
 
+  const connectionNodes: Node<BoardNodeData>[] = Object.values(elements)
+    .filter(isConnectionNode)
+    .filter((node) => isRendered(elements, node.id, expanded))
+    .map((node) => {
+      const rect = rectOf(state, node.id);
+      const parentRect = node.groupId ? rects.get(node.groupId) : undefined;
+      const parentOrigin = parentRect ? { x: parentRect.x, y: parentRect.y } : { x: 0, y: 0 };
+      return {
+        id: node.id,
+        type: 'connection-node',
+        position: { x: rect.x - parentOrigin.x, y: rect.y - parentOrigin.y },
+        ...(node.groupId && parentRect ? { parentId: node.groupId } : {}),
+        style: { width: rect.width, height: rect.height },
+        selected: selected.has(node.id),
+        ...(selected.has(node.id) ? { zIndex: 1000 } : {}),
+        data: {
+          id: node.id,
+          title: node.title,
+          description: node.description,
+          shape: node.shape,
+          tags: node.tags,
+          dimmed: !visible.has(node.id),
+          editing: options.editingId === node.id,
+          soleSelection: soleSelection === node.id,
+          parentOrigin,
+          origin: { x: rect.x, y: rect.y },
+        },
+      };
+    });
+
   const rendered = Object.values(elements)
     .filter(isEntity)
     .filter((entity) => isRendered(elements, entity.id, expanded))
     .sort((a, b) => depthOf(elements, a.id) - depthOf(elements, b.id));
 
-  return rendered.map((entity) => {
+  const entities: Node<BoardNodeData>[] = rendered.map((entity) => {
     const rect = rects.get(entity.id) ?? FALLBACK_RECT;
     const groupId = entity.groupId;
     // A member sits inside its container, so React Flow wants a relative position.
@@ -188,6 +246,9 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Entit
       },
     };
   });
+
+  // Containers first, then connection nodes, so a parent precedes its child.
+  return [...entities, ...connectionNodes];
 }
 
 /**
@@ -237,12 +298,18 @@ export type { Rect };
 export function deriveEdges(state: AppState, options: DeriveOptions): Edge<ConnectionEdgeData>[] {
   const elements = state.document.model.elements;
   const expanded = new Set(state.expanded);
+  const rects = measure(state, expanded);
   const visible = selectIds(elements, state.filter);
   const selected = new Set(state.selection);
   const soleSelection = onlySelected(state, options);
 
-  /** Every drawn connection, keyed by the pair of anchors it runs between. */
-  const byPair = new Map<string, { from: Id; to: Id; connections: Connection[] }>();
+  /**
+   * Every drawn connection, grouped by the pair of anchors it runs between,
+   * ignoring which way round. Two components talking in both directions are
+   * still two lines between the same two boxes, and grouping by the ordered
+   * pair let them land on top of each other.
+   */
+  const byPair = new Map<string, { from: Id; to: Id; connection: Connection }[]>();
 
   for (const element of Object.values(elements)) {
     if (!isConnection(element)) continue;
@@ -253,9 +320,9 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
     for (const from of anchors.from) {
       for (const to of anchors.to) {
         if (from === to) continue;
-        const key = `${from} ${to}`;
-        const entry = byPair.get(key) ?? { from, to, connections: [] };
-        entry.connections.push(element);
+        const key = [from, to].sort().join(' ');
+        const entry = byPair.get(key) ?? [];
+        entry.push({ from, to, connection: element });
         byPair.set(key, entry);
       }
     }
@@ -263,48 +330,102 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
 
   const edges: Edge<ConnectionEdgeData>[] = [];
 
-  for (const { from, to, connections } of byPair.values()) {
+  for (const drawn of byPair.values()) {
+    const connections = drawn.map((entry) => entry.connection);
+
     // Several connections collapsing onto one pair of anchors draw as one
     // edge carrying a count. At a zoom-out this is the difference between a
     // readable line and a stack of overlapping labels.
-    const rolledUp = connections.length > 1 && connections.some((c) => isRolledUp(elements, c, expanded));
+    const rolledUp =
+      drawn.length > 1 && connections.some((c) => isRolledUp(elements, c, expanded));
 
     if (rolledUp) {
       const ids = connections.map((c) => c.id).sort();
+      const first = drawn[0]!;
+      // Mixed orientations have no single direction to show, so say both.
+      const oneWay = drawn.every((entry) => entry.from === first.from);
+      const direction: Direction = oneWay
+        ? connections.every((c) => c.direction === 'both')
+          ? 'both'
+          : connections.every((c) => c.direction === 'none')
+            ? 'none'
+            : 'forward'
+        : 'both';
+
       edges.push({
-        id: `rollup:${from}:${to}`,
+        id: `rollup:${first.from}:${first.to}`,
         type: 'connection',
-        source: from,
-        target: to,
+        source: first.from,
+        target: first.to,
+        ...sidesBetween(rects, first.from, first.to, {}, {
+          from: isCentred(elements, first.from),
+          to: isCentred(elements, first.to),
+        }),
         data: {
-          connectionId: ids[0] ?? from,
+          connectionId: ids[0] ?? first.from,
           title: `${connections.length} connections`,
-          description: connections.map((c) => c.title || readableTitle(c)).join('\n'),
+          // What each bundled line joins, in the reader's words. The ids it
+          // used to list said nothing to anyone.
+          description: connections.map((c) => describeConnection(elements, c)).join('\n'),
           elementType: connections[0]!.type,
           tags: {},
           dimmed: !connections.some((c) => visible.has(c.id)),
           editing: false,
           soleSelection: false,
           waypoints: [],
-          arrowStart: false,
-          arrowEnd: connections.some((c) => layoutOf(state, c.id).arrowEnd ?? false),
+          direction,
+          rank: 0,
           rolledUp: ids,
+          centredSource: isCentred(elements, first.from),
+          centredTarget: isCentred(elements, first.to),
         },
       });
       continue;
     }
 
-    // Parallel connections between the same visible pair fan out, so three
+    // Parallel connections between the same visible pair fan out, so several
     // between one pair of components no longer land on top of each other.
-    connections.forEach((element, index) => {
-      const spread = connections.length > 1 ? index - (connections.length - 1) / 2 : 0;
+    //
+    // They spread outwards from the first: 0, +1, -1, +2, -2. Centring the
+    // set instead re-placed every line each time one was added, so drawing a
+    // second connection made the first twitch.
+    // Sides come from geometry alone, so no line is pushed onto one facing
+    // away from where it is going.
+    const routes = drawn.map(({ from, to, connection: element }) =>
+      sidesBetween(rects, from, to, layoutOf(state, element.id), {
+        from: isCentred(elements, from),
+        to: isCentred(elements, to),
+      }),
+    );
+
+    /*
+     * Lines only need holding apart when they would land on top of each
+     * other, which means sharing a pair of handles. Everything else is left
+     * exactly where the geometry puts it.
+     *
+     * Each one after the first is told how many are already on that pair, and
+     * eases away by that much. Nothing changes sides and no end moves, so
+     * there is no moment where a line jumps into a different arrangement.
+     */
+    const sharing = new Map<string, number>();
+
+    drawn.forEach(({ from, to, connection: element }, index) => {
+      const sides = routes[index]!;
+      const key = `${sides.sourceHandle} ${sides.targetHandle}`;
+      const rank = sharing.get(key) ?? 0;
+      sharing.set(key, rank + 1);
+
+      const chosen = layoutOf(state, element.id);
+      const pinned = chosen.sourceSide !== undefined || chosen.targetSide !== undefined;
       edges.push({
         id: `${element.id}:${from}:${to}`,
         type: 'connection',
         source: from,
         target: to,
+        ...sides,
         selected: selected.has(element.id),
         ...(selected.has(element.id) ? { zIndex: 1001 } : {}),
+        reconnectable: selected.has(element.id),
         data: {
           connectionId: element.id,
           title: element.title,
@@ -315,10 +436,12 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           editing: options.editingId === element.id,
           soleSelection: soleSelection === element.id,
           waypoints: layoutOf(state, element.id).waypoints,
-          arrowStart: layoutOf(state, element.id).arrowStart ?? false,
-          arrowEnd: layoutOf(state, element.id).arrowEnd ?? false,
-          spread: spread * PARALLEL_SPREAD,
+          direction: element.direction,
+          // How many lines already share this pair of handles.
+          rank,
           rolledUp: [],
+          centredSource: isCentred(elements, from),
+          centredTarget: isCentred(elements, to),
         },
       });
     });
@@ -326,9 +449,6 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
 
   return edges;
 }
-
-/** Vertical gap between parallel connections joining the same pair. */
-const PARALLEL_SPREAD = 26;
 
 /** True when either end of this connection is hidden inside a collapsed group. */
 function isRolledUp(
@@ -341,8 +461,17 @@ function isRolledUp(
   );
 }
 
-function readableTitle(connection: Connection): string {
-  return `${connection.type} ${connection.id.slice(0, 8)}`;
+/**
+ * A bundled connection in a reader's terms: what it joins, and its own title
+ * when it has one.
+ */
+function describeConnection(elements: Record<Id, Element>, connection: Connection): string {
+  const name = (id: Id): string => {
+    const element = elements[id];
+    return element?.title || id;
+  };
+  const ends = `${connection.from.map(name).join(', ')} → ${connection.to.map(name).join(', ')}`;
+  return connection.title ? `${connection.title}: ${ends}` : ends;
 }
 
 /**
@@ -359,9 +488,53 @@ function onlySelected(state: AppState, options: DeriveOptions): Id | null {
 function layoutOf(
   state: AppState,
   id: Id,
-): { waypoints: Point[]; arrowStart?: boolean; arrowEnd?: boolean } {
+): { waypoints: Point[]; sourceSide?: Side; targetSide?: Side } {
   const entry = state.document.layout[id];
   return entry && 'waypoints' in entry ? entry : { waypoints: [] };
+}
+
+/** A connection node has one contact point, at its middle. */
+function isCentred(elements: Record<Id, Element>, id: Id): boolean {
+  const element = elements[id];
+  return element !== undefined && isConnectionNode(element);
+}
+
+/**
+ * The sides a line should leave and arrive on, chosen from where the two
+ * boxes actually sit. Fixing the source to the right edge and the target to
+ * the left forced every line to run left-to-right, so a connection back up
+ * the board looped around its own endpoints.
+ */
+function sidesBetween(
+  rects: Map<Id, Rect>,
+  from: Id,
+  to: Id,
+  chosen: { sourceSide?: Side; targetSide?: Side } = {},
+  round: { from: boolean; to: boolean } = { from: false, to: false },
+): { sourceHandle: string; targetHandle: string } {
+  const a = rects.get(from);
+  const b = rects.get(to);
+  const auto = (source: string, target: string) => ({
+    // A point the reader dragged the line onto wins. Recomputing it moved the
+    // line off the handle they picked the moment either box shifted.
+    //
+    // A connection node always anchors at its centre, and picks the centred
+    // handle facing the way the line travels so the tangent turns with it.
+    sourceHandle: round.from ? `centre-${source}` : (chosen.sourceSide ?? source),
+    targetHandle: round.to ? `centre-${target}` : (chosen.targetSide ?? target),
+  });
+
+  if (!a || !b) return auto('right', 'left');
+
+  const dx = b.x + b.width / 2 - (a.x + a.width / 2);
+  const dy = b.y + b.height / 2 - (a.y + a.height / 2);
+
+  // Whichever gap is wider decides the axis, so boxes stacked vertically join
+  // top to bottom rather than curling around their sides.
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0 ? auto('right', 'left') : auto('left', 'right');
+  }
+  return dy >= 0 ? auto('bottom', 'top') : auto('top', 'bottom');
 }
 
 /** Recovers the connection id from a derived edge id. */

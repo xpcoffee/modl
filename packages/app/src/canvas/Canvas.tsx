@@ -3,6 +3,7 @@ import {
   applyNodeChanges,
   Background,
   Controls,
+  ConnectionMode,
   ReactFlow,
   useReactFlow,
   type Connection,
@@ -12,25 +13,37 @@ import {
   type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { DEFAULT_ENTITY_SIZE, connectionTypeFor, descendantsOf, isEntity } from '@modl/core';
+import {
+  DEFAULT_ENTITY_SIZE,
+  connectionTypeFor,
+  descendantsOf,
+  isConnection,
+  isEntity,
+  type Id,
+  type Point,
+  type Side,
+} from '@modl/core';
 import { store } from '../store/store.js';
-import { useAppState } from '../store/useStore.js';
+import { useAppState, useLoadCount } from '../store/useStore.js';
 import {
   connectionIdFromEdge,
   containerAt,
   deriveEdges,
   deriveNodes,
+  type BoardNodeData,
   type EntityNodeData,
 } from './derive.js';
 import { EntityNode } from './EntityNode.js';
+import { ConnectionNodeView } from './ConnectionNodeView.js';
 import { GroupNode } from './GroupNode.js';
 import { ConnectionEdge } from './ConnectionEdge.js';
 import { ArrowMarkers } from './ArrowMarkers.js';
+import { PlacementPreview } from './PlacementPreview.js';
+import { arm, disarm, getPending, usePending } from './placement.js';
 import { SelectionActions } from './SelectionActions.js';
-import { getNewElementType } from './newElementType.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
 
-const NODE_TYPES = { entity: EntityNode, group: GroupNode };
+const NODE_TYPES = { entity: EntityNode, group: GroupNode, 'connection-node': ConnectionNodeView };
 const EDGE_TYPES = { connection: ConnectionEdge };
 
 /** The subset of a React Flow change this app acts on. */
@@ -43,10 +56,13 @@ interface CanvasChange {
 export function Canvas() {
   const state = useAppState();
   const editingId = useEditingId();
-  const { screenToFlowPosition } = useReactFlow();
+  const loadCount = useLoadCount();
+  const { screenToFlowPosition, fitView } = useReactFlow();
 
   // A selection box in flight keeps element editors shut.
   const [boxSelecting, setBoxSelecting] = useState(false);
+  const pending = usePending();
+  const [draft, setDraft] = useState<{ from: Point; to: Point | null } | null>(null);
   const options = useMemo(() => ({ editingId, boxSelecting }), [editingId, boxSelecting]);
   const derived = useMemo(() => deriveNodes(state, options), [state, options]);
   const edges = useMemo(() => deriveEdges(state, options), [state, options]);
@@ -70,8 +86,21 @@ export function Canvas() {
     });
   }, [derived]);
 
+  /**
+   * Frames the board when a document arrives, so a file whose elements sit
+   * outside the current camera is not invisible on open. Creating an element
+   * leaves the camera alone, which is the difference from `fitView` on the
+   * component: that fired the first time any node appeared.
+   */
+  useEffect(() => {
+    if (loadCount === 0) return;
+    // A frame later, once React Flow has measured the nodes it was handed.
+    const timer = window.setTimeout(() => void fitView({ padding: 0.15 }), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadCount, fitView]);
+
   const onNodeDragStop = useCallback(
-    (_: unknown, __: Node, dragged: Node<EntityNodeData>[]) => {
+    (_: unknown, __: Node, dragged: Node<BoardNodeData>[]) => {
       const state = store.getState();
       const elements = state.document.model.elements;
 
@@ -87,8 +116,11 @@ export function Canvas() {
 
         // A group carries its members whether it is open or shut. Moving it
         // while collapsed and leaving them behind would scatter them back to
-        // their old positions the moment it is expanded.
-        const carriesMembers = node.data.isContainer || node.data.memberCount > 0;
+        // their old positions the moment it is expanded. A node holds nothing.
+        const carriesMembers =
+          node.data.isContainer === true || (node.data.memberCount as number | undefined) !== undefined
+            ? node.data.isContainer === true || ((node.data.memberCount as number) ?? 0) > 0
+            : false;
         if (carriesMembers && (delta.x !== 0 || delta.y !== 0)) {
           for (const memberId of descendantsOf(elements, node.id)) {
             const layout = state.document.layout[memberId];
@@ -127,19 +159,38 @@ export function Canvas() {
 
   const onConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
-    const target = store.getState().document.model.elements[connection.target];
-    // The connection takes the paradigm of what it points at.
+    const elements = store.getState().document.model.elements;
+    const target = elements[connection.target];
+    const source = elements[connection.source];
+    // The connection takes the paradigm of what it points at. An artifact or
+    // a node has no paradigm, so fall back to where the line came from.
     const connectionType =
-      target && isEntity(target) ? connectionTypeFor(target.type) : 'interaction';
+      (target && isEntity(target) ? connectionTypeFor(target.type) : null) ??
+      (source && isEntity(source) ? connectionTypeFor(source.type) : null) ??
+      'interaction';
 
+    const id = crypto.randomUUID();
     store.dispatch({
       type: 'create-connection',
-      id: crypto.randomUUID(),
+      id,
       connectionType,
       from: [connection.source],
       to: [connection.target],
       title: '',
     });
+
+    // The handles the reader actually dragged between. Layout, not structure:
+    // which side of a box a line touches says nothing about the domain.
+    const sourceSide = asSide(connection.sourceHandle);
+    const targetSide = asSide(connection.targetHandle);
+    if (sourceSide || targetSide) {
+      store.dispatch({
+        type: 'set-connection-sides',
+        id,
+        source: sourceSide,
+        target: targetSide,
+      });
+    }
   }, []);
 
   /**
@@ -151,6 +202,86 @@ export function Canvas() {
    * the two clicks can land on different elements and the browser then
    * reports their common ancestor, which is the pane even for a node.
    */
+  /**
+   * A side worth remembering. A junction's handles are picked by the renderer
+   * rather than the reader, so they are not stored.
+   */
+  const asSide = (handle: string | null | undefined): Side | null =>
+    handle === 'left' || handle === 'right' || handle === 'top' || handle === 'bottom'
+      ? handle
+      : null;
+
+  /**
+   * Dragging an end of a selected connection onto another element re-points
+   * it. The edge id carries which pair this line stands for, so a
+   * many-to-many connection only has the end that moved replaced.
+   */
+  const onReconnect = useCallback((edge: Edge, connection: Connection) => {
+    if (!connection.source || !connection.target) return;
+
+    const [id, oldSource, oldTarget] = edge.id.split(':');
+    if (!id || id === 'rollup') return;
+
+    const element = store.getState().document.model.elements[id];
+    if (!element || !isConnection(element)) return;
+
+    const swap = (list: Id[], was: string | undefined, now: string): Id[] => {
+      if (!was || was === now) return list;
+      const next = list.map((entry) => (entry === was ? now : entry));
+      return [...new Set(next)];
+    };
+
+    store.dispatch({
+      type: 'set-endpoints',
+      id,
+      from: swap(element.from, oldSource, connection.source),
+      to: swap(element.to, oldTarget, connection.target),
+    });
+
+    // The line was dropped somewhere new, so its old contact points no longer
+    // describe where it runs.
+    store.dispatch({
+      type: 'set-connection-sides',
+      id,
+      source: asSide(connection.sourceHandle),
+      target: asSide(connection.targetHandle),
+    });
+  }, []);
+
+  /** Puts down whatever the picker has armed, at a point or across a drag. */
+  const place = useCallback(
+    (rect: { x: number; y: number; width: number; height: number }) => {
+      const type = getPending();
+      if (!type) return;
+      const id = crypto.randomUUID();
+
+      if (type === 'connection-node' || type === 'decision') {
+        store.dispatch({
+          type: 'create-connection-node',
+          id,
+          shape: type === 'decision' ? 'diamond' : 'circle',
+          title: '',
+          position: { x: rect.x, y: rect.y },
+        });
+      } else {
+        store.dispatch({
+          type: 'create-entity',
+          id,
+          entityType: type,
+          title: `New ${type}`,
+          position: { x: rect.x, y: rect.y },
+        });
+      }
+
+      // A drag says how big; a click leaves the natural size alone.
+      if (rect.width > 0 && rect.height > 0) {
+        store.dispatch({ type: 'resize-element', id, width: rect.width, height: rect.height });
+      }
+      disarm();
+    },
+    [],
+  );
+
   const onDoubleClick = useCallback(
     (event: React.MouseEvent) => {
       const hit = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
@@ -172,8 +303,8 @@ export function Canvas() {
       store.dispatch({
         type: 'create-entity',
         id: crypto.randomUUID(),
-        entityType: getNewElementType(),
-        title: `New ${getNewElementType()}`,
+        entityType: 'component',
+        title: 'New component',
         position: {
           x: at.x - DEFAULT_ENTITY_SIZE.width / 2,
           y: at.y - DEFAULT_ENTITY_SIZE.height / 2,
@@ -215,7 +346,7 @@ export function Canvas() {
   );
 
   const onNodesChange = useCallback(
-    (changes: NodeChange<Node<EntityNodeData>>[]) => {
+    (changes: NodeChange<Node<BoardNodeData>>[]) => {
       // Position and dimension changes stay local until the drag ends.
       setNodes((current) => applyNodeChanges(changes, current));
       routeChanges(changes, (id) => id);
@@ -229,8 +360,42 @@ export function Canvas() {
   );
 
   return (
-    <div className="canvas" data-testid="canvas">
+    <div
+      className={`canvas${pending ? ' is-placing' : ''}`}
+      data-testid="canvas"
+      data-placing={pending ?? undefined}
+      onPointerDownCapture={(event) => {
+        if (!pending) return;
+        const target = event.target as HTMLElement;
+        if (!target.classList.contains('react-flow__pane')) return;
+        event.stopPropagation();
+        setDraft({ from: screenToFlowPosition({ x: event.clientX, y: event.clientY }), to: null });
+      }}
+      onPointerMove={(event) => {
+        if (!draft) return;
+        setDraft({ ...draft, to: screenToFlowPosition({ x: event.clientX, y: event.clientY }) });
+      }}
+      onPointerUp={(event) => {
+        if (!draft) return;
+        const end = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        const width = Math.abs(end.x - draft.from.x);
+        const height = Math.abs(end.y - draft.from.y);
+        const dragged = width > 20 && height > 20;
+        place({
+          x: dragged ? Math.min(draft.from.x, end.x) : draft.from.x,
+          y: dragged ? Math.min(draft.from.y, end.y) : draft.from.y,
+          width: dragged ? width : 0,
+          height: dragged ? height : 0,
+        });
+        setDraft(null);
+      }}
+      onKeyDown={(event) => event.key === 'Escape' && disarm()}
+      tabIndex={-1}
+    >
       <ArrowMarkers />
+      {draft?.to && (
+        <PlacementPreview from={draft.from} to={draft.to} />
+      )}
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -240,6 +405,16 @@ export function Canvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onReconnect={onReconnect}
+        reconnectRadius={16}
+        // A connection node's contact point is a dot at its middle. Snapping
+        // from further out means a reader drops a line on the node rather
+        // than pinpointing its centre.
+        connectionRadius={45}
+        // While the picker is armed the drag sizes an element, so the board
+        // has to hold still: panning with it kept the flow position under the
+        // pointer identical from start to finish, and every drag measured zero.
+        panOnDrag={!pending}
         onDoubleClick={onDoubleClick}
         onPaneClick={stopEditing}
         onSelectionStart={() => setBoxSelecting(true)}
@@ -250,6 +425,9 @@ export function Canvas() {
         deleteKeyCode={['Delete', 'Backspace']}
         // Pinned so the gesture is the same on every platform.
         multiSelectionKeyCode={['Control', 'Meta']}
+        // Any handle can be either end, so a line attaches to whichever side
+        // of a box is nearest rather than always leaving on the right.
+        connectionMode={ConnectionMode.Loose}
         // No `fitView`: it defers until nodes exist, so creating the first
         // element re-framed the board and the new element jumped away from
         // the pointer that made it. The fit control does this on request.

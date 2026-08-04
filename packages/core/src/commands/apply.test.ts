@@ -403,28 +403,75 @@ describe('connection layout', () => {
     });
   });
 
-  it('keeps arrowheads when waypoints change', () => {
-    const state = must(
-      base,
-      link(LINK, [A], [B]),
-      { type: 'set-arrowheads', id: LINK, start: false, end: true },
-      { type: 'set-waypoints', id: LINK, waypoints: [{ x: 1, y: 2 }] },
-    );
-    expect(state.document.layout[LINK]).toMatchObject({ arrowEnd: true, waypoints: [{ x: 1, y: 2 }] });
+  it('reads forward unless told otherwise', () => {
+    const state = must(base, link(LINK, [A], [B]));
+    expect(state.document.model.elements[LINK]).toMatchObject({ direction: 'forward' });
   });
 
-  it('keeps waypoints when arrowheads change', () => {
+  it('keeps its direction when waypoints change', () => {
     const state = must(
       base,
       link(LINK, [A], [B]),
-      { type: 'set-waypoints', id: LINK, waypoints: [{ x: 1, y: 2 }] },
       { type: 'set-arrowheads', id: LINK, start: true, end: true },
+      { type: 'set-waypoints', id: LINK, waypoints: [{ x: 1, y: 2 }] },
+    );
+    expect(state.document.model.elements[LINK]).toMatchObject({ direction: 'both' });
+    expect(state.document.layout[LINK]).toMatchObject({ waypoints: [{ x: 1, y: 2 }] });
+  });
+
+  it('reads both ways, or neither', () => {
+    let state = must(base, link(LINK, [A], [B]), { type: 'set-arrowheads', id: LINK, start: true, end: true });
+    expect(state.document.model.elements[LINK]).toMatchObject({ direction: 'both' });
+    state = must(state, { type: 'set-arrowheads', id: LINK, start: false, end: false });
+    expect(state.document.model.elements[LINK]).toMatchObject({ direction: 'none' });
+  });
+
+  it('a head at the start alone turns the connection round', () => {
+    // One way of saying backwards: swap the ends and keep reading forward.
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      { type: 'set-arrowheads', id: LINK, start: true, end: false },
+    );
+    expect(state.document.model.elements[LINK]).toMatchObject({
+      from: [B],
+      to: [A],
+      direction: 'forward',
+    });
+  });
+
+  it('a flip takes the bends and the contact points with it', () => {
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      { type: 'set-connection-sides', id: LINK, source: 'top', target: 'bottom' },
+      { type: 'set-waypoints', id: LINK, waypoints: [{ x: 1, y: 1 }, { x: 2, y: 2 }] },
+      { type: 'set-arrowheads', id: LINK, start: true, end: false },
     );
     expect(state.document.layout[LINK]).toMatchObject({
-      waypoints: [{ x: 1, y: 2 }],
-      arrowStart: true,
-      arrowEnd: true,
+      sourceSide: 'bottom',
+      targetSide: 'top',
+      waypoints: [{ x: 2, y: 2 }, { x: 1, y: 1 }],
     });
+  });
+
+  it('remembers the points a reader dragged onto', () => {
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      { type: 'set-connection-sides', id: LINK, source: 'bottom', target: 'top' },
+    );
+    expect(state.document.layout[LINK]).toMatchObject({ sourceSide: 'bottom', targetSide: 'top' });
+  });
+
+  it('clears a contact point with null, so the renderer picks again', () => {
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      { type: 'set-connection-sides', id: LINK, source: 'bottom', target: 'top' },
+      { type: 'set-connection-sides', id: LINK, source: null, target: null },
+    );
+    expect(state.document.layout[LINK]).not.toHaveProperty('sourceSide');
   });
 
   it('clears waypoints with an empty list', () => {
@@ -468,14 +515,14 @@ describe('connection layout', () => {
       base,
       link(LINK, [A], [B]),
       { type: 'set-waypoints', id: LINK, waypoints: [{ x: 10, y: 20 }] },
-      { type: 'set-arrowheads', id: LINK, start: false, end: true },
+      { type: 'set-arrowheads', id: LINK, start: true, end: true },
     );
     const text = serializeDocument(state.document);
     const parsed = parseDocument(text);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     expect(serializeDocument(parsed.document)).toBe(text);
-    expect(parsed.document.layout[LINK]).toMatchObject({ arrowEnd: true });
+    expect(parsed.document.model.elements[LINK]).toMatchObject({ direction: 'both' });
   });
 });
 
@@ -806,3 +853,84 @@ function deepFreeze<T>(value: T): T {
   }
   return value;
 }
+
+describe('connection nodes', () => {
+  const FORK = 'node-1';
+
+  function node(id: string, shape: 'circle' | 'diamond' = 'diamond'): Command {
+    return { type: 'create-connection-node', id, shape, title: 'ready?', position: { x: 120, y: 120 } };
+  }
+
+  it('creates a junction with a position', () => {
+    const state = must(base, node(FORK));
+    expect(state.document.model.elements[FORK]).toMatchObject({
+      kind: 'connection-node',
+      shape: 'diamond',
+      title: 'ready?',
+    });
+    expect(state.document.layout[FORK]).toEqual({ x: 120, y: 120, width: 64, height: 64 });
+  });
+
+  it('joins connections on both sides', () => {
+    const state = must(
+      base,
+      node(FORK),
+      { type: 'create-connection', id: LINK, connectionType: 'interaction', from: [A], to: [FORK], title: '' },
+      { type: 'create-connection', id: 'out-1', connectionType: 'interaction', from: [FORK], to: [B], title: '' },
+    );
+    expect(state.document.model.elements[LINK]).toMatchObject({ to: [FORK] });
+    expect(state.document.model.elements['out-1']).toMatchObject({ from: [FORK] });
+  });
+
+  it('changes shape', () => {
+    const state = must(base, node(FORK), { type: 'set-node-shape', id: FORK, shape: 'circle' });
+    expect(state.document.model.elements[FORK]).toMatchObject({ shape: 'circle' });
+  });
+
+  it('wrong-kind: rejects reshaping something that is not a node', () => {
+    const result = apply(base, { type: 'set-node-shape', id: A, shape: 'circle' });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('wrong-kind');
+  });
+
+  it('moves like anything else on the board', () => {
+    const state = must(base, node(FORK), { type: 'move-element', id: FORK, position: { x: 5, y: 6 } });
+    expect(state.document.layout[FORK]).toMatchObject({ x: 5, y: 6 });
+  });
+
+  it('invalid-endpoint: still refuses a connection as an endpoint', () => {
+    const state = must(base, { type: 'create-connection', id: LINK, connectionType: 'interaction', from: [A], to: [B], title: '' });
+    const result = apply(state, {
+      type: 'create-connection', id: 'bad', connectionType: 'interaction', from: [LINK], to: [B], title: '',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('invalid-endpoint');
+  });
+
+  it('can sit inside a group', () => {
+    const state = must(base, node(FORK), { type: 'set-group', id: FORK, groupId: A });
+    expect(state.document.model.elements[FORK]?.groupId).toBe(A);
+  });
+
+  it('not-a-group: cannot itself hold members', () => {
+    const state = must(base, node(FORK));
+    const result = apply(state, { type: 'set-group', id: A, groupId: FORK });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('not-a-group');
+  });
+});
+
+describe('artifacts', () => {
+  it('is an entity type a connection can point at without a paradigm', () => {
+    const state = must(
+      base,
+      { type: 'set-element-type', id: B, elementType: 'artifact' },
+      { type: 'create-connection', id: LINK, connectionType: 'transition', from: [A], to: [B], title: '' },
+    );
+    expect(state.document.model.elements[B]).toMatchObject({ type: 'artifact' });
+    expect(state.document.model.elements[LINK]).toMatchObject({ type: 'transition' });
+  });
+});

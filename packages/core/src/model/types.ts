@@ -13,9 +13,9 @@ export interface SourceRef {
   note?: string;
 }
 
-export type EntityType = 'state' | 'component' | 'step';
+export type EntityType = 'state' | 'component' | 'step' | 'artifact';
 export type ConnectionType = 'transition' | 'relation' | 'interaction';
-export type ForkShape = 'circle' | 'diamond';
+export type NodeShape = 'circle' | 'diamond';
 
 export interface Point {
   x: number;
@@ -42,19 +42,33 @@ export interface Entity extends ElementBase {
   type: EntityType;
 }
 
+/**
+ * Which way a connection reads.
+ *
+ * `forward` runs from `from` to `to`. `both` is a two-way interaction, and
+ * `none` an association with no direction at all.
+ */
+export type Direction = 'forward' | 'both' | 'none';
+
 export interface Connection extends ElementBase {
   kind: 'connection';
   type: ConnectionType;
   from: Id[];
   to: Id[];
+  /**
+   * Direction is part of the model, not the drawing. Once a line can attach
+   * to whichever side of a box is nearest, the geometry no longer says which
+   * way it runs, so the arrowheads have to mean something.
+   */
+  direction: Direction;
 }
 
-export interface Fork extends ElementBase {
-  kind: 'fork';
-  shape: ForkShape;
+export interface ConnectionNode extends ElementBase {
+  kind: 'connection-node';
+  shape: NodeShape;
 }
 
-export type Element = Entity | Connection | Fork;
+export type Element = Entity | Connection | ConnectionNode;
 export type ElementKind = Element['kind'];
 
 export interface Model {
@@ -75,12 +89,19 @@ export interface EntityLayout {
   expanded?: { width: number; height: number };
 }
 
+/** Where a line meets an element. `centre` aims at the middle. */
+export type Side = 'left' | 'right' | 'top' | 'bottom' | 'centre';
+
 export interface ConnectionLayout {
   /** Hand-placed bends, in order from source to target. */
   waypoints: Point[];
-  /** Arrowheads are presentation: `from` and `to` already carry direction. */
-  arrowStart?: boolean;
-  arrowEnd?: boolean;
+  /**
+   * The points a reader dragged the line onto. Layout, not structure: which
+   * side of a box a line touches says nothing about the domain, so a producer
+   * omits these and the renderer picks the nearest sides.
+   */
+  sourceSide?: Side;
+  targetSide?: Side;
 }
 
 export type ElementLayout = EntityLayout | ConnectionLayout;
@@ -102,13 +123,20 @@ export interface Document {
 /**
  * Bumped on any breaking change to the format.
  *
- * 1 -> 2: tag values became lists, and elements gained `sources`. A version 1
- * document still loads: the reader migrates it.
+ * 1 -> 2: tag values became lists, and elements gained `sources`.
+ * 2 -> 3: connections carry `direction`, and arrowheads left `layout`.
+ * 3 -> 4: a `fork` became a `connection-node`, to match the word a reader
+ *         sees. "Fork" described the shape of the drawing rather than the
+ *         thing, and the two names drifting apart cost more than the rename.
+ *
+ * Older documents still load: the reader migrates them.
  */
-export const FORMAT_VERSION = 2;
+export const FORMAT_VERSION = 4;
 export const OLDEST_READABLE_VERSION = 1;
 
 export const DEFAULT_ENTITY_SIZE = { width: 180, height: 72 } as const;
+/** A node is a junction, drawn small so it reads as a point rather than a box. */
+export const CONNECTION_NODE_SIZE = { width: 64, height: 64 } as const;
 export const DEFAULT_VIEW: View = { pan: { x: 0, y: 0 }, zoom: 1 };
 
 export function isEntity(element: Element): element is Entity {
@@ -119,8 +147,8 @@ export function isConnection(element: Element): element is Connection {
   return element.kind === 'connection';
 }
 
-export function isFork(element: Element): element is Fork {
-  return element.kind === 'fork';
+export function isConnectionNode(element: Element): element is ConnectionNode {
+  return element.kind === 'connection-node';
 }
 
 export function isEntityLayout(layout: ElementLayout): layout is EntityLayout {
