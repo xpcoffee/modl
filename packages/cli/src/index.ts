@@ -5,20 +5,28 @@
  *   modl check   <file>                report structure and layout problems
  *   modl layout  <file> [-o out]       fill in missing positions
  *   modl render  <file> [-o out.png]   draw the document as the app would
+ *   modl schema  [-o out.json]         emit the format as JSON Schema
  *
  * Written for an agent producing a document as part of some other job: it can
  * emit structure, ask whether the layout reads, and look at the result.
  */
 import { readFile, writeFile } from 'node:fs/promises';
-import { autoLayout, inspectLayout, parseDocument, serializeDocument } from '@modl/core';
+import {
+  autoLayout,
+  documentJsonSchema,
+  inspectLayout,
+  parseDocument,
+  serializeDocument,
+} from '@modl/core';
 import type { Document } from '@modl/core';
 import { renderDocument } from './render.ts';
 
 const USAGE = `modl <command> <file> [options]
 
-  check   <file>               report structure and layout problems
-  layout  <file> [-o <file>]   place entities that have no position
-  render  <file> [-o <file>]   draw the document to a PNG
+  check    <file>               structure and layout problems (alias: validate)
+  layout   <file> [-o <file>]   place entities that have no position
+  render   <file> [-o <file>]   draw the document to a PNG
+  schema   [-o <file>]          print the document format as JSON Schema
 
 Options
   -o, --out <file>   where to write (default: alongside the input)
@@ -35,8 +43,14 @@ interface Args {
 }
 
 function parseArgs(argv: string[]): Args | null {
-  const [command, file, ...rest] = argv;
-  if (!command || !file) return null;
+  const [command, second, ...more] = argv;
+  if (!command) return null;
+
+  // `schema` takes no file, so the second word is already an option.
+  const takesFile = command !== 'schema';
+  const file = (takesFile ? second : '') ?? '';
+  const rest = takesFile ? more : [second, ...more].filter((x): x is string => x !== undefined);
+  if (takesFile && !file) return null;
 
   let out: string | undefined;
   let width = 1600;
@@ -70,6 +84,16 @@ async function load(file: string): Promise<Document> {
     console.error(`  warning ${warning.code}: ${warning.message}`);
   }
   return result.document;
+}
+
+async function schema(args: Args): Promise<void> {
+  const text = `${JSON.stringify(documentJsonSchema(), null, 2)}\n`;
+  if (args.out) {
+    await writeFile(args.out, text, 'utf8');
+    console.log(`wrote ${args.out}`);
+    return;
+  }
+  process.stdout.write(text);
 }
 
 /** Reports what a reader would find hard to follow. Exits 1 on any issue. */
@@ -119,7 +143,13 @@ if (!args) {
   process.exit(1);
 }
 
-const commands: Record<string, (args: Args) => Promise<void>> = { check, layout, render };
+const commands: Record<string, (args: Args) => Promise<void>> = {
+  check,
+  validate: check,
+  layout,
+  render,
+  schema,
+};
 const run = commands[args.command];
 if (!run) {
   console.error(`unknown command "${args.command}"\n`);
