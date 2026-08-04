@@ -13,8 +13,8 @@ import { store } from '../store/store.js';
 
 /** Warp in/out duration. */
 export const WARP_MS = 300;
-/** Ripple duration, longer than the warp so the wave outlives the element. */
-export const RIPPLE_MS = 500;
+/** Ripple duration. The wave still starts only once the warp has finished. */
+export const RIPPLE_MS = 300;
 
 /** A bulk merge stops adding waves once a burst is already in flight. */
 const MAX_ACTIVE_RIPPLES = 8;
@@ -91,27 +91,40 @@ export function ripplesStarted(): number {
   return started;
 }
 
-function startRipple(centre: Point, kind: RippleKind, size: 'press' | 'element'): void {
+interface WaveShape {
+  amplitude: number;
+  reach: number;
+  intensity: number;
+}
+
+/** A tap on the field: smaller, shorter-reaching, and dimmer than a mass. */
+const PRESS_WAVE: WaveShape = { amplitude: 4, reach: 120, intensity: 0.7 };
+/** A mass arriving: local, reaching about one element-width past its edge. */
+const CREATION_WAVE: WaveShape = { amplitude: 12, reach: 180, intensity: 1 };
+
+/** A mass leaving: the wave starts on the shape's boundary and collapses inward. */
+function deletionWave(rect: Rect): WaveShape {
+  return {
+    amplitude: 12,
+    // The half-diagonal puts the starting wavefront on the rectangle's edge;
+    // the floor keeps the wave wider than one wavefront for the smallest nodes.
+    reach: Math.max(60, Math.hypot(rect.width, rect.height) / 2),
+    intensity: 1,
+  };
+}
+
+function startRipple(centre: Point, kind: RippleKind, wave: WaveShape): void {
   if (motionReduced()) return;
   activeRipples(performance.now());
   if (ripples.length >= MAX_ACTIVE_RIPPLES) return;
-  // A press is a tap on the field, an element is a mass arriving or leaving,
-  // so the press wave is smaller, shorter-reaching, and dimmer.
-  ripples.push({
-    centre,
-    kind,
-    start: performance.now(),
-    amplitude: size === 'press' ? 4 : 12,
-    reach: size === 'press' ? 120 : 340,
-    intensity: size === 'press' ? 0.7 : 1,
-  });
+  ripples.push({ centre, kind, start: performance.now(), ...wave });
   started += 1;
   emit();
 }
 
 /** A small wave under a lone canvas click: the spot is live, click again to create. */
 export function pressRipple(centre: Point): void {
-  startRipple(centre, 'outward', 'press');
+  startRipple(centre, 'outward', PRESS_WAVE);
 }
 
 /** The drawn box for an element, preferring the container box when expanded. */
@@ -138,8 +151,19 @@ function warpIn(id: Id, after: AppState): void {
     const settled = new Set(warping);
     settled.delete(id);
     warping = settled;
-    // The wave leaves the element only once the element has finished arriving.
-    startRipple({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }, 'outward', 'element');
+    // The wave leaves the element only once it has finished arriving, and
+    // only for a solid element: an expanded container is an outline around
+    // its members, not a mass. The toolbar expands a new group in the
+    // dispatch after creating it, so eligibility is read here rather than at
+    // creation time.
+    const state = store.getState();
+    if (state.document.model.elements[id] && !state.expanded.includes(id)) {
+      startRipple(
+        { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
+        'outward',
+        CREATION_WAVE,
+      );
+    }
     emit();
   }, WARP_MS);
 }
@@ -148,6 +172,10 @@ function warpOut(id: Id, before: AppState): void {
   // A cascade can delete members hidden inside a collapsed group; ghosting
   // those would flash boxes that were never on screen.
   if (!isRendered(before.document.model.elements, id, new Set(before.expanded))) return;
+  // An expanded container is an outline around its members, not a mass: no
+  // ghost (a solid box where an outline stood) and no wave. Its members are
+  // re-parented rather than deleted, so nothing else animates either.
+  if (before.expanded.includes(id)) return;
   const rect = rectOf(before, id);
   if (!rect) return;
 
@@ -156,8 +184,12 @@ function warpOut(id: Id, before: AppState): void {
 
   window.setTimeout(() => {
     ghosts = ghosts.filter((ghost) => ghost.id !== id);
-    // Inward: the field closes over the gap the element left.
-    startRipple({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }, 'inward', 'element');
+    // Inward, starting on the shape's own edge: the field closes over the gap.
+    startRipple(
+      { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
+      'inward',
+      deletionWave(rect),
+    );
     emit();
   }, WARP_MS);
 }

@@ -17,14 +17,15 @@ The canvas is a field, in the space-time sense: the dot grid is its visible medi
 
 **The grammar.**
 
-- A lone click on empty canvas: a small outward ripple, a tap on the field rather than a splash. Roughly a third the reach and amplitude of an element wave, and dimmer. The board heard you; clicking again creates here.
-- Creating an element: warp-in, then an outward ripple from its centre. The ripple starts only after the warp ends, so the mass arrives before it bends the field.
-- Deleting an element: warp-out, then an inward ripple, the field closing over the gap. The model drops the element immediately, so a ghost drawn at its old rectangle plays the exit.
+- A lone click on empty canvas: a small outward ripple, a tap on the field rather than a splash. Two-thirds the reach of an element wave, a third of its amplitude, and dimmer. The board heard you; clicking again creates here.
+- Creating an element: warp-in, then an outward ripple from its centre, reaching about one element-width past its edge. The ripple starts only after the warp ends, so the mass arrives before it bends the field.
+- Deleting an element: warp-out, then an inward ripple whose wavefront starts on the shape's own boundary and collapses to its centre, the field closing over exactly the gap the element left. The model drops the element immediately, so a ghost drawn at its old rectangle plays the exit.
+- Only **solid** elements ripple: entities, connection nodes, and collapsed groups. An expanded group is an outline around its members, not a mass, so creating or deleting one moves no dots and leaves no ghost; it keeps its warp-in, and its members animate individually as ever. Ripple eligibility is read when the wave would start, because the toolbar expands a new group in the dispatch after creating it.
 
 **The timing rules.**
 
 - Warp in/out: 0.3s.
-- Ripple: 0.5s, always outliving the warp.
+- Ripple: 0.3s. Issue #13 proposed ~0.5s ripples that outlive the warp; at 0.5s the wave lingered after the element had settled, so review on PR #15 revised it down.
 - Ripple follows warp, never overlaps it.
 
 **Where it lives.** Animation is presentation and stays in `packages/app`, never in `packages/core`. State changes remain pure `apply(state, command)`; animations hang off the domain events a command emits (`element-created`, `element-deleted`), so a replayed trace animates exactly as the original session did. A whole document arriving (`document-loaded`) is a scene change and animates nothing.

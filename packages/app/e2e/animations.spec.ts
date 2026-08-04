@@ -83,6 +83,40 @@ test.describe('gravity waves', () => {
     await expect(grid).toHaveAttribute('data-ripples-started', '4');
   });
 
+  test('an expanded group neither ripples nor ghosts; only solid elements do', async ({ page }) => {
+    const GROUP = '77777777-7777-4777-8777-777777777777';
+    const grid = page.getByTestId('gravity-grid');
+    await dispatch(page, sampleDomain());
+    await expect(grid).toHaveAttribute('data-ripples-started', '3');
+    await expect(grid).toHaveAttribute('data-ripples', '0');
+
+    // The toolbar's sequence: create the group, then open it as a container.
+    await dispatch(page, [
+      {
+        type: 'group-elements',
+        id: GROUP,
+        title: 'Payments',
+        memberIds: [IDS.gateway, IDS.ledger],
+        position: { x: 280, y: 0 },
+      },
+      { type: 'set-expanded', id: GROUP, expanded: true },
+    ]);
+    await expect(page.getByTestId(`group-${GROUP}`)).toBeVisible();
+
+    // Past the point the creation wave would have started: none did.
+    await page.waitForTimeout(400);
+    expect(await grid.getAttribute('data-ripples-started')).toBe('3');
+
+    await page.evaluate((id) => window.__modl.dispatch({ type: 'delete-element', id }), GROUP);
+
+    // The container goes without a ghost; its members stay on the board.
+    await expect(page.getByTestId(`group-${GROUP}`)).toHaveCount(0);
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).toBeVisible();
+    await page.waitForTimeout(400);
+    await expect(page.locator('.warp-ghost')).toHaveCount(0);
+    expect(await grid.getAttribute('data-ripples-started')).toBe('3');
+  });
+
   test('loading a document animates nothing', async ({ page }) => {
     const grid = page.getByTestId('gravity-grid');
     await dispatch(page, sampleDomain());
