@@ -1,0 +1,20 @@
+{
+  "name": "@modl/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "modl": "./src/index.ts"
+  },
+  "scripts": {
+    "modl": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@modl/core": "*"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^22.20.1",
+    "tsx": "^4.23.5"
+  }
+}

@@ -15,7 +15,8 @@
     "verify": "npm run typecheck && npm test && npm run test:e2e",
     "test:e2e": "npm run test:e2e --workspace @modl/app",
     "dev": "npm run dev --workspace @modl/app",
-    "build": "npm run build --workspace @modl/app"
+    "build": "npm run build --workspace @modl/app",
+    "modl": "tsx packages/cli/src/index.ts"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
