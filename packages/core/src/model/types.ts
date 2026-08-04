@@ -13,7 +13,7 @@ export interface SourceRef {
   note?: string;
 }
 
-export type EntityType = 'state' | 'component' | 'step';
+export type EntityType = 'state' | 'component' | 'step' | 'artifact';
 export type ConnectionType = 'transition' | 'relation' | 'interaction';
 export type ForkShape = 'circle' | 'diamond';
 
@@ -109,6 +109,8 @@ export const FORMAT_VERSION = 2;
 export const OLDEST_READABLE_VERSION = 1;
 
 export const DEFAULT_ENTITY_SIZE = { width: 180, height: 72 } as const;
+/** A fork is a junction, drawn small so it reads as a point rather than a box. */
+export const FORK_SIZE = { width: 64, height: 64 } as const;
 export const DEFAULT_VIEW: View = { pan: { x: 0, y: 0 }, zoom: 1 };
 
 export function isEntity(element: Element): element is Entity {

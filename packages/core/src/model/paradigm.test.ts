@@ -14,8 +14,14 @@ describe('connectionTypeFor', () => {
     expect(connectionTypeFor('component')).toBe('interaction');
   });
 
-  it('covers every entity type', () => {
-    for (const type of ENTITY_TYPES) {
+  it('has no opinion about an artifact', () => {
+    // A record or a file is a noun any paradigm can point at, so a connection
+    // reaching one is never contradicted.
+    expect(connectionTypeFor('artifact')).toBeNull();
+  });
+
+  it('gives every other entity type a paradigm', () => {
+    for (const type of ENTITY_TYPES.filter((t) => t !== 'artifact')) {
       expect(CONNECTION_TYPES).toContain(connectionTypeFor(type));
     }
   });

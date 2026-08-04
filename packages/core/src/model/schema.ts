@@ -44,7 +44,7 @@ const elementBaseShape = {
 export const entitySchema = z.object({
   ...elementBaseShape,
   kind: z.literal('entity'),
-  type: z.enum(['state', 'component', 'step']),
+  type: z.enum(['state', 'component', 'step', 'artifact']),
 });
 
 export const connectionSchema = z.object({
