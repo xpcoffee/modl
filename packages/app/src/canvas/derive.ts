@@ -2,6 +2,7 @@ import {
   connectionAnchors,
   isConnection,
   isEntity,
+  isFork,
   isGroup,
   isRendered,
   membersOf,
@@ -11,6 +12,7 @@ import {
   type Connection,
   type Element,
   type EntityType,
+  type ForkShape,
   type Id,
   type Point,
 } from '@modl/core';
@@ -35,6 +37,22 @@ export interface EntityNodeData extends Record<string, unknown> {
   origin: Point;
   isContainer: boolean;
 }
+
+/** A fork is a junction, so it carries no type and no members. */
+export interface ForkNodeData extends Record<string, unknown> {
+  id: Id;
+  title: string;
+  description: string;
+  shape: ForkShape;
+  tags: Record<string, string[]>;
+  dimmed: boolean;
+  editing: boolean;
+  soleSelection: boolean;
+  parentOrigin: Point;
+  origin: Point;
+}
+
+export type BoardNodeData = EntityNodeData | ForkNodeData;
 
 export interface ConnectionEdgeData extends Record<string, unknown> {
   connectionId: Id;
@@ -140,7 +158,7 @@ function depthOf(elements: Record<Id, Element>, id: Id): number {
  * Projects session state into React Flow's shape. The model stays the only
  * writable copy, and this runs on every render.
  */
-export function deriveNodes(state: AppState, options: DeriveOptions): Node<EntityNodeData>[] {
+export function deriveNodes(state: AppState, options: DeriveOptions): Node<BoardNodeData>[] {
   const elements = state.document.model.elements;
   const expanded = new Set(state.expanded);
   const visible = selectIds(elements, state.filter);
@@ -148,12 +166,42 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Entit
   const soleSelection = onlySelected(state, options);
   const rects = measure(state, expanded);
 
+  const forks: Node<BoardNodeData>[] = Object.values(elements)
+    .filter(isFork)
+    .filter((fork) => isRendered(elements, fork.id, expanded))
+    .map((fork) => {
+      const rect = rectOf(state, fork.id);
+      const parentRect = fork.groupId ? rects.get(fork.groupId) : undefined;
+      const parentOrigin = parentRect ? { x: parentRect.x, y: parentRect.y } : { x: 0, y: 0 };
+      return {
+        id: fork.id,
+        type: 'fork',
+        position: { x: rect.x - parentOrigin.x, y: rect.y - parentOrigin.y },
+        ...(fork.groupId && parentRect ? { parentId: fork.groupId } : {}),
+        style: { width: rect.width, height: rect.height },
+        selected: selected.has(fork.id),
+        ...(selected.has(fork.id) ? { zIndex: 1000 } : {}),
+        data: {
+          id: fork.id,
+          title: fork.title,
+          description: fork.description,
+          shape: fork.shape,
+          tags: fork.tags,
+          dimmed: !visible.has(fork.id),
+          editing: options.editingId === fork.id,
+          soleSelection: soleSelection === fork.id,
+          parentOrigin,
+          origin: { x: rect.x, y: rect.y },
+        },
+      };
+    });
+
   const rendered = Object.values(elements)
     .filter(isEntity)
     .filter((entity) => isRendered(elements, entity.id, expanded))
     .sort((a, b) => depthOf(elements, a.id) - depthOf(elements, b.id));
 
-  return rendered.map((entity) => {
+  const entities: Node<BoardNodeData>[] = rendered.map((entity) => {
     const rect = rects.get(entity.id) ?? FALLBACK_RECT;
     const groupId = entity.groupId;
     // A member sits inside its container, so React Flow wants a relative position.
@@ -188,6 +236,9 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Entit
       },
     };
   });
+
+  // Containers first, then forks, so React Flow sees a parent before a child.
+  return [...entities, ...forks];
 }
 
 /**

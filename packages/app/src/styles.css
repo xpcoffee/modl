@@ -692,3 +692,87 @@ select {
   font-weight: 500;
   cursor: help;
 }
+
+/* Forks: junctions where connections fan in or out */
+
+.fork-node {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.fork-node__face {
+  width: 100%;
+  height: 100%;
+  border: 1.5px solid var(--muted);
+  background: #232733;
+}
+
+.fork-node--circle .fork-node__face {
+  border-radius: 50%;
+}
+
+.fork-node--diamond .fork-node__face {
+  border-radius: 6px;
+  transform: rotate(45deg) scale(0.72);
+}
+
+.fork-node.is-selected .fork-node__face {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgb(91 141 239 / 30%);
+}
+
+.fork-node.is-dimmed {
+  opacity: 0.25;
+}
+
+/* Below the shape, which is too small to hold text and has handles on
+   every side for connections to reach. */
+.fork-node__label {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text);
+  pointer-events: none;
+}
+
+.fork-node__label .inline-title {
+  pointer-events: all;
+}
+
+.fork-node__label .inline-title {
+  width: 140px;
+}
+
+.fork-node__shape {
+  position: absolute;
+  top: -10px;
+  right: -12px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.fork-node__editor {
+  position: absolute;
+  top: calc(100% + 28px);
+  left: 0;
+  z-index: 20;
+  cursor: default;
+}
+
+.fork-node__hover {
+  position: absolute;
+  top: calc(100% + 28px);
+  left: 0;
+  display: none;
+  z-index: 10;
+}
+
+.fork-node:hover .fork-node__hover {
+  display: block;
+}

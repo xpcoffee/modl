@@ -39,6 +39,17 @@ export function Toolbar() {
     });
   };
 
+  /** A junction, so a decision or a join is a thing rather than an inference. */
+  const addFork = () => {
+    store.dispatch({
+      type: 'create-fork',
+      id: crypto.randomUUID(),
+      shape: 'diamond',
+      title: '',
+      position: { x: 60 + total * 30, y: 140 + total * 20 },
+    });
+  };
+
   /**
    * Starts a container around whatever is selected, or an empty one when
    * nothing is. It opens expanded so there is a box to drag elements into,
@@ -106,6 +117,14 @@ export function Toolbar() {
       </select>
       <button type="button" data-testid="add-entity" onClick={addEntity}>
         Add
+      </button>
+      <button
+        type="button"
+        data-testid="add-fork"
+        onClick={addFork}
+        title="A junction where connections fan in or out"
+      >
+        Add fork
       </button>
       <button
         type="button"

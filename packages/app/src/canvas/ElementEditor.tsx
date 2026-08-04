@@ -26,8 +26,9 @@ export function ElementEditor({
   arrows,
 }: {
   id: Id;
-  kind: 'entity' | 'connection';
-  elementType: EntityType | ConnectionType;
+  kind: 'entity' | 'connection' | 'fork';
+  /** A fork has no type to choose, so its chip is a label rather than a menu. */
+  elementType: EntityType | ConnectionType | 'fork';
   description: string;
   tags: Record<string, string[]>;
   /** Present for connections, which can carry a head at either end. */
@@ -35,7 +36,8 @@ export function ElementEditor({
 }) {
   const [addingTag, setAddingTag] = useState(false);
   const [pickingType, setPickingType] = useState(false);
-  const types: readonly string[] = kind === 'entity' ? ENTITY_TYPES : CONNECTION_TYPES;
+  const types: readonly string[] =
+    kind === 'entity' ? ENTITY_TYPES : kind === 'connection' ? CONNECTION_TYPES : [];
 
   return (
     <div
@@ -49,10 +51,13 @@ export function ElementEditor({
           type="button"
           className="element-editor__type"
           data-testid={`editor-type-${id}`}
-          aria-label={`Type: ${elementType}. Click to change`}
+          aria-label={
+            types.length > 0 ? `Type: ${elementType}. Click to change` : `Type: ${elementType}`
+          }
+          disabled={types.length === 0}
           onClick={() => setPickingType((open) => !open)}
         >
-          <ElementIcon elementType={elementType} />
+          {elementType === 'fork' ? null : <ElementIcon elementType={elementType} />}
           <span>{elementType}</span>
         </button>
 
