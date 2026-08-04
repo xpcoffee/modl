@@ -925,3 +925,83 @@ test.describe('moving a collapsed group', () => {
     expect(memberAfter.y - groupAfter.y).toBeCloseTo(offset.y, 5);
   });
 });
+
+test.describe('collapsed and expanded sizes', () => {
+  const GROUP = '99999999-9999-4999-8999-999999999999';
+
+  async function grouped(page: import('@playwright/test').Page) {
+    await dispatch(page, [
+      ...sampleDomain(),
+      {
+        type: 'group-elements',
+        id: GROUP,
+        title: 'Payments',
+        memberIds: [IDS.gateway, IDS.ledger],
+        position: { x: 280, y: 0 },
+      },
+    ]);
+  }
+
+  test('a new group collapses to a node, not to its container box', async ({ page }) => {
+    await grouped(page);
+
+    const layout = (await getDocument(page)).layout[GROUP] as {
+      width: number;
+      expanded: { width: number };
+    };
+    expect(layout.width).toBe(180);
+    expect(layout.expanded.width).toBeGreaterThan(400);
+
+    // On screen it is node-sized while collapsed.
+    const node = (await page.locator(`.react-flow__node[data-id="${GROUP}"]`).boundingBox())!;
+    const other = (await page.locator(`.react-flow__node[data-id="${IDS.ui}"]`).boundingBox())!;
+    expect(Math.abs(node.width - other.width)).toBeLessThan(2);
+  });
+
+  test('resizing the container leaves the collapsed node alone', async ({ page }) => {
+    await grouped(page);
+    await page.getByTestId(`expand-${GROUP}`).click();
+    await fit(page);
+    // group-elements already left it selected, so the resizer is showing.
+
+    const handle = page.locator(
+      `.react-flow__node[data-id="${GROUP}"] .react-flow__resize-control.bottom.right.handle`,
+    );
+    const box = (await handle.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 90, box.y + 70, { steps: 10 });
+    await page.mouse.up();
+
+    const layout = (await getDocument(page)).layout[GROUP] as {
+      width: number;
+      height: number;
+      expanded: { width: number };
+    };
+    expect(layout.expanded.width).toBeGreaterThan(400);
+    expect(layout.width).toBe(180);
+    expect(layout.height).toBe(72);
+  });
+
+  test('resizing the collapsed node leaves the container alone', async ({ page }) => {
+    await grouped(page);
+    const before = (await getDocument(page)).layout[GROUP] as { expanded: { width: number } };
+
+    await page.getByTestId(`entity-${GROUP}`).click();
+    const handle = page.locator(
+      `.react-flow__node[data-id="${GROUP}"] .react-flow__resize-control.bottom.right.handle`,
+    );
+    const box = (await handle.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 80, box.y + 50, { steps: 10 });
+    await page.mouse.up();
+
+    const after = (await getDocument(page)).layout[GROUP] as {
+      width: number;
+      expanded: { width: number };
+    };
+    expect(after.width).toBeGreaterThan(180);
+    expect(after.expanded.width).toBe(before.expanded.width);
+  });
+});
