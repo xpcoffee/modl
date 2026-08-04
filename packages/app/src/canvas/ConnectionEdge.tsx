@@ -149,8 +149,10 @@ export function ConnectionEdge({
         id={id}
         path={path}
         className={`connection-edge${selected ? ' is-selected' : ''}${dimmed ? ' is-dimmed' : ''}`}
-        {...(data?.arrowStart ? { markerStart: 'url(#modl-arrow-start)' } : {})}
-        {...(data?.arrowEnd ? { markerEnd: 'url(#modl-arrow-end)' } : {})}
+        {...(data?.direction === 'both' ? { markerStart: 'url(#modl-arrow-start)' } : {})}
+        {...(data?.direction === 'forward' || data?.direction === 'both'
+          ? { markerEnd: 'url(#modl-arrow-end)' }
+          : {})}
       />
 
       <EdgeLabelRenderer>
@@ -235,7 +237,7 @@ export function ConnectionEdge({
                 elementType={data.elementType}
                 description={data.description}
                 tags={data.tags}
-                arrows={{ start: data.arrowStart, end: data.arrowEnd }}
+                direction={data.direction}
               />
             </div>
           ) : (

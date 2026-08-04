@@ -3,6 +3,7 @@ import {
   applyNodeChanges,
   Background,
   Controls,
+  ConnectionMode,
   ReactFlow,
   useReactFlow,
   type Connection,
@@ -274,6 +275,9 @@ export function Canvas() {
         deleteKeyCode={['Delete', 'Backspace']}
         // Pinned so the gesture is the same on every platform.
         multiSelectionKeyCode={['Control', 'Meta']}
+        // Any handle can be either end, so a line attaches to whichever side
+        // of a box is nearest rather than always leaving on the right.
+        connectionMode={ConnectionMode.Loose}
         // No `fitView`: it defers until nodes exist, so creating the first
         // element re-framed the board and the new element jumped away from
         // the pointer that made it. The fit control does this on request.

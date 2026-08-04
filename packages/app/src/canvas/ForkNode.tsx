@@ -28,9 +28,9 @@ export function ForkNode({ data, selected }: NodeProps<Node<ForkNodeData>>) {
       data-testid={`fork-${data.id}`}
       data-shape={data.shape}
     >
-      <Handle type="target" position={Position.Left} id="left" />
-      <Handle type="target" position={Position.Top} id="top" />
+      <Handle type="source" position={Position.Left} id="left" />
       <Handle type="source" position={Position.Right} id="right" />
+      <Handle type="source" position={Position.Top} id="top" />
       <Handle type="source" position={Position.Bottom} id="bottom" />
 
       <div className="fork-node__face" />

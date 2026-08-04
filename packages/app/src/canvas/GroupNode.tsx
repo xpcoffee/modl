@@ -36,7 +36,10 @@ export function GroupNode({ data, selected }: NodeProps<Node<EntityNodeData>>) {
         }
       />
 
-      <Handle type="target" position={Position.Left} />
+      <Handle type="source" position={Position.Left} id="left" />
+      <Handle type="source" position={Position.Right} id="right" />
+      <Handle type="source" position={Position.Top} id="top" />
+      <Handle type="source" position={Position.Bottom} id="bottom" />
 
       <header className="group-node__header">
         <button
@@ -88,7 +91,6 @@ export function GroupNode({ data, selected }: NodeProps<Node<EntityNodeData>>) {
           </div>
         )}
 
-      <Handle type="source" position={Position.Right} />
     </div>
   );
 }

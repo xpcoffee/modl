@@ -10,6 +10,7 @@ import {
   type AppState,
   type ConnectionType,
   type Connection,
+  type Direction,
   type Element,
   type EntityType,
   type ForkShape,
@@ -64,8 +65,7 @@ export interface ConnectionEdgeData extends Record<string, unknown> {
   editing: boolean;
   soleSelection: boolean;
   waypoints: Point[];
-  arrowStart: boolean;
-  arrowEnd: boolean;
+  direction: Direction;
   /** Ids this edge stands in for, empty unless it is a roll-up. */
   rolledUp: Id[];
   /** Offset from the direct route, so parallel connections stay apart. */
@@ -288,12 +288,18 @@ export type { Rect };
 export function deriveEdges(state: AppState, options: DeriveOptions): Edge<ConnectionEdgeData>[] {
   const elements = state.document.model.elements;
   const expanded = new Set(state.expanded);
+  const rects = measure(state, expanded);
   const visible = selectIds(elements, state.filter);
   const selected = new Set(state.selection);
   const soleSelection = onlySelected(state, options);
 
-  /** Every drawn connection, keyed by the pair of anchors it runs between. */
-  const byPair = new Map<string, { from: Id; to: Id; connections: Connection[] }>();
+  /**
+   * Every drawn connection, grouped by the pair of anchors it runs between,
+   * ignoring which way round. Two components talking in both directions are
+   * still two lines between the same two boxes, and grouping by the ordered
+   * pair let them land on top of each other.
+   */
+  const byPair = new Map<string, { from: Id; to: Id; connection: Connection }[]>();
 
   for (const element of Object.values(elements)) {
     if (!isConnection(element)) continue;
@@ -304,9 +310,9 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
     for (const from of anchors.from) {
       for (const to of anchors.to) {
         if (from === to) continue;
-        const key = `${from} ${to}`;
-        const entry = byPair.get(key) ?? { from, to, connections: [] };
-        entry.connections.push(element);
+        const key = [from, to].sort().join(' ');
+        const entry = byPair.get(key) ?? [];
+        entry.push({ from, to, connection: element });
         byPair.set(key, entry);
       }
     }
@@ -314,46 +320,63 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
 
   const edges: Edge<ConnectionEdgeData>[] = [];
 
-  for (const { from, to, connections } of byPair.values()) {
+  for (const drawn of byPair.values()) {
+    const connections = drawn.map((entry) => entry.connection);
+
     // Several connections collapsing onto one pair of anchors draw as one
     // edge carrying a count. At a zoom-out this is the difference between a
     // readable line and a stack of overlapping labels.
-    const rolledUp = connections.length > 1 && connections.some((c) => isRolledUp(elements, c, expanded));
+    const rolledUp =
+      drawn.length > 1 && connections.some((c) => isRolledUp(elements, c, expanded));
 
     if (rolledUp) {
       const ids = connections.map((c) => c.id).sort();
+      const first = drawn[0]!;
+      // Mixed orientations have no single direction to show, so say both.
+      const oneWay = drawn.every((entry) => entry.from === first.from);
+      const direction: Direction = oneWay
+        ? connections.every((c) => c.direction === 'both')
+          ? 'both'
+          : connections.every((c) => c.direction === 'none')
+            ? 'none'
+            : 'forward'
+        : 'both';
+
       edges.push({
-        id: `rollup:${from}:${to}`,
+        id: `rollup:${first.from}:${first.to}`,
         type: 'connection',
-        source: from,
-        target: to,
+        source: first.from,
+        target: first.to,
+        ...sidesBetween(rects, first.from, first.to),
         data: {
-          connectionId: ids[0] ?? from,
+          connectionId: ids[0] ?? first.from,
           title: `${connections.length} connections`,
-          description: connections.map((c) => c.title || readableTitle(c)).join('\n'),
+          // What each bundled line joins, in the reader's words. The ids it
+          // used to list said nothing to anyone.
+          description: connections.map((c) => describeConnection(elements, c)).join('\n'),
           elementType: connections[0]!.type,
           tags: {},
           dimmed: !connections.some((c) => visible.has(c.id)),
           editing: false,
           soleSelection: false,
           waypoints: [],
-          arrowStart: false,
-          arrowEnd: connections.some((c) => layoutOf(state, c.id).arrowEnd ?? false),
+          direction,
           rolledUp: ids,
         },
       });
       continue;
     }
 
-    // Parallel connections between the same visible pair fan out, so three
+    // Parallel connections between the same visible pair fan out, so several
     // between one pair of components no longer land on top of each other.
-    connections.forEach((element, index) => {
-      const spread = connections.length > 1 ? index - (connections.length - 1) / 2 : 0;
+    drawn.forEach(({ from, to, connection: element }, index) => {
+      const spread = drawn.length > 1 ? index - (drawn.length - 1) / 2 : 0;
       edges.push({
         id: `${element.id}:${from}:${to}`,
         type: 'connection',
         source: from,
         target: to,
+        ...sidesBetween(rects, from, to),
         selected: selected.has(element.id),
         ...(selected.has(element.id) ? { zIndex: 1001 } : {}),
         data: {
@@ -366,8 +389,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           editing: options.editingId === element.id,
           soleSelection: soleSelection === element.id,
           waypoints: layoutOf(state, element.id).waypoints,
-          arrowStart: layoutOf(state, element.id).arrowStart ?? false,
-          arrowEnd: layoutOf(state, element.id).arrowEnd ?? false,
+          direction: element.direction,
           spread: spread * PARALLEL_SPREAD,
           rolledUp: [],
         },
@@ -392,8 +414,17 @@ function isRolledUp(
   );
 }
 
-function readableTitle(connection: Connection): string {
-  return `${connection.type} ${connection.id.slice(0, 8)}`;
+/**
+ * A bundled connection in a reader's terms: what it joins, and its own title
+ * when it has one.
+ */
+function describeConnection(elements: Record<Id, Element>, connection: Connection): string {
+  const name = (id: Id): string => {
+    const element = elements[id];
+    return element?.title || id;
+  };
+  const ends = `${connection.from.map(name).join(', ')} → ${connection.to.map(name).join(', ')}`;
+  return connection.title ? `${connection.title}: ${ends}` : ends;
 }
 
 /**
@@ -407,12 +438,39 @@ function onlySelected(state: AppState, options: DeriveOptions): Id | null {
 }
 
 /** Connection layout, defaulted so callers need no checks. */
-function layoutOf(
-  state: AppState,
-  id: Id,
-): { waypoints: Point[]; arrowStart?: boolean; arrowEnd?: boolean } {
+function layoutOf(state: AppState, id: Id): { waypoints: Point[] } {
   const entry = state.document.layout[id];
   return entry && 'waypoints' in entry ? entry : { waypoints: [] };
+}
+
+/**
+ * The sides a line should leave and arrive on, chosen from where the two
+ * boxes actually sit. Fixing the source to the right edge and the target to
+ * the left forced every line to run left-to-right, so a connection back up
+ * the board looped around its own endpoints.
+ */
+function sidesBetween(
+  rects: Map<Id, Rect>,
+  from: Id,
+  to: Id,
+): { sourceHandle: string; targetHandle: string } {
+  const a = rects.get(from);
+  const b = rects.get(to);
+  if (!a || !b) return { sourceHandle: 'right', targetHandle: 'left' };
+
+  const dx = b.x + b.width / 2 - (a.x + a.width / 2);
+  const dy = b.y + b.height / 2 - (a.y + a.height / 2);
+
+  // Whichever gap is wider decides the axis, so boxes stacked vertically join
+  // top to bottom rather than curling around their sides.
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0
+      ? { sourceHandle: 'right', targetHandle: 'left' }
+      : { sourceHandle: 'left', targetHandle: 'right' };
+  }
+  return dy >= 0
+    ? { sourceHandle: 'bottom', targetHandle: 'top' }
+    : { sourceHandle: 'top', targetHandle: 'bottom' };
 }
 
 /** Recovers the connection id from a derived edge id. */

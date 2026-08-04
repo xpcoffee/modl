@@ -3,6 +3,7 @@ import {
   CONNECTION_TYPES,
   ENTITY_TYPES,
   type ConnectionType,
+  type Direction,
   type EntityType,
   type Id,
 } from '@modl/core';
@@ -23,7 +24,7 @@ export function ElementEditor({
   elementType,
   description,
   tags,
-  arrows,
+  direction,
 }: {
   id: Id;
   kind: 'entity' | 'connection' | 'fork';
@@ -31,8 +32,8 @@ export function ElementEditor({
   elementType: EntityType | ConnectionType | 'fork';
   description: string;
   tags: Record<string, string[]>;
-  /** Present for connections, which can carry a head at either end. */
-  arrows?: { start: boolean; end: boolean };
+  /** Present for connections: which way the connection reads. */
+  direction?: Direction;
 }) {
   const [addingTag, setAddingTag] = useState(false);
   const [pickingType, setPickingType] = useState(false);
@@ -87,31 +88,21 @@ export function ElementEditor({
         )}
       </div>
 
-      {arrows && (
-        <div className="element-editor__arrows" data-testid={`editor-arrows-${id}`}>
-          <span>Arrows</span>
-          <button
-            type="button"
-            data-testid={`editor-arrow-start-${id}`}
-            aria-pressed={arrows.start}
-            className={arrows.start ? 'is-on' : undefined}
-            onClick={() =>
-              store.dispatch({ type: 'set-arrowheads', id, start: !arrows.start, end: arrows.end })
-            }
-          >
-            &#8592; start
-          </button>
-          <button
-            type="button"
-            data-testid={`editor-arrow-end-${id}`}
-            aria-pressed={arrows.end}
-            className={arrows.end ? 'is-on' : undefined}
-            onClick={() =>
-              store.dispatch({ type: 'set-arrowheads', id, start: arrows.start, end: !arrows.end })
-            }
-          >
-            end &#8594;
-          </button>
+      {direction && (
+        <div className="element-editor__arrows" data-testid={`editor-direction-${id}`}>
+          <span>Reads</span>
+          {(['forward', 'both', 'none'] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              data-testid={`editor-direction-${id}-${option}`}
+              aria-pressed={direction === option}
+              className={direction === option ? 'is-on' : undefined}
+              onClick={() => store.dispatch({ type: 'set-direction', id, direction: option })}
+            >
+              {option === 'forward' ? '→' : option === 'both' ? '↔' : '—'}
+            </button>
+          ))}
         </div>
       )}
 
