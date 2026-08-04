@@ -7,6 +7,7 @@ import {
   type Edge,
   type EdgeProps,
 } from '@xyflow/react';
+import { Position } from '@xyflow/react';
 import type { Point } from '@modl/core';
 import { store } from '../store/store.js';
 import type { ConnectionEdgeData } from './derive.js';
@@ -16,23 +17,57 @@ import { ElementIcon } from './ElementIcon.js';
 import { InlineTitle } from './InlineTitle.js';
 import { stopEditing } from './editing.js';
 
+/** The way out of an element, given the side a line leaves from. */
+function outward(position: Position): Point {
+  if (position === Position.Left) return { x: -1, y: 0 };
+  if (position === Position.Right) return { x: 1, y: 0 };
+  if (position === Position.Top) return { x: 0, y: -1 };
+  return { x: 0, y: 1 };
+}
+
+/**
+ * How far a line runs straight out of an element before it starts bending.
+ *
+ * Without this the curve turns immediately and, when two lines share a side,
+ * the second one bows back across the box it just left. Far enough to clear
+ * the element, and never so far that a short link balloons.
+ */
+function standoff(from: Point, to: Point): number {
+  const distance = Math.hypot(to.x - from.x, to.y - from.y);
+  return Math.max(36, Math.min(90, distance * 0.35));
+}
+
 /**
  * A smooth curve through every waypoint, so adding a bend reshapes the line
  * rather than turning it into a polyline.
  *
- * Catmull-Rom through the points, converted to cubic beziers. The two ghost
- * points outside the ends set the tangents there, keeping the line leaving
- * the source and entering the target horizontally the way the plain bezier
- * does.
+ * Catmull-Rom through the points, converted to cubic beziers. Each end gets a
+ * point pushed straight out along its normal, and a ghost beyond that, so the
+ * line leaves and arrives perpendicular to the side it touches.
  */
-function routedPath(from: Point, waypoints: Point[], to: Point): string {
-  const inner = [from, ...waypoints, to];
-  const reach = Math.min(80, Math.max(20, Math.abs(to.x - from.x) / 3));
-  const points = [
-    { x: from.x - reach, y: from.y },
-    ...inner,
-    { x: to.x + reach, y: to.y },
-  ];
+function routedPath(
+  from: Point,
+  waypoints: Point[],
+  to: Point,
+  exits: { source: Point | null; target: Point | null },
+): string {
+  const lead = exits.source
+    ? [{ x: from.x + exits.source.x * standoff(from, to), y: from.y + exits.source.y * standoff(from, to) }]
+    : [];
+  const trail = exits.target
+    ? [{ x: to.x + exits.target.x * standoff(from, to), y: to.y + exits.target.y * standoff(from, to) }]
+    : [];
+
+  const inner = [from, ...lead, ...waypoints, ...trail, to];
+  const reach = standoff(from, to);
+  const before = exits.source
+    ? { x: from.x - exits.source.x * reach, y: from.y - exits.source.y * reach }
+    : { x: from.x - reach, y: from.y };
+  const after = exits.target
+    ? { x: to.x - exits.target.x * reach, y: to.y - exits.target.y * reach }
+    : { x: to.x + reach, y: to.y };
+
+  const points = [before, ...inner, after];
 
   let path = `M ${from.x} ${from.y}`;
   for (let i = 1; i < points.length - 2; i += 1) {
@@ -107,20 +142,44 @@ export function ConnectionEdge({
     targetPosition,
     // A junction anchors at a point rather than an edge, so a line meeting it
     // reads better running straight than easing in along an axis.
-    ...(data?.straight ? { curvature: 0 } : {}),
+    ...(data?.centredSource || data?.centredTarget ? { curvature: 0 } : {}),
   });
 
-  // Parallel connections bow apart so three between one pair of components do
-  // not land on top of each other.
+  // Parallel connections bow apart so several between one pair of components
+  // do not land on top of each other. The offset runs perpendicular to the
+  // line's own direction: pushing it straight down instead made a line to
+  // something above-right dip under its own source before climbing.
   const spread = data?.spread ?? 0;
-  const bowed = spread === 0 ? [] : [{ x: (sourceX + targetX) / 2, y: (sourceY + targetY) / 2 + spread }];
+  const span = { x: targetX - sourceX, y: targetY - sourceY };
+  const length = Math.hypot(span.x, span.y) || 1;
+  const normal = { x: -span.y / length, y: span.x / length };
+  const bowed =
+    spread === 0
+      ? []
+      : [
+          {
+            x: (sourceX + targetX) / 2 + normal.x * spread,
+            y: (sourceY + targetY) / 2 + normal.y * spread,
+          },
+        ];
 
-  const routed = waypoints.length > 0 || bowed.length > 0;
-  const path = routed ? routedPath(source, waypoints.length > 0 ? waypoints : bowed, target) : bezier;
+  // A junction anchors at its middle, so there is no edge to clear and the
+  // line runs straight at it. A box gets a perpendicular exit.
+  const exits = {
+    source: data?.centredSource ? null : outward(sourcePosition),
+    target: data?.centredTarget ? null : outward(targetPosition),
+  };
+  const needsExit = exits.source !== null || exits.target !== null;
+
+  const routed = waypoints.length > 0 || bowed.length > 0 || needsExit;
+  const path = routed
+    ? routedPath(source, waypoints.length > 0 ? waypoints : bowed, target, exits)
+    : bezier;
   const handles = addHandles(source, waypoints, target);
-  const labelPoint = routed
-    ? routeMidpoint(source, waypoints.length > 0 ? waypoints : bowed, target)
-    : { x: bezierLabelX, y: bezierLabelY };
+  const labelPoint =
+    waypoints.length > 0 || bowed.length > 0
+      ? routeMidpoint(source, waypoints.length > 0 ? waypoints : bowed, target)
+      : { x: bezierLabelX, y: bezierLabelY };
   const rolledUp = (data?.rolledUp ?? []).length > 0;
 
   const dimmed = data?.dimmed ?? false;

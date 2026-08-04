@@ -69,8 +69,9 @@ export interface ConnectionEdgeData extends Record<string, unknown> {
   direction: Direction;
   /** Ids this edge stands in for, empty unless it is a roll-up. */
   rolledUp: Id[];
-  /** True when an end anchors at a point, which reads better as a straight line. */
-  straight: boolean;
+  /** True when that end anchors at a point rather than a side. */
+  centredSource: boolean;
+  centredTarget: boolean;
   /** Offset from the direct route, so parallel connections stay apart. */
   spread?: number;
 }
@@ -370,7 +371,8 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           waypoints: [],
           direction,
           rolledUp: ids,
-          straight: isCentred(elements, first.from) || isCentred(elements, first.to),
+          centredSource: isCentred(elements, first.from),
+          centredTarget: isCentred(elements, first.to),
         },
       });
       continue;
@@ -410,7 +412,8 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           direction: element.direction,
           spread: spread * PARALLEL_SPREAD,
           rolledUp: [],
-          straight: isCentred(elements, from) || isCentred(elements, to),
+          centredSource: isCentred(elements, from),
+          centredTarget: isCentred(elements, to),
         },
       });
     });
