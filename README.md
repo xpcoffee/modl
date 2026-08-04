@@ -30,6 +30,7 @@ Let users draw a domain while the tool records a structure underneath: stable id
 | File | What it holds |
 |---|---|
 | [docs/vision.md](docs/vision.md) | The full picture: three paradigms, groups as zoom, forks |
+| [docs/agents.md](docs/agents.md) | Producing a document from another tool, and checking it reads |
 | [docs/domain-model.md](docs/domain-model.md) | The structure, the file format, validation rules. Enough to generate a document from another source |
 | [docs/decisions/](docs/decisions/) | One file per architectural decision: the tension, what was rejected, what would reverse it |
 | [docs/specs/001-bootstrap.md](docs/specs/001-bootstrap.md) | Iteration 1 scope, commands, features, acceptance criteria |
@@ -104,7 +105,20 @@ Use that path rather than `npx playwright install`, which fetches whatever versi
 - **Delete** removes the selection, on either Delete or Backspace, or with the trash button
 - **Save** and **Load** a `.modl.json` file, and **Export trace** for the session's command log
 
-### Driving it from an agent
+### Producing a document from another tool
+
+There is a command line for building documents without the board, meant for an agent generating a diagram as part of some other job:
+
+```bash
+npm run build                                     # once, so render has an app to drive
+npm run modl -- check  domain.modl.json           # does the layout read?
+npm run modl -- layout domain.modl.json           # place anything with no position
+npm run modl -- render domain.modl.json -o d.png  # draw it as the app would
+```
+
+`check` reports overlapping elements, members outside their container, stranded elements, and missing positions, and exits non-zero when it finds any. `render` drives the real app, so the picture is what the whiteboard draws. See [docs/agents.md](docs/agents.md).
+
+### Driving the running app
 
 Every build exposes the command bus on `window.__modl`:
 
