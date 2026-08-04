@@ -1,0 +1,117 @@
+import { z } from 'zod';
+import { FORMAT_VERSION } from './types.js';
+
+/**
+ * Any UUID version, lowercase. The app mints v4; a producer deriving ids from
+ * its own keys should mint v5 so re-running against an unchanged source gives
+ * the same ids.
+ */
+export const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/**
+ * Ids are opaque strings, so a document can be written by hand with readable
+ * ids like `checkout-ui`. Requiring UUIDs everywhere meant only a program
+ * could author one, and every `from` and `to` was unreadable.
+ */
+export const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+export const idSchema = z
+  .string()
+  .regex(ID_PATTERN, 'must be 1-128 chars of letters, digits, dot, colon, dash or underscore');
+
+export const pointSchema = z.object({
+  x: z.number().finite(),
+  y: z.number().finite(),
+});
+
+export const tagsSchema = z.record(z.string().min(1), z.array(z.string()));
+
+export const sourceSchema = z.object({
+  ref: z.string().min(1),
+  note: z.string().optional(),
+});
+
+const elementBaseShape = {
+  id: idSchema,
+  title: z.string(),
+  description: z.string(),
+  tags: tagsSchema,
+  sources: z.array(sourceSchema).default([]),
+  groupId: idSchema.nullable(),
+};
+
+export const entitySchema = z.object({
+  ...elementBaseShape,
+  kind: z.literal('entity'),
+  type: z.enum(['state', 'component', 'step']),
+});
+
+export const connectionSchema = z.object({
+  ...elementBaseShape,
+  kind: z.literal('connection'),
+  type: z.enum(['transition', 'relation', 'interaction']),
+  from: z.array(idSchema),
+  to: z.array(idSchema),
+});
+
+export const forkSchema = z.object({
+  ...elementBaseShape,
+  kind: z.literal('fork'),
+  shape: z.enum(['circle', 'diamond']),
+});
+
+export const elementSchema = z.discriminatedUnion('kind', [
+  entitySchema,
+  connectionSchema,
+  forkSchema,
+]);
+
+export const entityLayoutSchema = z.object({
+  x: z.number().finite(),
+  y: z.number().finite(),
+  width: z.number().finite().positive(),
+  height: z.number().finite().positive(),
+  expanded: z
+    .object({
+      width: z.number().finite().positive(),
+      height: z.number().finite().positive(),
+    })
+    .optional(),
+});
+
+export const connectionLayoutSchema = z.object({
+  waypoints: z.array(pointSchema),
+  arrowStart: z.boolean().optional(),
+  arrowEnd: z.boolean().optional(),
+});
+
+export const elementLayoutSchema = z.union([entityLayoutSchema, connectionLayoutSchema]);
+
+export const viewSchema = z.object({
+  pan: pointSchema,
+  zoom: z.number().finite().positive(),
+});
+
+export const modelSchema = z.object({
+  elements: z.record(idSchema, elementSchema),
+});
+
+export const documentSchema = z.object({
+  formatVersion: z.number().int(),
+  id: idSchema,
+  title: z.string(),
+  model: modelSchema,
+  layout: z.record(idSchema, elementLayoutSchema).default({}),
+  view: viewSchema.default({ pan: { x: 0, y: 0 }, zoom: 1 }),
+});
+
+export { FORMAT_VERSION };
+
+/**
+ * The document format as JSON Schema, so a producer in another language can
+ * validate before writing rather than after loading.
+ */
+export function documentJsonSchema(): unknown {
+  return z.toJSONSchema(documentSchema, { target: 'draft-2020-12', io: 'input' });
+}

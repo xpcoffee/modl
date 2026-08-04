@@ -1,0 +1,694 @@
+:root {
+  --bg: #12141a;
+  --panel: #1b1e26;
+  --border: #2c313d;
+  --text: #e6e8ee;
+  --muted: #8b93a7;
+  --accent: #5b8def;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font: 14px/1.5 ui-sans-serif, system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Toolbar */
+
+.toolbar,
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: 8px;
+}
+
+.toolbar__divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+}
+
+.toolbar__spacer {
+  flex: 1;
+}
+
+.toolbar__count,
+.toolbar__message {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+button {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #232733;
+  color: var(--text);
+  cursor: pointer;
+}
+
+button:hover:enabled {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+input,
+textarea,
+select {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #12141a;
+  color: var(--text);
+  font: inherit;
+  width: 100%;
+}
+
+select {
+  width: auto;
+  cursor: pointer;
+}
+
+/* Filter */
+
+.filter-bar__field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  max-width: 480px;
+}
+
+.filter-bar__field span {
+  color: var(--muted);
+}
+
+.filter-bar__error {
+  color: #f0a05a;
+  font-size: 12px;
+}
+
+.filter-bar__keys {
+  display: flex;
+  gap: 4px;
+}
+
+.filter-bar__keys button {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+/* Canvas */
+
+.canvas {
+  flex: 1;
+  min-width: 0;
+}
+
+.entity-node {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  /* Top padding keeps a long title clear of the icon and expand controls. */
+  padding: 28px 12px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #232733;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.entity-node.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgb(91 141 239 / 30%);
+}
+
+.entity-node.is-dimmed {
+  opacity: 0.25;
+}
+
+.entity-node__title {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* Description and tags, revealed on hover. */
+.entity-node__hover,
+.edge-label__hover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 100%;
+  display: none;
+  z-index: 10;
+}
+
+.entity-node:hover .entity-node__hover,
+.edge-label:hover .edge-label__hover {
+  display: block;
+}
+
+.hover-card {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #12141a;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: left;
+  width: max-content;
+  max-width: 260px;
+}
+
+.hover-card__type {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #232733;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.hover-card__description {
+  margin: 0;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.hover-card__description--empty {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.hover-card__tags {
+  margin: 4px 0 0;
+  padding-left: 14px;
+}
+
+.inline-title {
+  width: 100%;
+  text-align: center;
+  font: inherit;
+}
+
+.entity-node__corner {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Sits where collapse sits on an open container. */
+.entity-node__expand {
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* Groups */
+
+/* React Flow gives its built-in group type a border and background of its
+   own, which would sit inside ours. */
+.react-flow__node-group {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+.group-node {
+  width: 100%;
+  height: 100%;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: rgb(91 141 239 / 5%);
+}
+
+.group-node.is-selected {
+  border-color: var(--accent);
+  border-style: solid;
+}
+
+.group-node.is-dimmed {
+  opacity: 0.25;
+}
+
+.group-node__header {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.group-node__toggle {
+  padding: 0 6px;
+  line-height: 1.3;
+  font-size: 12px;
+}
+
+.group-node__title {
+  font-weight: 500;
+}
+
+.group-node__hover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+}
+
+.group-node__hover {
+  display: none;
+}
+
+.group-node:hover > .group-node__hover {
+  display: block;
+}
+
+/* Connection labels */
+
+.edge-label {
+  position: absolute;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 11px;
+  pointer-events: all;
+}
+
+.edge-label:hover {
+  border-color: var(--border);
+}
+
+.edge-label.is-dimmed {
+  opacity: 0.25;
+}
+
+.edge-label .inline-title {
+  width: 120px;
+  font-size: 11px;
+}
+
+.connection-edge.is-dimmed {
+  opacity: 0.25;
+}
+
+.connection-edge.is-selected {
+  stroke: var(--accent);
+}
+
+/* React Flow ships light-theme defaults, so the dark surface needs these. */
+.react-flow__edge-text {
+  fill: var(--text);
+  font-size: 11px;
+}
+
+.react-flow__edge-textbg {
+  fill: var(--panel);
+}
+
+.react-flow__edge-path {
+  stroke: var(--muted);
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--accent);
+}
+
+.react-flow__handle {
+  width: 8px;
+  height: 8px;
+  background: var(--panel);
+  border: 1px solid var(--muted);
+}
+
+.react-flow__controls-button {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  fill: var(--text);
+}
+
+.react-flow__controls-button:hover {
+  background: #2a2f3d;
+}
+
+.react-flow__attribution {
+  display: none;
+}
+
+/* Type icons */
+
+.element-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.entity-node__icon {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+
+.group-node__icon,
+.edge-label__icon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.edge-label__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.group-node__empty {
+  color: var(--muted);
+  font-style: italic;
+  font-size: 11px;
+}
+
+/* In-situ editor, anchored to the selected element */
+
+.entity-node__editor,
+.group-node__editor,
+.edge-label__editor {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  cursor: default;
+}
+
+.element-editor {
+  width: 240px;
+  padding: 8px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  text-align: left;
+  font-size: 12px;
+}
+
+.element-editor__row {
+  position: relative;
+  margin-bottom: 6px;
+}
+
+.element-editor__type {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.element-editor__types {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #12141a;
+  min-width: 150px;
+}
+
+.element-editor__types button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 4px 6px;
+  font-size: 12px;
+  text-align: left;
+}
+
+.element-editor__types button:hover {
+  background: #232733;
+}
+
+.element-editor__types .is-current {
+  color: var(--accent);
+}
+
+.element-editor__description {
+  font-size: 12px;
+  resize: vertical;
+}
+
+.element-editor__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #12141a;
+}
+
+.tag-chip input {
+  width: auto;
+  min-width: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 11px;
+}
+
+.tag-chip input:focus {
+  outline: 1px solid var(--accent);
+  border-radius: 3px;
+}
+
+.tag-chip__equals {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.tag-chip button {
+  padding: 0 3px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+.element-editor__add-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* React Flow's resize handles on a dark surface */
+
+.react-flow__resize-control.handle {
+  background: var(--accent);
+  border-color: var(--accent);
+  width: 8px;
+  height: 8px;
+}
+
+.react-flow__resize-control.line {
+  border-color: var(--accent);
+}
+
+/* Selected details sit above everything else on the board. */
+
+/* Above the nodes layer, so a selected line's details are not covered by a
+   component, and above the edge hit-path so the label stays clickable. */
+.react-flow__edgelabel-renderer {
+  z-index: 1002;
+}
+
+.edge-label.is-selected {
+  z-index: 1001;
+}
+
+/* Waypoints */
+
+.waypoint {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 11px;
+  height: 11px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.waypoint--add {
+  background: var(--panel);
+  opacity: 0.5;
+}
+
+.waypoint--add:hover {
+  opacity: 1;
+}
+
+.waypoint--bend {
+  background: var(--accent);
+  cursor: grab;
+}
+
+/* Above the selected label, which shares this layer and covers them otherwise. */
+.waypoints {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1100;
+}
+
+/* Arrowheads */
+
+.arrow-markers {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.arrow-markers path {
+  fill: var(--muted);
+}
+
+.element-editor__arrows {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.element-editor__arrows button {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.element-editor__arrows .is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Delete, placed under the selection */
+
+.selection-actions {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin-top: 8px;
+  transform-origin: top left;
+  /* Above every node, which React Flow lifts as high as 1000 when selected. */
+  z-index: 1500;
+  pointer-events: all;
+}
+
+.delete-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  color: #f08a8a;
+}
+
+.delete-button:hover {
+  border-color: #f08a8a;
+  background: #2a2024;
+}
+
+.delete-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* Centred under the multi-selection. */
+.selection-actions .delete-button {
+  transform: translateX(-50%);
+}
+
+/* Last row of the editor, so delete sits below the panel it belongs to. */
+.element-editor__footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+/* A stack of connections collapsing onto one pair of anchors */
+.edge-label__rollup {
+  color: var(--accent);
+  font-weight: 500;
+  cursor: help;
+}
