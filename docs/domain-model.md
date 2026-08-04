@@ -129,7 +129,7 @@ One JSON file. `.modl.json` by convention.
 ```
 
 - `model.elements` is the structure. A consumer needs nothing else.
-- `layout` is keyed by element id. Entities and forks carry `{x, y, width, height}`; an entity may also carry an optional `expanded: {width, height}`. The first is the size drawn when collapsed, the second the container box drawn when expanded, which also decides membership. They are independent, so opening a group to work inside it does not swell the node it shrinks back to. Connections carry `{waypoints: {x,y}[]}` for hand-placed bends. An id missing from `layout` gets a computed default, so a generated document can omit `layout` entirely. The default walks entities in sorted id order and places them on a 4-column grid spaced 240 by 140, at 180 by 72 each. Connections get no default, and the renderer routes them between their endpoints.
+- `layout` is keyed by element id. Entities and forks carry `{x, y, width, height}`; an entity may also carry an optional `expanded: {width, height}`. The first is the size drawn when collapsed, the second the container box drawn when expanded, which also decides membership. They are independent, so opening a group to work inside it does not swell the node it shrinks back to. Connections carry `{waypoints: {x,y}[]}` for hand-placed bends, plus optional `sourceSide` and `targetSide` naming the points a reader dragged the line onto. Which side of a box a line touches says nothing about the domain, so a producer omits them and the renderer picks the nearest sides. An id missing from `layout` gets a computed default, so a generated document can omit `layout` entirely. The default walks entities in sorted id order and places them on a 4-column grid spaced 240 by 140, at 180 by 72 each. Connections get no default, and the renderer routes them between their endpoints.
 - `view` is the camera. Missing means origin at zoom 1.
 - `formatVersion` increments on any breaking change. A loader reading a higher version than it knows refuses the file and says which version it expected.
 
@@ -189,6 +189,8 @@ Validation returns `{ errors: Issue[]; warnings: Issue[] }`, where each `Issue` 
 
 A fork is a junction where connections fan in or fan out. It exists so a decision or a join is a thing in the model rather than an arrangement of arrows a reader has to infer.
 
+The interface calls it a **connection point**, and a diamond-shaped one a **decision**. The model keeps `kind: 'fork'`: the word is what a reader sees, and renaming the format would break every document to change a label.
+
 ```ts
 interface Fork extends ElementBase {
   kind: 'fork';
@@ -205,6 +207,8 @@ A fork with connections on only one side draws a `fork-one-sided` warning: a jun
 ### Direction
 
 `forward` runs from `from` to `to`, `both` is a two-way interaction, and `none` an association with no direction. It defaults to `forward`.
+
+There is no `backward`. A reader who turns on the arrowhead at the `from` end has turned the connection round, so `set-arrowheads` swaps the endpoints and keeps reading forward, carrying the bends and contact points with it. One way of saying a thing beats two.
 
 Direction is part of the model rather than the drawing. Arrowheads were presentation at first, off by default, on the argument that `from` and `to` already carried the direction. That held while a line always left the right side of a box and entered the left, so the geometry said which way it ran. Once a line attaches to whichever side is nearest, an arrowhead is the only thing left telling a reader the direction, and something a reader depends on belongs in the model.
 

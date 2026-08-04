@@ -779,7 +779,7 @@ test.describe('connections', () => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`connection-${IDS.authorise}`).click();
 
-    await page.getByTestId(`editor-direction-${IDS.authorise}-both`).click();
+    await page.getByTestId(`editor-arrow-start-${IDS.authorise}`).click();
 
     expect((await getDocument(page)).model.elements[IDS.authorise]).toMatchObject({
       direction: 'both',
@@ -793,7 +793,7 @@ test.describe('connections', () => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`connection-${IDS.authorise}`).click();
 
-    await page.getByTestId(`editor-direction-${IDS.authorise}-none`).click();
+    await page.getByTestId(`editor-arrow-end-${IDS.authorise}`).click();
 
     const path = page.locator(`.react-flow__edge[data-id^="${IDS.authorise}"] .react-flow__edge-path`);
     await expect(path).not.toHaveAttribute('marker-end', 'url(#modl-arrow-end)');
@@ -842,7 +842,7 @@ test.describe('connections', () => {
     await dispatch(page, [
       ...sampleDomain(),
       { type: 'set-waypoints', id: IDS.authorise, waypoints: [{ x: 200, y: 120 }] },
-      { type: 'set-direction', id: IDS.authorise, direction: 'both' },
+      { type: 'set-arrowheads', id: IDS.authorise, start: true, end: true },
     ]);
     const saved = await serialize(page);
 
@@ -1424,5 +1424,132 @@ test.describe('bundled connection overlay', () => {
     expect(overlay).toContain('client → api');
     expect(overlay).toContain('fetch: client → api');
     expect(overlay).not.toMatch(/interaction [0-9a-f]{8}/);
+  });
+});
+
+test.describe('chosen connection points', () => {
+  test('a line stays on the point it was dragged onto', async ({ page }) => {
+    await dispatch(page, [
+      { type: 'create-entity', id: 'a', entityType: 'component', title: 'A', position: { x: 0, y: 0 } },
+      { type: 'create-entity', id: 'b', entityType: 'component', title: 'B', position: { x: 400, y: 0 } },
+      { type: 'create-connection', id: 'link', connectionType: 'interaction', from: ['a'], to: ['b'], title: '' },
+      // Deliberately not the sides the renderer would pick for boxes side by side.
+      { type: 'set-connection-sides', id: 'link', source: 'top', target: 'bottom' },
+    ]);
+    await fit(page);
+
+    const edge = page.locator('.react-flow__edge[data-id^="link"]');
+    const d = (await edge.locator('.react-flow__edge-path').getAttribute('d'))!;
+    const numbers = [...d.matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
+
+    // Leaves above the source box and arrives below the target box.
+    expect(numbers[1]!).toBeLessThan(5);
+    expect(numbers[numbers.length - 1]!).toBeGreaterThan(65);
+  });
+
+  test('the chosen points survive save and load', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'set-connection-sides', id: IDS.authorise, source: 'top', target: 'bottom' },
+    ]);
+    const saved = await serialize(page);
+    expect(saved).toContain('"sourceSide": "top"');
+
+    await page.getByTestId('file-input').setInputFiles({
+      name: 'sides.modl.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(saved),
+    });
+    await expect(page.getByTestId('toolbar-message')).toContainText('Loaded');
+    expect(await serialize(page)).toBe(saved);
+  });
+});
+
+test.describe('arrowhead toggles', () => {
+  test('turning on the start alone flips the connection', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`connection-${IDS.authorise}`).click();
+
+    // Currently forward: start off, end on. Turning the end off leaves the
+    // start on alone, which reads as backwards.
+    await page.getByTestId(`editor-arrow-start-${IDS.authorise}`).click();
+    await page.getByTestId(`editor-arrow-end-${IDS.authorise}`).click();
+
+    const connection = (await getDocument(page)).model.elements[IDS.authorise];
+    expect(connection).toMatchObject({
+      from: [IDS.gateway],
+      to: [IDS.ui],
+      direction: 'forward',
+    });
+  });
+
+  test('every combination is reachable from two buttons', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`connection-${IDS.authorise}`).click();
+    const direction = async () =>
+      (await getDocument(page)).model.elements[IDS.authorise] as unknown as { direction: string };
+
+    expect((await direction()).direction).toBe('forward');
+    await page.getByTestId(`editor-arrow-start-${IDS.authorise}`).click();
+    expect((await direction()).direction).toBe('both');
+    await page.getByTestId(`editor-arrow-start-${IDS.authorise}`).click();
+    expect((await direction()).direction).toBe('forward');
+    await page.getByTestId(`editor-arrow-end-${IDS.authorise}`).click();
+    expect((await direction()).direction).toBe('none');
+  });
+
+  test('no stray label sits before the buttons', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`connection-${IDS.authorise}`).click();
+
+    await expect(page.getByTestId(`editor-arrows-${IDS.authorise}`)).not.toContainText('Reads');
+  });
+});
+
+test.describe('connection points', () => {
+  test('the toolbar calls it a connection point', async ({ page }) => {
+    await expect(page.getByTestId('add-fork')).toHaveText('Add connection point');
+  });
+
+  test('a diamond is a decision, a circle a connection point', async ({ page }) => {
+    await dispatch(page, [
+      { type: 'create-fork', id: 'junction', shape: 'diamond', title: 'ready?', position: { x: 0, y: 0 } },
+    ]);
+    await page.getByTestId('fork-junction').click();
+
+    await expect(page.getByTestId('editor-junction')).toContainText('decision');
+    await page.getByTestId('fork-shape-junction').click();
+    await expect(page.getByTestId('editor-junction')).toContainText('connection point');
+  });
+
+  test('a connection point resizes', async ({ page }) => {
+    await dispatch(page, [
+      { type: 'create-fork', id: 'junction', shape: 'diamond', title: '', position: { x: 0, y: 0 } },
+    ]);
+    await fit(page);
+    await page.getByTestId('fork-junction').click();
+
+    const before = (await getDocument(page)).layout['junction'] as { width: number };
+    const handle = page.locator(
+      '.react-flow__node[data-id="junction"] .react-flow__resize-control.bottom.right.handle',
+    );
+    const box = (await handle.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 80, box.y + 80, { steps: 10 });
+    await page.mouse.up();
+
+    const after = (await getDocument(page)).layout['junction'] as { width: number };
+    expect(after.width).toBeGreaterThan(before.width);
+  });
+
+  test('a round one takes a single centred contact point', async ({ page }) => {
+    await dispatch(page, [
+      { type: 'create-fork', id: 'junction', shape: 'circle', title: '', position: { x: 0, y: 0 } },
+    ]);
+
+    const handles = page.locator('.react-flow__node[data-id="junction"] .react-flow__handle');
+    await expect(handles).toHaveCount(1);
+    await expect(handles).toHaveClass(/handle--centre/);
   });
 });
