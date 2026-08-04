@@ -20,6 +20,12 @@ export class Store {
   private state: AppState;
   private recorder = new TraceRecorder();
   private listeners = new Set<() => void>();
+  /**
+   * Bumped whenever a whole document arrives. The canvas frames the board on
+   * a load, and only on a load: doing it whenever nodes appear moved the
+   * board out from under the first element someone created.
+   */
+  private loads = 0;
 
   constructor(documentId: string = crypto.randomUUID()) {
     this.state = initialState(documentId, 'Untitled domain');
@@ -37,10 +43,14 @@ export class Store {
     this.recorder.record(command, result);
     if (result.ok) {
       this.state = result.state;
+      if (result.events.some((event) => event.type === 'document-loaded')) this.loads += 1;
       this.emit();
     }
     return result;
   };
+
+  /** Changes when a document is loaded, so a view can react to exactly that. */
+  getLoadCount = (): number => this.loads;
 
   dispatchAll = (commands: Command[]): CommandResult[] => commands.map(this.dispatch);
 
@@ -52,6 +62,8 @@ export class Store {
   reset = (documentId: string = crypto.randomUUID()): void => {
     this.state = initialState(documentId, 'Untitled domain');
     this.recorder.clear();
+    // Not a load: an empty board has nothing to frame, and framing it here
+    // would move the camera before the first element is placed.
     this.emit();
   };
 

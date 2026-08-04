@@ -14,15 +14,17 @@ import {
 import '@xyflow/react/dist/style.css';
 import { DEFAULT_ENTITY_SIZE, connectionTypeFor, descendantsOf, isEntity } from '@modl/core';
 import { store } from '../store/store.js';
-import { useAppState } from '../store/useStore.js';
+import { useAppState, useLoadCount } from '../store/useStore.js';
 import {
   connectionIdFromEdge,
   containerAt,
   deriveEdges,
   deriveNodes,
+  type BoardNodeData,
   type EntityNodeData,
 } from './derive.js';
 import { EntityNode } from './EntityNode.js';
+import { ForkNode } from './ForkNode.js';
 import { GroupNode } from './GroupNode.js';
 import { ConnectionEdge } from './ConnectionEdge.js';
 import { ArrowMarkers } from './ArrowMarkers.js';
@@ -30,7 +32,7 @@ import { SelectionActions } from './SelectionActions.js';
 import { getNewElementType } from './newElementType.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
 
-const NODE_TYPES = { entity: EntityNode, group: GroupNode };
+const NODE_TYPES = { entity: EntityNode, group: GroupNode, fork: ForkNode };
 const EDGE_TYPES = { connection: ConnectionEdge };
 
 /** The subset of a React Flow change this app acts on. */
@@ -43,7 +45,8 @@ interface CanvasChange {
 export function Canvas() {
   const state = useAppState();
   const editingId = useEditingId();
-  const { screenToFlowPosition } = useReactFlow();
+  const loadCount = useLoadCount();
+  const { screenToFlowPosition, fitView } = useReactFlow();
 
   // A selection box in flight keeps element editors shut.
   const [boxSelecting, setBoxSelecting] = useState(false);
@@ -70,8 +73,21 @@ export function Canvas() {
     });
   }, [derived]);
 
+  /**
+   * Frames the board when a document arrives, so a file whose elements sit
+   * outside the current camera is not invisible on open. Creating an element
+   * leaves the camera alone, which is the difference from `fitView` on the
+   * component: that fired the first time any node appeared.
+   */
+  useEffect(() => {
+    if (loadCount === 0) return;
+    // A frame later, once React Flow has measured the nodes it was handed.
+    const timer = window.setTimeout(() => void fitView({ padding: 0.15 }), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadCount, fitView]);
+
   const onNodeDragStop = useCallback(
-    (_: unknown, __: Node, dragged: Node<EntityNodeData>[]) => {
+    (_: unknown, __: Node, dragged: Node<BoardNodeData>[]) => {
       const state = store.getState();
       const elements = state.document.model.elements;
 
@@ -87,8 +103,11 @@ export function Canvas() {
 
         // A group carries its members whether it is open or shut. Moving it
         // while collapsed and leaving them behind would scatter them back to
-        // their old positions the moment it is expanded.
-        const carriesMembers = node.data.isContainer || node.data.memberCount > 0;
+        // their old positions the moment it is expanded. A fork holds nothing.
+        const carriesMembers =
+          node.data.isContainer === true || (node.data.memberCount as number | undefined) !== undefined
+            ? node.data.isContainer === true || ((node.data.memberCount as number) ?? 0) > 0
+            : false;
         if (carriesMembers && (delta.x !== 0 || delta.y !== 0)) {
           for (const memberId of descendantsOf(elements, node.id)) {
             const layout = state.document.layout[memberId];
@@ -127,10 +146,15 @@ export function Canvas() {
 
   const onConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
-    const target = store.getState().document.model.elements[connection.target];
-    // The connection takes the paradigm of what it points at.
+    const elements = store.getState().document.model.elements;
+    const target = elements[connection.target];
+    const source = elements[connection.source];
+    // The connection takes the paradigm of what it points at. An artifact or
+    // a fork has no paradigm, so fall back to where the line came from.
     const connectionType =
-      target && isEntity(target) ? connectionTypeFor(target.type) : 'interaction';
+      (target && isEntity(target) ? connectionTypeFor(target.type) : null) ??
+      (source && isEntity(source) ? connectionTypeFor(source.type) : null) ??
+      'interaction';
 
     store.dispatch({
       type: 'create-connection',
@@ -215,7 +239,7 @@ export function Canvas() {
   );
 
   const onNodesChange = useCallback(
-    (changes: NodeChange<Node<EntityNodeData>>[]) => {
+    (changes: NodeChange<Node<BoardNodeData>>[]) => {
       // Position and dimension changes stay local until the drag ends.
       setNodes((current) => applyNodeChanges(changes, current));
       routeChanges(changes, (id) => id);
