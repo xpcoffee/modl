@@ -1806,3 +1806,87 @@ test.describe('converting an element', () => {
     await expect(page.getByTestId('entity-a')).toBeVisible();
   });
 });
+
+test.describe('lines clearing their element', () => {
+  test('a line leaving a side that faces away still clears the box', async ({ page }) => {
+    // The reported case: the target is up and to the right, but the line was
+    // dropped on the bottom edge. Turning straight for the target from there
+    // drags the curve back through the element it just left.
+    await dispatch(page, [
+      { type: 'create-entity', id: 'box', entityType: 'component', title: '', position: { x: 0, y: 140 } },
+      { type: 'create-connection-node', id: 'j', shape: 'circle', title: '', position: { x: 330, y: 20 } },
+      { type: 'create-connection', id: 'c', connectionType: 'interaction', from: ['box'], to: ['j'], title: '' },
+      { type: 'set-connection-sides', id: 'c', source: 'bottom', target: null },
+    ]);
+    await fit(page);
+
+    const box = (await page.evaluate(
+      () => window.__modl.getDocument().layout['box'],
+    )) as { x: number; y: number; width: number; height: number };
+
+    const insideCount = await page.evaluate((rect) => {
+      const path = document.querySelector('.react-flow__edge-path') as SVGPathElement;
+      const length = path.getTotalLength();
+      let count = 0;
+      for (let at = 0; at <= length; at += length / 200) {
+        const point = path.getPointAtLength(at);
+        if (
+          point.x > rect.x + 2 &&
+          point.x < rect.x + rect.width - 2 &&
+          point.y > rect.y + 2 &&
+          point.y < rect.y + rect.height - 2
+        ) {
+          count += 1;
+        }
+      }
+      return count;
+    }, box);
+
+    expect(insideCount).toBe(0);
+  });
+
+  test('a line leaves perpendicular to the side it starts on', async ({ page }) => {
+    await dispatch(page, [
+      { type: 'create-entity', id: 'a', entityType: 'component', title: 'A', position: { x: 0, y: 0 } },
+      { type: 'create-entity', id: 'b', entityType: 'component', title: 'B', position: { x: 500, y: 300 } },
+      { type: 'create-connection', id: 'c', connectionType: 'interaction', from: ['a'], to: ['b'], title: '' },
+    ]);
+    await fit(page);
+
+    const heading = await page.evaluate(() => {
+      const path = document.querySelector('.react-flow__edge-path') as SVGPathElement;
+      const start = path.getPointAtLength(0);
+      const just = path.getPointAtLength(12);
+      return { dx: just.x - start.x, dy: just.y - start.y };
+    });
+
+    // Leaves the right-hand side heading right, not diagonally at the target.
+    expect(heading.dx).toBeGreaterThan(0);
+    expect(Math.abs(heading.dy)).toBeLessThan(Math.abs(heading.dx) / 2);
+  });
+});
+
+test.describe('junction icons', () => {
+  test('the picker shows an icon for each junction shape', async ({ page }) => {
+    await page.getByTestId('add-element').click();
+
+    await expect(
+      page.locator('[data-testid="add-type-connection-node"] svg[data-icon]'),
+    ).toHaveAttribute('data-icon', 'connection node');
+    await expect(
+      page.locator('[data-testid="add-type-decision"] svg[data-icon]'),
+    ).toHaveAttribute('data-icon', 'decision');
+  });
+
+  test('the editor type list shows them too', async ({ page }) => {
+    await dispatch(page, [
+      { type: 'create-entity', id: 'a', entityType: 'component', title: 'A', position: { x: 0, y: 0 } },
+    ]);
+    await page.getByTestId('entity-a').click();
+    await page.getByTestId('editor-type-a').click();
+
+    await expect(
+      page.locator('[data-testid="editor-type-a-decision"] svg[data-icon]'),
+    ).toHaveAttribute('data-icon', 'decision');
+  });
+});
