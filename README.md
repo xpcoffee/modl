@@ -93,7 +93,8 @@ Use that path rather than `npx playwright install`, which fetches whatever versi
 ### What you can do in it
 
 - **Add** on the toolbar, or double-click empty canvas. Both use the type in the toolbar dropdown
-- **Add fork** for a junction where connections fan in or out, so a decision is a thing in the model rather than an arrangement of arrows. Click it to switch between a diamond and a circle
+- **Add connection node** for a junction where connections fan in or out, so a decision is a thing in the model rather than an arrangement of arrows. Click it to switch between a decision (diamond) and a plain node (circle)
+- **Re-point** a connection by selecting it and dragging either end onto another element
 - **Rename** by double-clicking an element or a connection label. Enter commits, Escape discards
 - **Drag** a node to move it, or its corners to resize it. Both are recorded on release, so the trace holds the result you meant
 - **Multi-select** with Control-click or Cmd-click. Dragging moves the whole selection

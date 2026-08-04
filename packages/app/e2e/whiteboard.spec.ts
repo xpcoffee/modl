@@ -1506,12 +1506,12 @@ test.describe('arrowhead toggles', () => {
   });
 });
 
-test.describe('connection points', () => {
-  test('the toolbar calls it a connection point', async ({ page }) => {
-    await expect(page.getByTestId('add-fork')).toHaveText('Add connection point');
+test.describe('connection nodes', () => {
+  test('the toolbar calls it a connection node', async ({ page }) => {
+    await expect(page.getByTestId('add-fork')).toHaveText('Add connection node');
   });
 
-  test('a diamond is a decision, a circle a connection point', async ({ page }) => {
+  test('a diamond is a decision, a circle a connection node', async ({ page }) => {
     await dispatch(page, [
       { type: 'create-fork', id: 'junction', shape: 'diamond', title: 'ready?', position: { x: 0, y: 0 } },
     ]);
@@ -1519,7 +1519,7 @@ test.describe('connection points', () => {
 
     await expect(page.getByTestId('editor-junction')).toContainText('decision');
     await page.getByTestId('fork-shape-junction').click();
-    await expect(page.getByTestId('editor-junction')).toContainText('connection point');
+    await expect(page.getByTestId('editor-junction')).toContainText('connection node');
   });
 
   test('a connection point resizes', async ({ page }) => {
@@ -1543,13 +1543,137 @@ test.describe('connection points', () => {
     expect(after.width).toBeGreaterThan(before.width);
   });
 
-  test('a round one takes a single centred contact point', async ({ page }) => {
+  test('a round one keeps handles to drag from, and anchors lines at its middle', async ({ page }) => {
     await dispatch(page, [
       { type: 'create-fork', id: 'junction', shape: 'circle', title: '', position: { x: 0, y: 0 } },
+      { type: 'create-entity', id: 'target', entityType: 'component', title: 'T', position: { x: 400, y: 0 } },
+      { type: 'create-connection', id: 'out', connectionType: 'interaction', from: ['junction'], to: ['target'], title: '' },
     ]);
+    await fit(page);
 
-    const handles = page.locator('.react-flow__node[data-id="junction"] .react-flow__handle');
-    await expect(handles).toHaveCount(1);
-    await expect(handles).toHaveClass(/handle--centre/);
+    // Four side handles to start a connection from, plus a centre anchor.
+    const node = page.locator('.react-flow__node[data-id="junction"]');
+    await expect(node.locator('.react-flow__handle:not(.handle--centre)')).toHaveCount(4);
+    await expect(node.locator('.handle--centre')).toHaveCount(1);
+
+    // The line leaves from the middle of the circle, not one of its sides.
+    const box = (await page.evaluate(
+      () => window.__modl.getDocument().layout['junction'],
+    )) as { x: number; y: number; width: number; height: number };
+    const d = (await page
+      .locator('.react-flow__edge[data-id^="out"] .react-flow__edge-path')
+      .getAttribute('d'))!;
+    const numbers = [...d.matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
+    // Within a handle's width of the middle, and nowhere near a side.
+    expect(Math.abs(numbers[0]! - (box.x + box.width / 2))).toBeLessThan(8);
+  });
+
+  test('a connection can be dragged from a round node', async ({ page }) => {
+    await dispatch(page, [
+      { type: 'create-fork', id: 'junction', shape: 'circle', title: '', position: { x: 0, y: 100 } },
+      { type: 'create-entity', id: 'target', entityType: 'component', title: 'T', position: { x: 320, y: 100 } },
+    ]);
+    await fit(page);
+
+    const from = (await page
+      .locator('.react-flow__node[data-id="junction"] .react-flow__handle.react-flow__handle-right')
+      .boundingBox())!;
+    const to = (await page
+      .locator('.react-flow__node[data-id="target"] .react-flow__handle.react-flow__handle-left')
+      .boundingBox())!;
+
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 });
+    await page.mouse.up();
+
+    const connections = Object.values((await getDocument(page)).model.elements).filter(
+      (element) => element.kind === 'connection',
+    );
+    expect(connections).toHaveLength(1);
+  });
+});
+
+test.describe('moving a connector end', () => {
+  test('drags an endpoint onto another component', async ({ page }) => {
+    await dispatch(page, [
+      { type: 'create-entity', id: 'a', entityType: 'component', title: 'A', position: { x: 0, y: 0 } },
+      { type: 'create-entity', id: 'b', entityType: 'component', title: 'B', position: { x: 400, y: 0 } },
+      { type: 'create-entity', id: 'c', entityType: 'component', title: 'C', position: { x: 400, y: 260 } },
+      { type: 'create-connection', id: 'link', connectionType: 'interaction', from: ['a'], to: ['b'], title: '' },
+    ]);
+    await fit(page);
+
+    // A connection offers its ends only while it is selected.
+    await page.getByTestId('connection-link').click();
+
+    const d = (await page
+      .locator('.react-flow__edge[data-id^="link"] .react-flow__edge-path')
+      .getAttribute('d'))!;
+    const numbers = [...d.matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
+    const endFlow = { x: numbers[numbers.length - 2]!, y: numbers[numbers.length - 1]! };
+
+    const pane = (await page.locator('.react-flow__pane').boundingBox())!;
+    const transform = await page.evaluate(() => {
+      const viewport = document.querySelector('.react-flow__viewport') as HTMLElement;
+      const m = new DOMMatrix(getComputedStyle(viewport).transform);
+      return { a: m.a, d: m.d, e: m.e, f: m.f };
+    });
+    const screen = (p: { x: number; y: number }) => ({
+      x: pane.x + transform.a * p.x + transform.e,
+      y: pane.y + transform.d * p.y + transform.f,
+    });
+
+    const start = screen(endFlow);
+    const drop = (await page
+      .locator('.react-flow__node[data-id="c"] .react-flow__handle.react-flow__handle-left')
+      .boundingBox())!;
+
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(drop.x + drop.width / 2, drop.y + drop.height / 2, { steps: 14 });
+    await page.mouse.up();
+
+    expect((await getDocument(page)).model.elements['link']).toMatchObject({
+      from: ['a'],
+      to: ['c'],
+    });
+  });
+});
+
+test.describe('adding a parallel connector', () => {
+  test('leaves the existing line where it was', async ({ page }) => {
+    await dispatch(page, [
+      { type: 'create-entity', id: 'a', entityType: 'component', title: 'A', position: { x: 0, y: 0 } },
+      { type: 'create-entity', id: 'b', entityType: 'component', title: 'B', position: { x: 400, y: 0 } },
+      { type: 'create-connection', id: 'first', connectionType: 'interaction', from: ['a'], to: ['b'], title: '' },
+    ]);
+    await fit(page);
+
+    const pathOf = (id: string) =>
+      page.locator(`.react-flow__edge[data-id^="${id}"] .react-flow__edge-path`).getAttribute('d');
+    const before = await pathOf('first');
+
+    await dispatch(page, [
+      { type: 'create-connection', id: 'second', connectionType: 'interaction', from: ['a'], to: ['b'], title: '' },
+    ]);
+    await expect(page.locator('.react-flow__edge')).toHaveCount(2);
+
+    // The first line does not move when a second joins the same pair.
+    expect(await pathOf('first')).toBe(before);
+  });
+
+  test('still keeps the two apart', async ({ page }) => {
+    await dispatch(page, [
+      { type: 'create-entity', id: 'a', entityType: 'component', title: 'A', position: { x: 0, y: 0 } },
+      { type: 'create-entity', id: 'b', entityType: 'component', title: 'B', position: { x: 400, y: 0 } },
+      { type: 'create-connection', id: 'first', connectionType: 'interaction', from: ['a'], to: ['b'], title: 'one' },
+      { type: 'create-connection', id: 'second', connectionType: 'interaction', from: ['a'], to: ['b'], title: 'two' },
+    ]);
+    await fit(page);
+
+    const one = (await page.getByTestId('connection-first').boundingBox())!;
+    const two = (await page.getByTestId('connection-second').boundingBox())!;
+    expect(Math.abs(one.y - two.y)).toBeGreaterThan(10);
   });
 });

@@ -189,7 +189,9 @@ Validation returns `{ errors: Issue[]; warnings: Issue[] }`, where each `Issue` 
 
 A fork is a junction where connections fan in or fan out. It exists so a decision or a join is a thing in the model rather than an arrangement of arrows a reader has to infer.
 
-The interface calls it a **connection point**, and a diamond-shaped one a **decision**. The model keeps `kind: 'fork'`: the word is what a reader sees, and renaming the format would break every document to change a label.
+The interface calls it a **connection node**, and a diamond-shaped one a **decision**. "Connection point" was the first choice and read as the handles on the sides of a component, which is a different thing entirely.
+
+The model keeps `kind: 'fork'`: the word is what a reader sees, and renaming the format would break every document to change a label.
 
 ```ts
 interface Fork extends ElementBase {

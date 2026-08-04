@@ -777,14 +777,12 @@ select {
   display: block;
 }
 
-/* A round connection point has no sides, so its handle sits at the middle. */
+/* A round node's lines meet it at the middle. This is where they are
+   anchored, never something to grab: the four side handles are for that. */
 .handle--centre {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
   opacity: 0;
-}
-
-.fork-node.is-selected .handle--centre {
-  opacity: 1;
+  pointer-events: none;
 }

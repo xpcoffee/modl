@@ -375,8 +375,13 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
 
     // Parallel connections between the same visible pair fan out, so several
     // between one pair of components no longer land on top of each other.
+    //
+    // They spread outwards from the first: 0, +1, -1, +2, -2. Centring the
+    // set instead re-placed every line each time one was added, so drawing a
+    // second connection made the first twitch.
     drawn.forEach(({ from, to, connection: element }, index) => {
-      const spread = drawn.length > 1 ? index - (drawn.length - 1) / 2 : 0;
+      const step = Math.ceil(index / 2);
+      const spread = index === 0 ? 0 : index % 2 === 1 ? step : -step;
       edges.push({
         id: `${element.id}:${from}:${to}`,
         type: 'connection',
@@ -388,6 +393,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
         }),
         selected: selected.has(element.id),
         ...(selected.has(element.id) ? { zIndex: 1001 } : {}),
+        reconnectable: selected.has(element.id),
         data: {
           connectionId: element.id,
           title: element.title,

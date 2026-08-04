@@ -20,7 +20,8 @@ import { stopEditing } from './editing.js';
  */
 export function ForkNode({ data, selected }: NodeProps<Node<ForkNodeData>>) {
   const next: ForkShape = data.shape === 'circle' ? 'diamond' : 'circle';
-  const label = (shape: ForkShape) => (shape === 'diamond' ? 'decision' : 'connection point');
+  // "connection point" read as the handles on a component, so: node.
+  const label = (shape: ForkShape) => (shape === 'diamond' ? 'decision' : 'connection node');
 
   return (
     <div
@@ -45,17 +46,21 @@ export function ForkNode({ data, selected }: NodeProps<Node<ForkNodeData>>) {
         }
       />
 
-      {/* A circle has no sides to speak of, so lines aim at its middle. A
-          decision is a diamond, whose points are where lines belong. */}
-      {data.shape === 'circle' ? (
-        <Handle type="source" position={Position.Left} id="centre" className="handle--centre" />
-      ) : (
-        <>
-          <Handle type="source" position={Position.Left} id="left" />
-          <Handle type="source" position={Position.Right} id="right" />
-          <Handle type="source" position={Position.Top} id="top" />
-          <Handle type="source" position={Position.Bottom} id="bottom" />
-        </>
+      {/* Handles on every side are what a reader drags a connection from, so
+          a round node keeps them. Lines still meet it at the middle: the
+          centre handle below is an anchor for routing and never a target. */}
+      <Handle type="source" position={Position.Left} id="left" />
+      <Handle type="source" position={Position.Right} id="right" />
+      <Handle type="source" position={Position.Top} id="top" />
+      <Handle type="source" position={Position.Bottom} id="bottom" />
+      {data.shape === 'circle' && (
+        <Handle
+          type="source"
+          position={Position.Left}
+          id="centre"
+          className="handle--centre"
+          isConnectable={false}
+        />
       )}
 
       <div className="fork-node__face" />

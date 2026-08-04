@@ -17,7 +17,9 @@ import {
   DEFAULT_ENTITY_SIZE,
   connectionTypeFor,
   descendantsOf,
+  isConnection,
   isEntity,
+  type Id,
   type Side,
 } from '@modl/core';
 import { store } from '../store/store.js';
@@ -194,6 +196,43 @@ export function Canvas() {
    * the two clicks can land on different elements and the browser then
    * reports their common ancestor, which is the pane even for a node.
    */
+  /**
+   * Dragging an end of a selected connection onto another element re-points
+   * it. The edge id carries which pair this line stands for, so a
+   * many-to-many connection only has the end that moved replaced.
+   */
+  const onReconnect = useCallback((edge: Edge, connection: Connection) => {
+    if (!connection.source || !connection.target) return;
+
+    const [id, oldSource, oldTarget] = edge.id.split(':');
+    if (!id || id === 'rollup') return;
+
+    const element = store.getState().document.model.elements[id];
+    if (!element || !isConnection(element)) return;
+
+    const swap = (list: Id[], was: string | undefined, now: string): Id[] => {
+      if (!was || was === now) return list;
+      const next = list.map((entry) => (entry === was ? now : entry));
+      return [...new Set(next)];
+    };
+
+    store.dispatch({
+      type: 'set-endpoints',
+      id,
+      from: swap(element.from, oldSource, connection.source),
+      to: swap(element.to, oldTarget, connection.target),
+    });
+
+    // The line was dropped somewhere new, so its old contact points no longer
+    // describe where it runs.
+    store.dispatch({
+      type: 'set-connection-sides',
+      id,
+      source: (connection.sourceHandle as Side | null) ?? null,
+      target: (connection.targetHandle as Side | null) ?? null,
+    });
+  }, []);
+
   const onDoubleClick = useCallback(
     (event: React.MouseEvent) => {
       const hit = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
@@ -283,6 +322,8 @@ export function Canvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onReconnect={onReconnect}
+        reconnectRadius={16}
         onDoubleClick={onDoubleClick}
         onPaneClick={stopEditing}
         onSelectionStart={() => setBoxSelecting(true)}

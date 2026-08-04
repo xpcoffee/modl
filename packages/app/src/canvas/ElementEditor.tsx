@@ -32,7 +32,7 @@ export function ElementEditor({
    * A connection point has no type to choose, so its chip is a label rather
    * than a menu, and it carries the reader's word for the shape.
    */
-  elementType: EntityType | ConnectionType | 'connection point' | 'decision';
+  elementType: EntityType | ConnectionType | 'connection node' | 'decision';
   description: string;
   tags: Record<string, string[]>;
   /** Present for connections: which way the connection reads. */
@@ -61,7 +61,7 @@ export function ElementEditor({
           disabled={types.length === 0}
           onClick={() => setPickingType((open) => !open)}
         >
-          {elementType === 'connection point' || elementType === 'decision' ? null : (
+          {elementType === 'connection node' || elementType === 'decision' ? null : (
             <ElementIcon elementType={elementType} />
           )}
           <span>{elementType}</span>
