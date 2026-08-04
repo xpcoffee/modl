@@ -271,6 +271,7 @@ test.describe('groups', () => {
         position: { x: 280, y: 0 },
       },
     ]);
+    await fit(page);
   }
 
   test('a collapsed group hides its members and shows a count', async ({ page }) => {
@@ -940,6 +941,7 @@ test.describe('collapsed and expanded sizes', () => {
         position: { x: 280, y: 0 },
       },
     ]);
+    await fit(page);
   }
 
   test('a new group collapses to a node, not to its container box', async ({ page }) => {
@@ -1003,5 +1005,25 @@ test.describe('collapsed and expanded sizes', () => {
     };
     expect(after.width).toBeGreaterThan(180);
     expect(after.expanded.width).toBe(before.expanded.width);
+  });
+});
+
+test.describe('first element', () => {
+  test('appears under the pointer without reframing the board', async ({ page }) => {
+    const pane = page.locator('.react-flow__pane');
+    const box = (await pane.boundingBox())!;
+    const viewportBefore = await page.locator('.react-flow__viewport').getAttribute('style');
+
+    // The very first double-click, on an empty board.
+    const click = { x: 300, y: 200 };
+    await pane.dblclick({ position: click });
+
+    const viewportAfter = await page.locator('.react-flow__viewport').getAttribute('style');
+    expect(viewportAfter).toBe(viewportBefore);
+
+    const created = Object.keys((await getDocument(page)).model.elements)[0]!;
+    const node = (await page.locator(`.react-flow__node[data-id="${created}"]`).boundingBox())!;
+    expect(Math.abs(node.x + node.width / 2 - (box.x + click.x))).toBeLessThan(2);
+    expect(Math.abs(node.y + node.height / 2 - (box.y + click.y))).toBeLessThan(2);
   });
 });

@@ -250,7 +250,10 @@ export function Canvas() {
         deleteKeyCode={['Delete', 'Backspace']}
         // Pinned so the gesture is the same on every platform.
         multiSelectionKeyCode={['Control', 'Meta']}
-        fitView
+        // No `fitView`: it defers until nodes exist, so creating the first
+        // element re-framed the board and the new element jumped away from
+        // the pointer that made it. The fit control does this on request.
+        defaultViewport={{ x: 0, y: 0, zoom: 1 }}
         proOptions={{ hideAttribution: true }}
       >
         <Background />
