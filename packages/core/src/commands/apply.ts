@@ -5,6 +5,7 @@ import {
   isEntity,
   isFork,
   type Connection,
+  type Direction,
   type Document,
   type Element,
   type Id,
@@ -311,14 +312,61 @@ export function apply(state: AppState, command: Command): CommandResult {
       );
     }
 
-    case 'set-direction': {
+    case 'set-arrowheads': {
       const element = state.document.model.elements[command.id];
       if (!element) return unknown(command.type, command.id);
       if (!isConnection(element)) {
         return fail(command.type, 'wrong-kind', `element ${command.id} is not a connection`);
       }
+
+      // A head at the `from` end alone means the reader has turned the
+      // connection round. Swapping the endpoints keeps one way of saying it:
+      // a connection always runs from `from` to `to`.
+      if (command.start && !command.end) {
+        return ok(
+          withElement(
+            state,
+            { ...element, from: [...element.to], to: [...element.from], direction: 'forward' },
+            flipSides(state.document.layout, command.id),
+          ),
+          [{ type: 'element-updated', id: command.id }],
+        );
+      }
+
+      const direction: Direction = command.end ? (command.start ? 'both' : 'forward') : 'none';
+      return ok(withElement(state, { ...element, direction }, state.document.layout), [
+        { type: 'element-updated', id: command.id },
+      ]);
+    }
+
+    case 'set-connection-sides': {
+      const element = state.document.model.elements[command.id];
+      if (!element) return unknown(command.type, command.id);
+      if (!isConnection(element)) {
+        return fail(command.type, 'wrong-kind', `element ${command.id} is not a connection`);
+      }
+
+      const previous = state.document.layout[command.id];
+      const existing = previous && 'waypoints' in previous ? previous : { waypoints: [] };
+      const { sourceSide, targetSide, ...rest } = existing;
+      void sourceSide;
+      void targetSide;
+
       return ok(
-        withElement(state, { ...element, direction: command.direction }, state.document.layout),
+        {
+          ...state,
+          document: {
+            ...state.document,
+            layout: {
+              ...state.document.layout,
+              [command.id]: {
+                ...rest,
+                ...(command.source === null ? {} : { sourceSide: command.source }),
+                ...(command.target === null ? {} : { targetSide: command.target }),
+              },
+            },
+          },
+        },
         [{ type: 'element-updated', id: command.id }],
       );
     }
@@ -665,6 +713,24 @@ function checkEndpoints(
     }
   }
   return null;
+}
+
+/** Turning a connection round takes its chosen contact points with it. */
+function flipSides(layout: Document['layout'], id: Id): Document['layout'] {
+  const entry = layout[id];
+  if (!entry || !('waypoints' in entry)) return layout;
+
+  const { sourceSide, targetSide, ...rest } = entry;
+  return {
+    ...layout,
+    [id]: {
+      ...rest,
+      // The bends run source to target, so a flip reverses them too.
+      waypoints: [...entry.waypoints].reverse(),
+      ...(targetSide === undefined ? {} : { sourceSide: targetSide }),
+      ...(sourceSide === undefined ? {} : { targetSide: sourceSide }),
+    },
+  };
 }
 
 /** Room for the container header and a margin around what it holds. */

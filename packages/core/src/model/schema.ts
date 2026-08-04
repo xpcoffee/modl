@@ -81,8 +81,12 @@ export const entityLayoutSchema = z.object({
     .optional(),
 });
 
+export const sideSchema = z.enum(['left', 'right', 'top', 'bottom', 'centre']);
+
 export const connectionLayoutSchema = z.object({
   waypoints: z.array(pointSchema),
+  sourceSide: sideSchema.optional(),
+  targetSide: sideSchema.optional(),
 });
 
 export const elementLayoutSchema = z.union([entityLayoutSchema, connectionLayoutSchema]);

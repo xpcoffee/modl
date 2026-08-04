@@ -100,7 +100,11 @@ function orderLayout(layout: ElementLayout): Record<string, unknown> {
         : {}),
     };
   }
-  return { waypoints: layout.waypoints.map((point) => ({ x: point.x, y: point.y })) };
+  return {
+    waypoints: layout.waypoints.map((point) => ({ x: point.x, y: point.y })),
+    ...(layout.sourceSide === undefined ? {} : { sourceSide: layout.sourceSide }),
+    ...(layout.targetSide === undefined ? {} : { targetSide: layout.targetSide }),
+  };
 }
 
 export type ParseResult =

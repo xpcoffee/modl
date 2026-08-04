@@ -6,6 +6,7 @@ import type {
   ForkShape,
   Id,
   Point,
+  Side,
   SourceRef,
   View,
 } from '../model/types.js';
@@ -47,7 +48,8 @@ export type Command =
   | { type: 'rename-tag'; id: Id; from: string; to: string }
   | { type: 'resize-element'; id: Id; width: number; height: number }
   | { type: 'set-waypoints'; id: Id; waypoints: Point[] }
-  | { type: 'set-direction'; id: Id; direction: Direction }
+  | { type: 'set-arrowheads'; id: Id; start: boolean; end: boolean }
+  | { type: 'set-connection-sides'; id: Id; source: Side | null; target: Side | null }
   | { type: 'set-element-type'; id: Id; elementType: EntityType | ConnectionType }
   | { type: 'set-endpoints'; id: Id; from: Id[]; to: Id[] }
   | { type: 'delete-element'; id: Id }

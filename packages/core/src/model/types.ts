@@ -89,9 +89,19 @@ export interface EntityLayout {
   expanded?: { width: number; height: number };
 }
 
+/** Where a line meets an element. `centre` aims at the middle. */
+export type Side = 'left' | 'right' | 'top' | 'bottom' | 'centre';
+
 export interface ConnectionLayout {
   /** Hand-placed bends, in order from source to target. */
   waypoints: Point[];
+  /**
+   * The points a reader dragged the line onto. Layout, not structure: which
+   * side of a box a line touches says nothing about the domain, so a producer
+   * omits these and the renderer picks the nearest sides.
+   */
+  sourceSide?: Side;
+  targetSide?: Side;
 }
 
 export type ElementLayout = EntityLayout | ConnectionLayout;

@@ -412,7 +412,7 @@ describe('connection layout', () => {
     const state = must(
       base,
       link(LINK, [A], [B]),
-      { type: 'set-direction', id: LINK, direction: 'both' },
+      { type: 'set-arrowheads', id: LINK, start: true, end: true },
       { type: 'set-waypoints', id: LINK, waypoints: [{ x: 1, y: 2 }] },
     );
     expect(state.document.model.elements[LINK]).toMatchObject({ direction: 'both' });
@@ -420,10 +420,58 @@ describe('connection layout', () => {
   });
 
   it('reads both ways, or neither', () => {
-    let state = must(base, link(LINK, [A], [B]), { type: 'set-direction', id: LINK, direction: 'both' });
+    let state = must(base, link(LINK, [A], [B]), { type: 'set-arrowheads', id: LINK, start: true, end: true });
     expect(state.document.model.elements[LINK]).toMatchObject({ direction: 'both' });
-    state = must(state, { type: 'set-direction', id: LINK, direction: 'none' });
+    state = must(state, { type: 'set-arrowheads', id: LINK, start: false, end: false });
     expect(state.document.model.elements[LINK]).toMatchObject({ direction: 'none' });
+  });
+
+  it('a head at the start alone turns the connection round', () => {
+    // One way of saying backwards: swap the ends and keep reading forward.
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      { type: 'set-arrowheads', id: LINK, start: true, end: false },
+    );
+    expect(state.document.model.elements[LINK]).toMatchObject({
+      from: [B],
+      to: [A],
+      direction: 'forward',
+    });
+  });
+
+  it('a flip takes the bends and the contact points with it', () => {
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      { type: 'set-connection-sides', id: LINK, source: 'top', target: 'bottom' },
+      { type: 'set-waypoints', id: LINK, waypoints: [{ x: 1, y: 1 }, { x: 2, y: 2 }] },
+      { type: 'set-arrowheads', id: LINK, start: true, end: false },
+    );
+    expect(state.document.layout[LINK]).toMatchObject({
+      sourceSide: 'bottom',
+      targetSide: 'top',
+      waypoints: [{ x: 2, y: 2 }, { x: 1, y: 1 }],
+    });
+  });
+
+  it('remembers the points a reader dragged onto', () => {
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      { type: 'set-connection-sides', id: LINK, source: 'bottom', target: 'top' },
+    );
+    expect(state.document.layout[LINK]).toMatchObject({ sourceSide: 'bottom', targetSide: 'top' });
+  });
+
+  it('clears a contact point with null, so the renderer picks again', () => {
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      { type: 'set-connection-sides', id: LINK, source: 'bottom', target: 'top' },
+      { type: 'set-connection-sides', id: LINK, source: null, target: null },
+    );
+    expect(state.document.layout[LINK]).not.toHaveProperty('sourceSide');
   });
 
   it('clears waypoints with an empty list', () => {
@@ -443,8 +491,8 @@ describe('connection layout', () => {
     expect(result.error.code).toBe('wrong-kind');
   });
 
-  it('wrong-kind: rejects a direction on an entity', () => {
-    const result = apply(base, { type: 'set-direction', id: A, direction: 'both' });
+  it('wrong-kind: rejects arrowheads on an entity', () => {
+    const result = apply(base, { type: 'set-arrowheads', id: A, start: true, end: true });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe('wrong-kind');
@@ -467,7 +515,7 @@ describe('connection layout', () => {
       base,
       link(LINK, [A], [B]),
       { type: 'set-waypoints', id: LINK, waypoints: [{ x: 10, y: 20 }] },
-      { type: 'set-direction', id: LINK, direction: 'both' },
+      { type: 'set-arrowheads', id: LINK, start: true, end: true },
     );
     const text = serializeDocument(state.document);
     const parsed = parseDocument(text);
