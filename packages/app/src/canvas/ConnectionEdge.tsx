@@ -25,12 +25,6 @@ function outward(position: Position): Point {
   return { x: 0, y: 1 };
 }
 
-/** Across the side a line leaves from, which is how parallel lines separate. */
-function across(position: Position): Point {
-  const out = outward(position);
-  return { x: -out.y, y: out.x };
-}
-
 /** True when a line has to set off away from where it is going. */
 function facesAway(normal: Point, at: Point, towards: Point): boolean {
   const span = { x: towards.x - at.x, y: towards.y - at.y };
@@ -126,22 +120,11 @@ export function ConnectionEdge({
   const connectionId = data?.connectionId ?? id;
   const waypoints = data?.waypoints ?? [];
 
-  /*
-   * Parallel connections separate by shifting their ends across the side they
-   * leave, then handing the job back to React Flow.
-   *
-   * The path a reader sees while dragging is `getBezierPath`, and it already
-   * leaves perpendicular to the handle and clears the element. Replacing it
-   * with a hand-rolled curve to make room for a second line is what dragged
-   * lines back through the box they had just left.
-   */
-  const spread = data?.spread ?? 0;
-  // One shift for both ends. Using each end's own perpendicular pushed them
-  // opposite ways for a left-to-right pair, so the lines crossed in the
-  // middle and met again exactly where they were supposed to be apart.
-  const shift = across(sourcePosition);
-  const source = { x: sourceX + shift.x * spread, y: sourceY + shift.y * spread };
-  const target = { x: targetX + shift.x * spread, y: targetY + shift.y * spread };
+  // Ends sit exactly on their handles. Parallel lines are separated by the
+  // sides they take, chosen when the edge is derived, so nothing here has to
+  // move an end away from the element it belongs to.
+  const source = { x: sourceX, y: sourceY };
+  const target = { x: targetX, y: targetY };
 
   const [bezier, bezierLabelX, bezierLabelY] = getBezierPath({
     sourceX: source.x,

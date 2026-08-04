@@ -72,8 +72,6 @@ export interface ConnectionEdgeData extends Record<string, unknown> {
   /** True when that end anchors at a point rather than a side. */
   centredSource: boolean;
   centredTarget: boolean;
-  /** Offset from the direct route, so parallel connections stay apart. */
-  spread?: number;
 }
 
 export interface DeriveOptions {
@@ -389,17 +387,19 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
     // set instead re-placed every line each time one was added, so drawing a
     // second connection made the first twitch.
     drawn.forEach(({ from, to, connection: element }, index) => {
-      const step = Math.ceil(index / 2);
-      const spread = index === 0 ? 0 : index % 2 === 1 ? step : -step;
+      const chosen = layoutOf(state, element.id);
+      // A line a reader pinned to a side keeps it, however many share the pair.
+      const pinned = chosen.sourceSide !== undefined || chosen.targetSide !== undefined;
+      const sides = sidesBetween(rects, from, to, chosen, {
+        from: isCentred(elements, from),
+        to: isCentred(elements, to),
+      });
       edges.push({
         id: `${element.id}:${from}:${to}`,
         type: 'connection',
         source: from,
         target: to,
-        ...sidesBetween(rects, from, to, layoutOf(state, element.id), {
-          from: isCentred(elements, from),
-          to: isCentred(elements, to),
-        }),
+        ...(pinned ? sides : fanned(sides, index)),
         selected: selected.has(element.id),
         ...(selected.has(element.id) ? { zIndex: 1001 } : {}),
         reconnectable: selected.has(element.id),
@@ -414,7 +414,6 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           soleSelection: soleSelection === element.id,
           waypoints: layoutOf(state, element.id).waypoints,
           direction: element.direction,
-          spread: spread * PARALLEL_SPREAD,
           rolledUp: [],
           centredSource: isCentred(elements, from),
           centredTarget: isCentred(elements, to),
@@ -425,9 +424,6 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
 
   return edges;
 }
-
-/** Vertical gap between parallel connections joining the same pair. */
-const PARALLEL_SPREAD = 26;
 
 /** True when either end of this connection is hidden inside a collapsed group. */
 function isRolledUp(
@@ -484,6 +480,34 @@ function isCentred(elements: Record<Id, Element>, id: Id): boolean {
  * the left forced every line to run left-to-right, so a connection back up
  * the board looped around its own endpoints.
  */
+/**
+ * Where parallel lines go after the first.
+ *
+ * They take a different pair of sides rather than the same pair nudged apart:
+ * an end that has been moved off its handle floats in space next to the
+ * element, which is worse than two lines sharing a side.
+ */
+function fanned(
+  primary: { sourceHandle: string; targetHandle: string },
+  index: number,
+): { sourceHandle: string; targetHandle: string } {
+  if (index === 0) return primary;
+
+  // Only the leaving side changes, so the lines fan out where they start and
+  // come together where they arrive. Moving both ends sent a line all the way
+  // round two sides of the board to join a top handle to a top handle.
+  const horizontal =
+    primary.sourceHandle.endsWith('left') || primary.sourceHandle.endsWith('right');
+  const alternatives = horizontal ? ['bottom', 'top'] : ['right', 'left'];
+  const pick = alternatives[(index - 1) % alternatives.length]!;
+
+  return {
+    // A junction anchors at its middle whichever side is named.
+    sourceHandle: primary.sourceHandle.startsWith('centre-') ? `centre-${pick}` : pick,
+    targetHandle: primary.targetHandle,
+  };
+}
+
 function sidesBetween(
   rects: Map<Id, Rect>,
   from: Id,

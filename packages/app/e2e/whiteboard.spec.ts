@@ -1890,3 +1890,64 @@ test.describe('junction icons', () => {
     ).toHaveAttribute('data-icon', 'decision');
   });
 });
+
+test.describe('lines stay on their anchors', () => {
+  test('every end of every parallel line sits on a handle', async ({ page }) => {
+    // Three connections between one pair: the case where separating them by
+    // nudging their ends left the lines floating beside the elements.
+    await dispatch(page, [
+      { type: 'create-entity', id: 'a', entityType: 'component', title: 'A', position: { x: 0, y: 220 } },
+      { type: 'create-entity', id: 'b', entityType: 'component', title: 'B', position: { x: 620, y: 40 } },
+      { type: 'create-connection', id: 'c1', connectionType: 'interaction', from: ['a'], to: ['b'], title: '' },
+      { type: 'create-connection', id: 'c2', connectionType: 'interaction', from: ['a'], to: ['b'], title: '' },
+      { type: 'create-connection', id: 'c3', connectionType: 'interaction', from: ['a'], to: ['b'], title: '' },
+    ]);
+    await fit(page);
+
+    const gaps = await page.evaluate(() => {
+      const handles = [...document.querySelectorAll('.react-flow__handle')].map((handle) => {
+        const box = handle.getBoundingClientRect();
+        return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+      });
+
+      const worst: number[] = [];
+      for (const path of [...document.querySelectorAll('.react-flow__edge-path')] as SVGPathElement[]) {
+        const owner = path.ownerSVGElement!;
+        const matrix = path.getScreenCTM()!;
+        const length = path.getTotalLength();
+        for (const at of [0, length]) {
+          const local = path.getPointAtLength(at);
+          const point = owner.createSVGPoint();
+          point.x = local.x;
+          point.y = local.y;
+          const screen = point.matrixTransform(matrix);
+          worst.push(Math.min(...handles.map((h) => Math.hypot(h.x - screen.x, h.y - screen.y))));
+        }
+      }
+      return worst;
+    });
+
+    expect(gaps).toHaveLength(6);
+    // Every end within a handle's own radius of a handle centre.
+    for (const gap of gaps) expect(gap).toBeLessThan(10);
+  });
+
+  test('parallel lines still take different routes', async ({ page }) => {
+    await dispatch(page, [
+      { type: 'create-entity', id: 'a', entityType: 'component', title: 'A', position: { x: 0, y: 0 } },
+      { type: 'create-entity', id: 'b', entityType: 'component', title: 'B', position: { x: 400, y: 0 } },
+      { type: 'create-connection', id: 'c1', connectionType: 'interaction', from: ['a'], to: ['b'], title: 'one' },
+      { type: 'create-connection', id: 'c2', connectionType: 'interaction', from: ['a'], to: ['b'], title: 'two' },
+    ]);
+    await fit(page);
+
+    const starts = await page.evaluate(() =>
+      [...document.querySelectorAll('.react-flow__edge-path')].map((path) => {
+        const point = (path as SVGPathElement).getPointAtLength(0);
+        return `${Math.round(point.x)},${Math.round(point.y)}`;
+      }),
+    );
+    // They leave from different handles rather than the same one.
+    expect(new Set(starts).size).toBe(2);
+  });
+});
