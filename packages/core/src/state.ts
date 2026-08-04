@@ -10,5 +10,6 @@ export function initialState(documentId: Id, title?: string): AppState {
     selection: [],
     expanded: [],
     hidden: [],
+    selectionHighlight: true,
   };
 }

@@ -9,7 +9,8 @@ import { ancestorsOf, visibleAnchor } from './groups.js';
  *
  * - Hiding an element mutes it and removes its connections from the board.
  * - Selecting elements highlights them with their direct connections and
- *   peers, and mutes the rest.
+ *   peers, and mutes the rest. A preference (`selectionHighlight`) turns
+ *   this off.
  * - The tag filter mutes elements that do not match.
  *
  * Precedence: hiding beats highlighting beats filtering, except that a
@@ -24,7 +25,10 @@ export function hiddenElementIds(
 ): Set<Id> {
   const chosen = new Set(hidden);
   const closed = new Set<Id>();
-  for (const id of Object.keys(elements)) {
+  for (const [id, element] of Object.entries(elements)) {
+    // The reducer refuses to hide a connection; a connection id arriving here
+    // anyway (an old trace) is ignored rather than treated as hidden.
+    if (isConnection(element)) continue;
     if (chosen.has(id) || ancestorsOf(elements, id).some((group) => chosen.has(group))) {
       closed.add(id);
     }
@@ -33,10 +37,10 @@ export function hiddenElementIds(
 }
 
 /**
- * Connections that are not drawn at all: hidden themselves, or touching a
- * hidden element. "Touching" is judged where the connection lands on the
- * board, so a hidden member of a collapsed group does not take down the line
- * pointing at the group that stands in for it.
+ * Connections that are not drawn at all because they touch a hidden element.
+ * "Touching" is judged where the connection lands on the board, so a hidden
+ * member of a collapsed group does not take down the line pointing at the
+ * group that stands in for it.
  */
 export function suppressedConnectionIds(
   elements: Record<Id, Element>,
@@ -46,10 +50,6 @@ export function suppressedConnectionIds(
   const suppressed = new Set<Id>();
   for (const element of Object.values(elements)) {
     if (!isConnection(element)) continue;
-    if (hidden.has(element.id)) {
-      suppressed.add(element.id);
-      continue;
-    }
     const anchors = [...element.from, ...element.to].map((end) =>
       visibleAnchor(elements, end, expanded),
     );
@@ -75,7 +75,7 @@ export function boardEmphasis(state: AppState): BoardEmphasis {
   const muted = new Set<Id>();
   const selection = state.selection.filter((id) => elements[id]);
 
-  if (selection.length > 0) {
+  if (selection.length > 0 && state.selectionHighlight) {
     // The selection and everything one drawn connection away stays readable.
     const chosen = new Set(selection);
     const near = new Set<Id>(selection);

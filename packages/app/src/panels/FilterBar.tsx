@@ -74,6 +74,21 @@ export function FilterBar() {
         </span>
       )}
 
+      {/* Selecting mutes the rest of the board by default; not every reader
+          wants that, so the preference sits with the other focusing tools. */}
+      <label className="filter-bar__toggle">
+        <input
+          type="checkbox"
+          data-testid="highlight-toggle"
+          checked={state.selectionHighlight}
+          onChange={(event) =>
+            store.dispatch({ type: 'set-selection-highlight', enabled: event.target.checked })
+          }
+        />
+        <span>Highlight selection</span>
+      </label>
+
+
       {keys.length > 0 && (
         <div className="filter-bar__keys">
           {keys.map((key) => (
@@ -87,8 +102,8 @@ export function FilterBar() {
         </div>
       )}
 
-      {/* A hidden connection is not drawn at all, so this list is the one
-          place it can be brought back from. */}
+      {/* Hidden elements are muted on the board too; this list is the faster
+          way back when several are put away. */}
       {state.hidden.length > 0 && (
         <div className="filter-bar__hidden" data-testid="hidden-list">
           <span>Hidden</span>

@@ -55,6 +55,11 @@ describe('hiddenElementIds', () => {
     expect(hidden.has(UI)).toBe(true);
     expect(hidden.has(LEDGER)).toBe(false);
   });
+
+  it('ignores a connection id arriving from an old trace', () => {
+    const hidden = hiddenElementIds(base.document.model.elements, [AUTHORISE]);
+    expect(hidden.size).toBe(0);
+  });
 });
 
 describe('suppressedConnectionIds', () => {
@@ -67,13 +72,15 @@ describe('suppressedConnectionIds', () => {
     expect(suppressed).toEqual(new Set([AUTHORISE, POST]));
   });
 
-  it('suppresses a connection hidden by itself', () => {
+  it('never suppresses on a connection id in the hidden set', () => {
+    // Connections cannot be hidden directly; one leaves the board only when
+    // an endpoint hides.
     const suppressed = suppressedConnectionIds(
       base.document.model.elements,
       new Set(),
       new Set([AUTHORISE]),
     );
-    expect(suppressed).toEqual(new Set([AUTHORISE]));
+    expect(suppressed.size).toBe(0);
   });
 
   it('leaves the line to a collapsed group alone when a hidden member sits inside', () => {
@@ -153,6 +160,22 @@ describe('boardEmphasis: selection highlight', () => {
     );
     const { muted } = boardEmphasis(state);
     expect(muted.has(GATEWAY)).toBe(false);
+  });
+
+  it('the preference turns the highlight off, leaving hide and filter alone', () => {
+    const state = must(
+      base,
+      { type: 'set-selection-highlight', enabled: false },
+      { type: 'set-filter', expression: 'team=payments' },
+      { type: 'set-hidden', id: LEDGER, hidden: true },
+      { type: 'set-selection', ids: [GATEWAY] },
+    );
+    const { muted, suppressed } = boardEmphasis(state);
+    // No highlight: the filter still mutes UI, hiding still mutes the ledger.
+    expect(muted.has(UI)).toBe(true);
+    expect(muted.has(LEDGER)).toBe(true);
+    expect(muted.has(GATEWAY)).toBe(false);
+    expect(suppressed.has(POST)).toBe(true);
   });
 });
 

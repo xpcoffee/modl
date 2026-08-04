@@ -365,7 +365,7 @@ export function ConnectionEdge({
               <ElementEditor
                 id={connectionId}
                 kind="connection"
-                hidden={data.hidden}
+                hidden={false}
                 elementType={data.elementType}
                 description={data.description}
                 tags={data.tags}

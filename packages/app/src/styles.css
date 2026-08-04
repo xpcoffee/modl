@@ -130,6 +130,16 @@ select {
   font-size: 12px;
 }
 
+/* Whether selecting mutes the rest of the board. */
+.filter-bar__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 /* What the reader has hidden, and the way back for each entry. */
 .filter-bar__hidden {
   display: flex;
@@ -737,7 +747,7 @@ select {
   border-color: var(--accent);
 }
 
-/* Pan to relation: a count that opens into a list of connected elements. */
+/* Pan to relation: a roller menu of connected elements. */
 
 .pan-relations {
   position: absolute;
@@ -746,55 +756,54 @@ select {
   transform-origin: top left;
   z-index: 1500;
   pointer-events: all;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
 }
 
-.pan-relations__toggle {
-  padding: 2px 8px;
+/* Roller menu: entrance pill, options rolling through the middle slot. */
+
+.roller-menu {
+  position: relative;
+}
+
+.roller-menu__entrance {
+  padding: 2px 10px;
   border-radius: 999px;
   font-size: 12px;
   color: var(--muted);
+  white-space: nowrap;
 }
 
-.pan-relations__toggle:hover,
-.pan-relations__toggle[aria-expanded='true'] {
+.roller-menu__entrance:hover {
   color: var(--text);
   border-color: var(--accent);
 }
 
-.pan-relations__list {
-  margin: 0;
-  padding: 4px;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel);
-  /* Room for about four pills; the rest scrolls. */
-  max-height: 120px;
-  overflow-y: auto;
+/* Anchored on the entrance's middle, so the active option takes its place. */
+.roller-menu__viewport {
+  position: absolute;
+  top: 50%;
+  left: 50%;
 }
 
-.pan-relations__pill {
-  width: 100%;
-  padding: 3px 10px;
+.roller-menu__option {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 3px 12px;
   border-radius: 999px;
   font-size: 12px;
-  text-align: left;
+  background: var(--panel);
   white-space: nowrap;
-  max-width: 220px;
+  max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* The roll: each option slides and fades to its new slot. */
+  transition: transform 0.15s ease-out, opacity 0.15s ease-out;
 }
 
-.pan-relations__pill.is-active {
+.roller-menu__option.is-active {
   border-color: var(--accent);
   background: rgb(91 141 239 / 15%);
+  color: var(--text);
 }
 
 /* A stack of connections collapsing onto one pair of anchors */

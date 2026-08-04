@@ -1,19 +1,31 @@
 import { ViewportPortal, type Node } from '@xyflow/react';
+import { isConnection } from '@modl/core';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 import { DeleteButton } from './DeleteButton.js';
 import type { BoardNodeData } from './derive.js';
 
 /**
- * Hide and delete for a multi-selection, under the box that holds it.
+ * Hide, show, and delete for a multi-selection, under the box that holds it.
  *
- * A single selection carries both inside the editor, which travels with the
+ * A single selection carries these inside the editor, which travels with the
  * element for free. This reads the live React Flow nodes rather than the
  * document, so it keeps up while a drag is in flight.
  */
 export function SelectionActions({ nodes }: { nodes: Node<BoardNodeData>[] }) {
-  const { selection } = useAppState();
+  const state = useAppState();
+  const { selection } = state;
   if (selection.length < 2) return null;
+
+  // Connections cannot be hidden directly, so only the rest count. A mixed
+  // selection offers both actions, each naming how many it touches.
+  const hiddenSet = new Set(state.hidden);
+  const elements = state.document.model.elements;
+  const hideable = selection.filter((id) => {
+    const element = elements[id];
+    return element && !isConnection(element) && !hiddenSet.has(id);
+  });
+  const showable = selection.filter((id) => hiddenSet.has(id));
 
   const chosen = new Set(selection);
   const boxes = nodes
@@ -42,17 +54,32 @@ export function SelectionActions({ nodes }: { nodes: Node<BoardNodeData>[] }) {
         style={{ transform: `translate(${(left + right) / 2}px, ${bottom}px)` }}
       >
         <div className="selection-actions__row">
-          <button
-            type="button"
-            data-testid="hide-selected"
-            onClick={() => {
-              for (const id of selection) {
-                store.dispatch({ type: 'set-hidden', id, hidden: true });
-              }
-            }}
-          >
-            Hide {selection.length}
-          </button>
+          {hideable.length > 0 && (
+            <button
+              type="button"
+              data-testid="hide-selected"
+              onClick={() => {
+                for (const id of hideable) {
+                  store.dispatch({ type: 'set-hidden', id, hidden: true });
+                }
+              }}
+            >
+              Hide {hideable.length}
+            </button>
+          )}
+          {showable.length > 0 && (
+            <button
+              type="button"
+              data-testid="show-selected"
+              onClick={() => {
+                for (const id of showable) {
+                  store.dispatch({ type: 'set-hidden', id, hidden: false });
+                }
+              }}
+            >
+              Show {showable.length}
+            </button>
+          )}
           <DeleteButton count={selection.length} />
         </div>
       </div>

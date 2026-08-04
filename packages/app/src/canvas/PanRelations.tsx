@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback } from 'react';
 import {
   ViewportPortal,
   useReactFlow,
@@ -16,6 +16,7 @@ import {
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 import { setHighlight } from './highlight.js';
+import { RollerMenu } from './RollerMenu.js';
 import type { BoardNodeData } from './derive.js';
 
 /** The board rectangle a pan should centre on. */
@@ -35,9 +36,9 @@ function labelFor(state: AppState, relation: Relation): string {
 }
 
 /**
- * Pan-to-relation: a compact count beside the selected element that opens
- * into a list of everything it connects to. Hovering an entry emphasises its
- * line on the board, choosing one pans the camera to the peer.
+ * Pan-to-relation: a roller menu beside the selected element listing
+ * everything it connects to. Turning the roller emphasises each connection on
+ * the board; choosing the middle option pans the camera to its peer.
  *
  * The pan is a set-view command rather than a direct camera call, so a trace
  * shows where the reader went and a replay can follow.
@@ -48,32 +49,30 @@ export function PanRelations({ nodes }: { nodes: Node<BoardNodeData>[] }) {
   const paneWidth = useFlowStore((flow) => flow.width);
   const paneHeight = useFlowStore((flow) => flow.height);
 
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
-  const listRef = useRef<HTMLUListElement>(null);
+  const emphasise = useCallback(
+    (relation: Relation | null) => setHighlight(relation?.connectionId ?? null),
+    [],
+  );
+
+  const panTo = useCallback(
+    (relation: Relation): void => {
+      const target = rectOf(store.getState(), relation.peerId);
+      const zoom = getViewport().zoom;
+      store.dispatch({
+        type: 'set-view',
+        pan: {
+          x: paneWidth / 2 - (target.x + target.width / 2) * zoom,
+          y: paneHeight / 2 - (target.y + target.height / 2) * zoom,
+        },
+        zoom,
+      });
+    },
+    [getViewport, paneWidth, paneHeight],
+  );
 
   const selectedId = state.selection.length === 1 ? state.selection[0] : undefined;
   const element = selectedId ? state.document.model.elements[selectedId] : undefined;
   const relations = selectedId && element && !isConnection(element) ? relationsOf(state, selectedId) : [];
-
-  // A fresh selection starts the control over.
-  useEffect(() => {
-    setOpen(false);
-    setActive(0);
-  }, [selectedId]);
-
-  const pointedAt = open ? (relations[active]?.connectionId ?? null) : null;
-  useEffect(() => {
-    setHighlight(pointedAt);
-    return () => setHighlight(null);
-  }, [pointedAt]);
-
-  useEffect(() => {
-    listRef.current
-      ?.querySelector('.is-active')
-      ?.scrollIntoView({ block: 'nearest' });
-  }, [active, open]);
-
   if (!selectedId || relations.length === 0) return null;
 
   const node = nodes.find((candidate) => candidate.id === selectedId);
@@ -84,75 +83,25 @@ export function PanRelations({ nodes }: { nodes: Node<BoardNodeData>[] }) {
     y: node.position.y + origin.y,
   };
 
-  const panTo = (relation: Relation): void => {
-    const target = rectOf(store.getState(), relation.peerId);
-    const zoom = getViewport().zoom;
-    store.dispatch({
-      type: 'set-view',
-      pan: {
-        x: paneWidth / 2 - (target.x + target.width / 2) * zoom,
-        y: paneHeight / 2 - (target.y + target.height / 2) * zoom,
-      },
-      zoom,
-    });
-  };
-
-  const step = (by: number): void => {
-    if (!open) {
-      setOpen(true);
-      return;
-    }
-    setActive((current) => (current + by + relations.length) % relations.length);
-  };
-
   return (
     <ViewportPortal>
       <div
-        className="pan-relations nodrag nopan nowheel"
-        data-testid="pan-relations"
+        className="pan-relations"
         style={{ transform: `translate(${corner.x}px, ${corner.y}px)` }}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowDown') step(1);
-          else if (event.key === 'ArrowUp') step(-1);
-          else if (event.key === 'Enter' && open && relations[active]) panTo(relations[active]);
-          else if (event.key === 'Escape') setOpen(false);
-          else return;
-          event.preventDefault();
-          event.stopPropagation();
-        }}
       >
-        <button
-          type="button"
-          className="pan-relations__toggle"
-          data-testid="pan-relations-toggle"
-          aria-label={`${relations.length} connected, open to pan to one`}
-          aria-expanded={open}
-          // Hover already opened the list, so a click closing it again would
-          // undo the hover. Leaving closes it; Escape does too.
-          onClick={() => setOpen(true)}
-        >
-          ⇢ {relations.length}
-        </button>
-
-        {open && (
-          <ul className="pan-relations__list" ref={listRef} data-testid="pan-relations-list">
-            {relations.map((relation, index) => (
-              <li key={`${relation.connectionId}:${relation.peerId}`}>
-                <button
-                  type="button"
-                  className={`pan-relations__pill${index === active ? ' is-active' : ''}`}
-                  data-testid={`pan-to-${relation.peerId}`}
-                  onMouseEnter={() => setActive(index)}
-                  onClick={() => panTo(relation)}
-                >
-                  {labelFor(state, relation)}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <RollerMenu
+          entranceLabel={`${relations.length} →`}
+          entranceAriaLabel={`${relations.length} connected, open to pan to one`}
+          options={relations.map((relation) => ({
+            id: `${relation.connectionId}:${relation.peerId}`,
+            label: labelFor(state, relation),
+            value: relation,
+            testId: `pan-to-${relation.peerId}`,
+          }))}
+          onSelect={panTo}
+          onActiveChange={emphasise}
+          testId="pan-relations"
+        />
       </div>
     </ViewportPortal>
   );

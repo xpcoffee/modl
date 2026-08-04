@@ -66,7 +66,6 @@ export interface ConnectionEdgeData extends Record<string, unknown> {
   elementType: ConnectionType;
   tags: Record<string, string[]>;
   dimmed: boolean;
-  hidden: boolean;
   /** True while the pan-to-relation control points at this connection. */
   highlighted: boolean;
   editing: boolean;
@@ -311,7 +310,6 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
   const expanded = new Set(state.expanded);
   const rects = measure(state, expanded);
   const { muted, suppressed } = boardEmphasis(state);
-  const hiddenSet = new Set(state.hidden);
   const selected = new Set(state.selection);
   const soleSelection = onlySelected(state, options);
 
@@ -385,7 +383,6 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           elementType: connections[0]!.type,
           tags: {},
           dimmed: connections.every((c) => muted.has(c.id)),
-          hidden: false,
           highlighted: connections.some((c) => c.id === options.highlightId),
           editing: false,
           soleSelection: false,
@@ -450,7 +447,6 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           elementType: element.type,
           tags: element.tags,
           dimmed: muted.has(element.id),
-          hidden: hiddenSet.has(element.id),
           highlighted: options.highlightId === element.id,
           editing: options.editingId === element.id,
           soleSelection: soleSelection === element.id,

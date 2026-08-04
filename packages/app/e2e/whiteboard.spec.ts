@@ -2046,20 +2046,22 @@ test.describe('lines stay on their anchors', () => {
 });
 
 test.describe('hiding elements', () => {
-  test('hiding a component mutes it and takes its connections off the board', async ({ page }) => {
+  test('hiding a component mutes it, deselects it, and takes its connections off the board', async ({ page }) => {
     await dispatch(page, sampleDomain());
 
     await page.getByTestId(`entity-${IDS.gateway}`).click();
     await page.getByTestId(`editor-hide-${IDS.gateway}`).click();
-    // The editor still points at it; move the selection away to see the mute.
-    await page.locator('.react-flow__pane').click();
 
+    // Hiding deselects, so the hidden element is the dim one and the rest of
+    // the board stays readable. A selection surviving its own hide muted
+    // everything else instead.
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([]);
     await expect(page.getByTestId(`entity-${IDS.gateway}`)).toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
     // Both connections touch the gateway, so neither is drawn.
     await expect(page.getByTestId(`connection-${IDS.authorise}`)).toHaveCount(0);
     await expect(page.getByTestId(`connection-${IDS.post}`)).toHaveCount(0);
-    // The other components stay readable.
-    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-dimmed/);
   });
 
   test('hiding is session state: the saved document does not change', async ({ page }) => {
@@ -2084,31 +2086,61 @@ test.describe('hiding elements', () => {
     await expect(page.getByTestId(`connection-${IDS.authorise}`)).toBeVisible();
   });
 
-  test('the editor toggle shows a hidden element again', async ({ page }) => {
+  test('re-selecting a hidden element offers Show in its editor', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`entity-${IDS.gateway}`).click();
-
     await page.getByTestId(`editor-hide-${IDS.gateway}`).click();
+
+    // Hiding deselected it; a hidden element stays clickable to bring back.
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
     await expect(page.getByTestId(`editor-hide-${IDS.gateway}`)).toHaveText('Show');
 
     await page.getByTestId(`editor-hide-${IDS.gateway}`).click();
-    await page.locator('.react-flow__pane').click();
 
     await expect(page.getByTestId(`entity-${IDS.gateway}`)).not.toHaveClass(/is-dimmed/);
     await expect(page.getByTestId(`connection-${IDS.post}`)).toBeVisible();
   });
 
-  test('a multi-selection hides in one go', async ({ page }) => {
+  test('a connection editor offers no hide toggle', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.getByTestId(`connection-${IDS.authorise}`).click();
+
+    await expect(page.getByTestId(`editor-${IDS.authorise}`)).toBeVisible();
+    // A hidden connection would leave no remnant to find it by, so it only
+    // leaves the board with its endpoints.
+    await expect(page.getByTestId(`editor-hide-${IDS.authorise}`)).toHaveCount(0);
+  });
+
+  test('a multi-selection hides in one go and deselects what it hid', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`entity-${IDS.ui}`).click();
     await page.getByTestId(`entity-${IDS.gateway}`).click({ modifiers: ['ControlOrMeta'] });
 
+    await expect(page.getByTestId('hide-selected')).toHaveText('Hide 2');
     await page.getByTestId('hide-selected').click();
-    await page.locator('.react-flow__pane').click();
 
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([]);
     await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveClass(/is-dimmed/);
     await expect(page.getByTestId(`entity-${IDS.gateway}`)).toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
     await expect(page.getByTestId(`connection-${IDS.authorise}`)).toHaveCount(0);
+  });
+
+  test('a mixed selection offers Hide for the visible and Show for the hidden', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await dispatch(page, [{ type: 'set-hidden', id: IDS.ui, hidden: true }]);
+
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+    await page.getByTestId(`entity-${IDS.gateway}`).click({ modifiers: ['ControlOrMeta'] });
+
+    await expect(page.getByTestId('hide-selected')).toHaveText('Hide 1');
+    await expect(page.getByTestId('show-selected')).toHaveText('Show 1');
+
+    await page.getByTestId('show-selected').click();
+
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`connection-${IDS.authorise}`)).toBeVisible();
   });
 
   test('hide arrives as a command, so the trace replays it', async ({ page }) => {
@@ -2166,6 +2198,31 @@ test.describe('selection highlight', () => {
     await page.locator('.react-flow__pane').click();
 
     await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
+  });
+
+  test('the filter-bar toggle turns the highlight off and on', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.getByTestId('highlight-toggle').uncheck();
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
+
+    await page.getByTestId('highlight-toggle').check();
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveClass(/is-dimmed/);
+  });
+
+  test('the preference travels through the command bus', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.getByTestId('highlight-toggle').uncheck();
+
+    const trace = await getTrace(page);
+    expect(
+      trace.some(
+        (entry) =>
+          entry.command.type === 'set-selection-highlight' && entry.command.enabled === false,
+      ),
+    ).toBe(true);
   });
 });
 
@@ -2225,22 +2282,25 @@ test.describe('pan to relation', () => {
     expect(Math.abs(target.y + target.height / 2 - (pane.y + pane.height / 2))).toBeLessThan(10);
   });
 
-  test('the highlighted entry emphasises its connection on the board', async ({ page }) => {
+  test('the middle option emphasises its connection on the board', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`entity-${IDS.gateway}`).click();
 
     await page.getByTestId('pan-relations-toggle').click();
-    await page.getByTestId(`pan-to-${IDS.ledger}`).hover();
 
+    // The roller opens on its first option; turning it moves the emphasis.
+    await expect(page.getByTestId(`connection-${IDS.authorise}`)).toHaveClass(/is-highlighted/);
+    await page.keyboard.press('ArrowDown');
     await expect(page.getByTestId(`connection-${IDS.post}`)).toHaveClass(/is-highlighted/);
     await expect(page.getByTestId(`connection-${IDS.authorise}`)).not.toHaveClass(/is-highlighted/);
   });
 
-  test('arrow keys cycle the list, wrapping at the ends', async ({ page }) => {
+  test('arrow keys turn the roller, wrapping at the ends', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`entity-${IDS.gateway}`).click();
     await page.getByTestId('pan-relations-toggle').click();
 
+    await expect(page.getByTestId(`pan-to-${IDS.ui}`)).toHaveClass(/is-active/);
     // Two entries: down, down again wraps back to the first.
     await page.keyboard.press('ArrowDown');
     await expect(page.getByTestId(`pan-to-${IDS.ledger}`)).toHaveClass(/is-active/);
@@ -2248,5 +2308,38 @@ test.describe('pan to relation', () => {
     await expect(page.getByTestId(`pan-to-${IDS.ui}`)).toHaveClass(/is-active/);
     await page.keyboard.press('ArrowUp');
     await expect(page.getByTestId(`pan-to-${IDS.ledger}`)).toHaveClass(/is-active/);
+  });
+
+  test('the mouse wheel turns the roller', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+
+    await page.getByTestId('pan-relations-toggle').hover();
+    // The container itself has no box; the options carry the size.
+    await expect(page.getByTestId(`pan-to-${IDS.ui}`)).toBeVisible();
+
+    await page.mouse.wheel(0, 120);
+    await expect(page.getByTestId(`pan-to-${IDS.ledger}`)).toHaveClass(/is-active/);
+    await page.mouse.wheel(0, -120);
+    await expect(page.getByTestId(`pan-to-${IDS.ui}`)).toHaveClass(/is-active/);
+  });
+
+  test('clicking a faded option turns the roller to it instead of acting', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+    const before = await page.locator('.react-flow__viewport').getAttribute('style');
+
+    await page.getByTestId('pan-relations-toggle').click();
+    await page.getByTestId(`pan-to-${IDS.ledger}`).click();
+
+    // The click chose a slot, so the camera holds still until the middle
+    // option is clicked.
+    await expect(page.getByTestId(`pan-to-${IDS.ledger}`)).toHaveClass(/is-active/);
+    expect(await page.locator('.react-flow__viewport').getAttribute('style')).toBe(before);
+
+    await page.getByTestId(`pan-to-${IDS.ledger}`).click();
+    await expect(async () => {
+      expect(await page.locator('.react-flow__viewport').getAttribute('style')).not.toBe(before);
+    }).toPass();
   });
 });
