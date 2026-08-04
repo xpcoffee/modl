@@ -127,4 +127,10 @@ if (!run) {
   process.exit(1);
 }
 
-await run(args);
+try {
+  await run(args);
+} catch (cause) {
+  // A stack trace says nothing a caller can act on. The message does.
+  console.error(cause instanceof Error ? cause.message : String(cause));
+  process.exit(1);
+}
