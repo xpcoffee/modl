@@ -465,6 +465,7 @@ export function apply(state: AppState, command: Command): CommandResult {
           document: { ...state.document, model: { elements }, layout },
           selection: state.selection.filter((id) => !removed.has(id)),
           expanded: state.expanded.filter((id) => !removed.has(id)),
+          hidden: state.hidden.filter((id) => !removed.has(id)),
         },
         events,
       );
@@ -586,6 +587,19 @@ export function apply(state: AppState, command: Command): CommandResult {
       ]);
     }
 
+    case 'set-hidden': {
+      const element = state.document.model.elements[command.id];
+      if (!element) return unknown(command.type, command.id);
+
+      const hidden = new Set(state.hidden);
+      if (command.hidden) hidden.add(command.id);
+      else hidden.delete(command.id);
+
+      return ok({ ...state, hidden: [...hidden].sort() }, [
+        { type: 'visibility-changed', id: command.id, hidden: command.hidden },
+      ]);
+    }
+
     case 'set-selection': {
       for (const id of command.ids) {
         if (!state.document.model.elements[id]) return unknown(command.type, id);
@@ -627,7 +641,7 @@ export function apply(state: AppState, command: Command): CommandResult {
               : 'schema-invalid';
         return fail(command.type, code, result.errors.map((e) => e.message).join('; '));
       }
-      return ok({ document: result.document, filter: '', selection: [], expanded: [] }, [
+      return ok({ document: result.document, filter: '', selection: [], expanded: [], hidden: [] }, [
         { type: 'document-loaded', id: result.document.id },
       ]);
     }

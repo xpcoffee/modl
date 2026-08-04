@@ -244,7 +244,7 @@ Two rules follow from this and both live in `packages/core/src/query/groups.ts`:
 - An element is drawn only when every group above it is expanded. A member of a collapsed group is not on the board at all.
 - A connection re-points at the outermost collapsed group hiding its endpoint. When both ends collapse into the same group, the connection is not drawn, because it says nothing at that zoom level.
 
-Expansion is session state rather than document state. Which groups a reader has open is their view of the domain, and two people reading the same file should not fight over it.
+Expansion is session state rather than document state. Which groups a reader has open is their view of the domain, and two people reading the same file should not fight over it. The hidden set works the same way: which elements a reader has muted with `set-hidden` never reaches the file (see [decision 009](decisions/009-viewing-tools.md)).
 
 `groupId` accepts nesting to any depth. A chain that closes a loop is a `group-cycle` error, and the reducer rejects the command that would create one, so a loop cannot be reached through the UI.
 

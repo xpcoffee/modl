@@ -9,5 +9,6 @@ export function initialState(documentId: Id, title?: string): AppState {
     filter: '',
     selection: [],
     expanded: [],
+    hidden: [],
   };
 }

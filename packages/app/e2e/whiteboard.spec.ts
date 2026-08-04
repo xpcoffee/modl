@@ -2044,3 +2044,209 @@ test.describe('lines stay on their anchors', () => {
     expect(falling.every((gap, i) => i === 0 || gap <= falling[i - 1]! + 0.01)).toBe(true);
   });
 });
+
+test.describe('hiding elements', () => {
+  test('hiding a component mutes it and takes its connections off the board', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+    await page.getByTestId(`editor-hide-${IDS.gateway}`).click();
+    // The editor still points at it; move the selection away to see the mute.
+    await page.locator('.react-flow__pane').click();
+
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).toHaveClass(/is-dimmed/);
+    // Both connections touch the gateway, so neither is drawn.
+    await expect(page.getByTestId(`connection-${IDS.authorise}`)).toHaveCount(0);
+    await expect(page.getByTestId(`connection-${IDS.post}`)).toHaveCount(0);
+    // The other components stay readable.
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-dimmed/);
+  });
+
+  test('hiding is session state: the saved document does not change', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    const before = await serialize(page);
+
+    await dispatch(page, [{ type: 'set-hidden', id: IDS.gateway, hidden: true }]);
+
+    expect(await serialize(page)).toBe(before);
+  });
+
+  test('the filter bar lists hidden elements and brings one back', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await dispatch(page, [{ type: 'set-hidden', id: IDS.gateway, hidden: true }]);
+    await expect(page.getByTestId('hidden-list')).toContainText('Payment gateway');
+
+    await page.getByTestId(`unhide-${IDS.gateway}`).click();
+
+    await expect(page.getByTestId('hidden-list')).toHaveCount(0);
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`connection-${IDS.authorise}`)).toBeVisible();
+  });
+
+  test('the editor toggle shows a hidden element again', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+
+    await page.getByTestId(`editor-hide-${IDS.gateway}`).click();
+    await expect(page.getByTestId(`editor-hide-${IDS.gateway}`)).toHaveText('Show');
+
+    await page.getByTestId(`editor-hide-${IDS.gateway}`).click();
+    await page.locator('.react-flow__pane').click();
+
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`connection-${IDS.post}`)).toBeVisible();
+  });
+
+  test('a multi-selection hides in one go', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+    await page.getByTestId(`entity-${IDS.gateway}`).click({ modifiers: ['ControlOrMeta'] });
+
+    await page.getByTestId('hide-selected').click();
+    await page.locator('.react-flow__pane').click();
+
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`connection-${IDS.authorise}`)).toHaveCount(0);
+  });
+
+  test('hide arrives as a command, so the trace replays it', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+    await page.getByTestId(`editor-hide-${IDS.gateway}`).click();
+
+    const trace = await getTrace(page);
+    expect(trace.some((entry) => entry.command.type === 'set-hidden')).toBe(true);
+
+    const result = await page.evaluate((entries) => window.__modl.replay(entries), trace);
+    expect(result.divergences).toBe(0);
+  });
+});
+
+test.describe('selection highlight', () => {
+  test('a selection keeps its neighbourhood readable and mutes the rest', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+
+    // UI connects to the gateway alone, so the ledger and its connection fade.
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`connection-${IDS.authorise}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`connection-${IDS.post}`)).toHaveClass(/is-dimmed/);
+  });
+
+  test('a multi-selection unions the neighbourhoods', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+    await page.getByTestId(`entity-${IDS.ledger}`).click({ modifiers: ['ControlOrMeta'] });
+
+    // Everything touches one of the two selected components.
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`connection-${IDS.post}`)).not.toHaveClass(/is-dimmed/);
+  });
+
+  test('a selected connection highlights its endpoints', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.getByTestId(`connection-${IDS.authorise}`).click();
+
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveClass(/is-dimmed/);
+  });
+
+  test('clearing the selection restores the board', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveClass(/is-dimmed/);
+
+    await page.locator('.react-flow__pane').click();
+
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
+  });
+});
+
+test.describe('pan to relation', () => {
+  test('a selected connected component offers its relations', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+
+    // The gateway touches both connections.
+    await expect(page.getByTestId('pan-relations-toggle')).toContainText('2');
+
+    await page.getByTestId('pan-relations-toggle').click();
+    await expect(page.getByTestId(`pan-to-${IDS.ui}`)).toBeVisible();
+    await expect(page.getByTestId(`pan-to-${IDS.ledger}`)).toBeVisible();
+  });
+
+  test('an unconnected element offers nothing', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      {
+        type: 'create-entity',
+        id: '66666666-6666-4666-8666-666666666666',
+        entityType: 'component',
+        title: 'Loose end',
+        position: { x: 0, y: 300 },
+      },
+    ]);
+
+    await page.getByTestId('entity-66666666-6666-4666-8666-666666666666').click();
+
+    await expect(page.getByTestId('pan-relations')).toHaveCount(0);
+  });
+
+  test('choosing a relation pans the camera to the peer', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+
+    const before = await page.locator('.react-flow__viewport').getAttribute('style');
+
+    await page.getByTestId('pan-relations-toggle').click();
+    await page.getByTestId(`pan-to-${IDS.gateway}`).click();
+
+    // The pan travels through the command bus, so the trace carries it and
+    // the camera follows.
+    await expect(async () => {
+      expect(await page.locator('.react-flow__viewport').getAttribute('style')).not.toBe(before);
+    }).toPass();
+    const trace = await getTrace(page);
+    expect(trace.some((entry) => entry.command.type === 'set-view')).toBe(true);
+
+    // The gateway box sits centred in the pane, give or take the animation.
+    await page.waitForTimeout(400);
+    const pane = (await page.locator('.react-flow__pane').boundingBox())!;
+    const target = (await page.getByTestId(`entity-${IDS.gateway}`).boundingBox())!;
+    expect(Math.abs(target.x + target.width / 2 - (pane.x + pane.width / 2))).toBeLessThan(10);
+    expect(Math.abs(target.y + target.height / 2 - (pane.y + pane.height / 2))).toBeLessThan(10);
+  });
+
+  test('the highlighted entry emphasises its connection on the board', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+
+    await page.getByTestId('pan-relations-toggle').click();
+    await page.getByTestId(`pan-to-${IDS.ledger}`).hover();
+
+    await expect(page.getByTestId(`connection-${IDS.post}`)).toHaveClass(/is-highlighted/);
+    await expect(page.getByTestId(`connection-${IDS.authorise}`)).not.toHaveClass(/is-highlighted/);
+  });
+
+  test('arrow keys cycle the list, wrapping at the ends', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+    await page.getByTestId('pan-relations-toggle').click();
+
+    // Two entries: down, down again wraps back to the first.
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId(`pan-to-${IDS.ledger}`)).toHaveClass(/is-active/);
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId(`pan-to-${IDS.ui}`)).toHaveClass(/is-active/);
+    await page.keyboard.press('ArrowUp');
+    await expect(page.getByTestId(`pan-to-${IDS.ledger}`)).toHaveClass(/is-active/);
+  });
+});

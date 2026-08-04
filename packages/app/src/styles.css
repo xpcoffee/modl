@@ -130,6 +130,28 @@ select {
   font-size: 12px;
 }
 
+/* What the reader has hidden, and the way back for each entry. */
+.filter-bar__hidden {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.filter-bar__hidden span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.filter-bar__hidden button {
+  padding: 3px 8px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.filter-bar__hidden button:hover {
+  opacity: 1;
+}
+
 /* Canvas */
 
 .canvas {
@@ -340,6 +362,16 @@ select {
 
 .connection-edge.is-selected {
   stroke: var(--accent);
+}
+
+/* Pointed at by the pan-to-relation control. */
+.connection-edge.is-highlighted {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.edge-label.is-highlighted {
+  border-color: var(--accent);
 }
 
 /* React Flow ships light-theme defaults, so the dark surface needs these. */
@@ -673,17 +705,96 @@ select {
 }
 
 /* Centred under the multi-selection. */
-.selection-actions .delete-button {
+.selection-actions__row {
+  display: flex;
+  gap: 6px;
   transform: translateX(-50%);
+}
+
+.selection-actions__row button {
+  padding: 4px 8px;
+  border-radius: 8px;
 }
 
 /* Last row of the editor, so delete sits below the panel it belongs to. */
 .element-editor__footer {
   display: flex;
   justify-content: flex-end;
+  gap: 6px;
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
+}
+
+.element-editor__hide {
+  padding: 4px 8px;
+  border-radius: 8px;
+  color: var(--muted);
+}
+
+.element-editor__hide[aria-pressed='true'] {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* Pan to relation: a count that opens into a list of connected elements. */
+
+.pan-relations {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  z-index: 1500;
+  pointer-events: all;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.pan-relations__toggle {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pan-relations__toggle:hover,
+.pan-relations__toggle[aria-expanded='true'] {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.pan-relations__list {
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  /* Room for about four pills; the rest scrolls. */
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.pan-relations__pill {
+  width: 100%;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pan-relations__pill.is-active {
+  border-color: var(--accent);
+  background: rgb(91 141 239 / 15%);
 }
 
 /* A stack of connections collapsing onto one pair of anchors */

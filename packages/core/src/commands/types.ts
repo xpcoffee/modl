@@ -22,6 +22,12 @@ export interface AppState {
   selection: Id[];
   /** Groups currently showing their members. Collapsed is the default. */
   expanded: Id[];
+  /**
+   * Elements the reader has put away: drawn muted, with their connections not
+   * drawn at all. Like `expanded`, this is one reader's view of the domain
+   * and never reaches the saved file.
+   */
+  hidden: Id[];
 }
 
 /**
@@ -58,6 +64,7 @@ export type Command =
   | { type: 'group-elements'; id: Id; title: string; memberIds: Id[]; position: Point }
   | { type: 'ungroup'; id: Id }
   | { type: 'set-expanded'; id: Id; expanded: boolean }
+  | { type: 'set-hidden'; id: Id; hidden: boolean }
   | { type: 'set-selection'; ids: Id[] }
   | { type: 'set-filter'; expression: string }
   | { type: 'set-view'; pan: Point; zoom: number }
@@ -96,6 +103,7 @@ export type DomainEvent =
   | { type: 'element-deleted'; id: Id }
   | { type: 'group-changed'; id: Id; groupId: Id | null }
   | { type: 'expansion-changed'; id: Id; expanded: boolean }
+  | { type: 'visibility-changed'; id: Id; hidden: boolean }
   | { type: 'selection-changed'; ids: Id[] }
   | { type: 'filter-changed'; expression: string }
   | { type: 'view-changed'; view: View }

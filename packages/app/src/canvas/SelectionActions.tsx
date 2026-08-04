@@ -1,14 +1,15 @@
 import { ViewportPortal, type Node } from '@xyflow/react';
+import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 import { DeleteButton } from './DeleteButton.js';
 import type { BoardNodeData } from './derive.js';
 
 /**
- * Delete for a multi-selection, under the box that holds it.
+ * Hide and delete for a multi-selection, under the box that holds it.
  *
- * A single selection carries its own delete inside the editor, which travels
- * with the element for free. This reads the live React Flow nodes rather than
- * the document, so it keeps up while a drag is in flight.
+ * A single selection carries both inside the editor, which travels with the
+ * element for free. This reads the live React Flow nodes rather than the
+ * document, so it keeps up while a drag is in flight.
  */
 export function SelectionActions({ nodes }: { nodes: Node<BoardNodeData>[] }) {
   const { selection } = useAppState();
@@ -40,7 +41,20 @@ export function SelectionActions({ nodes }: { nodes: Node<BoardNodeData>[] }) {
         data-testid="selection-actions"
         style={{ transform: `translate(${(left + right) / 2}px, ${bottom}px)` }}
       >
-        <DeleteButton count={selection.length} />
+        <div className="selection-actions__row">
+          <button
+            type="button"
+            data-testid="hide-selected"
+            onClick={() => {
+              for (const id of selection) {
+                store.dispatch({ type: 'set-hidden', id, hidden: true });
+              }
+            }}
+          >
+            Hide {selection.length}
+          </button>
+          <DeleteButton count={selection.length} />
+        </div>
       </div>
     </ViewportPortal>
   );

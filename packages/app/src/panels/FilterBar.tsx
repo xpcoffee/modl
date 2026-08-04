@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { parseFilter, tagKeys, tagValues } from '@modl/core';
+import { parseFilter, readableName, tagKeys, tagValues } from '@modl/core';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 
 /**
- * Filters the board by tag.
+ * Filters the board by tag, and lists what the reader has hidden.
  *
  * The text box keeps its own state so a half-typed expression stays on screen.
  * Only a parseable expression reaches the command bus, which keeps the trace
@@ -83,6 +83,36 @@ export function FilterBar() {
           ))}
           <button type="button" data-testid="filter-clear" onClick={() => change('')}>
             clear
+          </button>
+        </div>
+      )}
+
+      {/* A hidden connection is not drawn at all, so this list is the one
+          place it can be brought back from. */}
+      {state.hidden.length > 0 && (
+        <div className="filter-bar__hidden" data-testid="hidden-list">
+          <span>Hidden</span>
+          {state.hidden.map((id) => (
+            <button
+              key={id}
+              type="button"
+              data-testid={`unhide-${id}`}
+              aria-label={`Show ${elements[id]?.title || readableName(id)}`}
+              onClick={() => store.dispatch({ type: 'set-hidden', id, hidden: false })}
+            >
+              {elements[id]?.title || readableName(id)} ×
+            </button>
+          ))}
+          <button
+            type="button"
+            data-testid="unhide-all"
+            onClick={() => {
+              for (const id of state.hidden) {
+                store.dispatch({ type: 'set-hidden', id, hidden: false });
+              }
+            }}
+          >
+            show all
           </button>
         </div>
       )}

@@ -706,6 +706,66 @@ describe('set-selection', () => {
   });
 });
 
+describe('set-hidden', () => {
+  it('adds and removes an id, kept sorted', () => {
+    let state = must(
+      base,
+      { type: 'set-hidden', id: B, hidden: true },
+      { type: 'set-hidden', id: A, hidden: true },
+    );
+    expect(state.hidden).toEqual([A, B]);
+
+    state = must(state, { type: 'set-hidden', id: B, hidden: false });
+    expect(state.hidden).toEqual([A]);
+  });
+
+  it('emits visibility-changed', () => {
+    const result = apply(base, { type: 'set-hidden', id: A, hidden: true });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.events).toEqual([{ type: 'visibility-changed', id: A, hidden: true }]);
+  });
+
+  it('hiding the same element twice holds it once', () => {
+    const state = must(
+      base,
+      { type: 'set-hidden', id: A, hidden: true },
+      { type: 'set-hidden', id: A, hidden: true },
+    );
+    expect(state.hidden).toEqual([A]);
+  });
+
+  it('unknown-element: rejects a missing id', () => {
+    const result = apply(base, { type: 'set-hidden', id: MISSING, hidden: true });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('unknown-element');
+  });
+
+  it('never reaches the saved document', () => {
+    const state = must(base, { type: 'set-hidden', id: A, hidden: true });
+    expect(serializeDocument(state.document)).toBe(serializeDocument(base.document));
+  });
+
+  it('deleting an element drops it from the hidden set', () => {
+    const state = must(
+      base,
+      { type: 'set-hidden', id: A, hidden: true },
+      { type: 'delete-element', id: A },
+    );
+    expect(state.hidden).toEqual([]);
+  });
+
+  it('loading a document clears the hidden set', () => {
+    const other = must(initialState('55555555-5555-4555-8555-555555555555'), entity(C, 'Solo'));
+    const state = must(
+      must(base, { type: 'set-hidden', id: A, hidden: true }),
+      { type: 'load-document', document: other.document },
+    );
+    expect(state.hidden).toEqual([]);
+  });
+});
+
 describe('load-document', () => {
   it('replaces the document and clears session state', () => {
     const other = must(initialState('55555555-5555-4555-8555-555555555555'), entity(C, 'Solo'));
