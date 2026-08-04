@@ -97,7 +97,7 @@ Use that path rather than `npx playwright install`, which fetches whatever versi
 - **Rename** by double-clicking an element or a connection label. Enter commits, Escape discards
 - **Drag** a node to move it, or its corners to resize it. Both are recorded on release, so the trace holds the result you meant
 - **Multi-select** with Control-click or Cmd-click. Dragging moves the whole selection
-- **Connect** two components by dragging from the handle on a node's right edge to another node. The connection takes the paradigm of what it points at
+- **Connect** two elements by dragging between the handles on any of their sides. A line attaches to whichever sides are nearest, and the arrowheads say which way it reads: one way, both, or neither. The connection takes the paradigm of what it points at
 - **Select** a node or edge to edit it in place: click the type chip to change paradigm, type into the description, click a tag to rename or retype it, `+ tag` to add one. A trash button appears under the selection, for one element or many
 - **Hover** an element for its description and tags. A type icon is always visible: a cube for a component, a ring for a state, a footprint for a step
 - **Group** any selection, or none, to start a container. Drag elements in and out of it, resize it by its corners, and collapse or expand to move between levels of detail. Connections into a collapsed group re-point at the group

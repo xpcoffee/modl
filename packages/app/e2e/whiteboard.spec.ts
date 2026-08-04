@@ -764,17 +764,39 @@ test.describe('creation', () => {
 });
 
 test.describe('connections', () => {
-  test('arrowheads are off until switched on', async ({ page }) => {
+  test('reads forward by default, with a head at the target', async ({ page }) => {
     await dispatch(page, sampleDomain());
-    await page.getByTestId(`connection-${IDS.authorise}`).click();
 
-    await page.getByTestId(`editor-arrow-end-${IDS.authorise}`).click();
-
-    const document = await getDocument(page);
-    expect(document.layout[IDS.authorise]).toMatchObject({ arrowEnd: true });
+    expect((await getDocument(page)).model.elements[IDS.authorise]).toMatchObject({
+      direction: 'forward',
+    });
     await expect(
       page.locator(`.react-flow__edge[data-id^="${IDS.authorise}"] .react-flow__edge-path`),
     ).toHaveAttribute('marker-end', 'url(#modl-arrow-end)');
+  });
+
+  test('a two-way connection carries a head at each end', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`connection-${IDS.authorise}`).click();
+
+    await page.getByTestId(`editor-direction-${IDS.authorise}-both`).click();
+
+    expect((await getDocument(page)).model.elements[IDS.authorise]).toMatchObject({
+      direction: 'both',
+    });
+    const path = page.locator(`.react-flow__edge[data-id^="${IDS.authorise}"] .react-flow__edge-path`);
+    await expect(path).toHaveAttribute('marker-start', 'url(#modl-arrow-start)');
+    await expect(path).toHaveAttribute('marker-end', 'url(#modl-arrow-end)');
+  });
+
+  test('an undirected connection carries no head at all', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`connection-${IDS.authorise}`).click();
+
+    await page.getByTestId(`editor-direction-${IDS.authorise}-none`).click();
+
+    const path = page.locator(`.react-flow__edge[data-id^="${IDS.authorise}"] .react-flow__edge-path`);
+    await expect(path).not.toHaveAttribute('marker-end', 'url(#modl-arrow-end)');
   });
 
   test('a routed line keeps its curve', async ({ page }) => {
@@ -816,11 +838,11 @@ test.describe('connections', () => {
     expect((document.layout[IDS.authorise] as { waypoints: unknown[] }).waypoints).toHaveLength(0);
   });
 
-  test('waypoints and arrowheads survive save and load', async ({ page }) => {
+  test('waypoints and direction survive save and load', async ({ page }) => {
     await dispatch(page, [
       ...sampleDomain(),
       { type: 'set-waypoints', id: IDS.authorise, waypoints: [{ x: 200, y: 120 }] },
-      { type: 'set-arrowheads', id: IDS.authorise, start: false, end: true },
+      { type: 'set-direction', id: IDS.authorise, direction: 'both' },
     ]);
     const saved = await serialize(page);
 
@@ -1327,5 +1349,80 @@ test.describe('artifacts', () => {
 
     await page.getByTestId(`editor-type-${IDS.ui}`).click();
     await expect(page.getByTestId(`editor-type-${IDS.ui}-artifact`)).toBeVisible();
+  });
+});
+
+test.describe('attachment sides', () => {
+  /** First and last point of an edge path, in board coordinates. */
+  function ends(d: string): { start: { x: number; y: number }; end: { x: number; y: number } } {
+    const numbers = [...d.matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
+    return {
+      start: { x: numbers[0]!, y: numbers[1]! },
+      end: { x: numbers[numbers.length - 2]!, y: numbers[numbers.length - 1]! },
+    };
+  }
+
+  test('a line running leftwards leaves the left side', async ({ page }) => {
+    // The target sits to the LEFT of the source. With handles fixed to the
+    // right and left edges, the line had to loop around both boxes.
+    await dispatch(page, [
+      { type: 'create-entity', id: 'right', entityType: 'component', title: 'Right', position: { x: 600, y: 0 } },
+      { type: 'create-entity', id: 'left', entityType: 'component', title: 'Left', position: { x: 0, y: 0 } },
+      { type: 'create-connection', id: 'back', connectionType: 'interaction', from: ['right'], to: ['left'], title: '' },
+    ]);
+    await fit(page);
+
+    const d = (await page
+      .locator('.react-flow__edge[data-id^="back"] .react-flow__edge-path')
+      .getAttribute('d'))!;
+    const { start, end } = ends(d);
+
+    // Leaves at the source's left edge and arrives at the target's right.
+    expect(start.x).toBeLessThan(610);
+    expect(end.x).toBeGreaterThan(170);
+    expect(start.x).toBeGreaterThan(end.x);
+  });
+
+  test('boxes stacked vertically join bottom to top', async ({ page }) => {
+    await dispatch(page, [
+      { type: 'create-entity', id: 'top', entityType: 'component', title: 'Top', position: { x: 0, y: 0 } },
+      { type: 'create-entity', id: 'bottom', entityType: 'component', title: 'Bottom', position: { x: 0, y: 400 } },
+      { type: 'create-connection', id: 'down', connectionType: 'interaction', from: ['top'], to: ['bottom'], title: '' },
+    ]);
+    await fit(page);
+
+    const d = (await page
+      .locator('.react-flow__edge[data-id^="down"] .react-flow__edge-path')
+      .getAttribute('d'))!;
+    const { start, end } = ends(d);
+
+    // Leaves the bottom edge of the upper box, not its right edge.
+    expect(start.y).toBeGreaterThan(60);
+    expect(end.y).toBeLessThan(410);
+    expect(end.y).toBeGreaterThan(start.y);
+  });
+});
+
+test.describe('bundled connection overlay', () => {
+  test('names what each bundled line joins', async ({ page }) => {
+    await dispatch(page, [
+      { type: 'create-entity', id: 'client', entityType: 'component', title: 'client', position: { x: 0, y: 0 } },
+      { type: 'create-entity', id: 'api', entityType: 'component', title: 'api', position: { x: 400, y: 0 } },
+      { type: 'create-connection', id: 'c1', connectionType: 'interaction', from: ['client'], to: ['api'], title: 'fetch' },
+      { type: 'create-connection', id: 'c2', connectionType: 'interaction', from: ['client'], to: ['api'], title: '' },
+      { type: 'group-elements', id: 'g-client', title: 'Web', memberIds: ['client'], position: { x: 0, y: 0 } },
+      { type: 'group-elements', id: 'g-api', title: 'Services', memberIds: ['api'], position: { x: 400, y: 0 } },
+      { type: 'set-selection', ids: [] },
+    ]);
+    await fit(page);
+
+    const rollup = page.locator('.edge-label__rollup');
+    await expect(rollup).toHaveCount(1);
+
+    // Titles a reader recognises, not ids.
+    const overlay = await rollup.getAttribute('title');
+    expect(overlay).toContain('client → api');
+    expect(overlay).toContain('fetch: client → api');
+    expect(overlay).not.toMatch(/interaction [0-9a-f]{8}/);
   });
 });

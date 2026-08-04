@@ -39,6 +39,7 @@ interface Connection extends ElementBase {
   type: ConnectionType;
   from: Id[];                        // many-to-many
   to: Id[];
+  direction: Direction;              // 'forward' | 'both' | 'none'
 }
 
 interface Fork extends ElementBase {
@@ -77,7 +78,12 @@ A key holds a list of values, because an element often belongs to more than one 
 
 ### Versions
 
-`formatVersion` is 2. A version 1 document still loads: the reader migrates it, turning single tag values into lists and adding empty `sources`. Saving writes the current version, so a file upgrades the first time it is written.
+`formatVersion` is 3. Older documents still load, and saving writes the current version, so a file upgrades the first time it is written.
+
+| Change | What the reader does |
+|---|---|
+| 1 → 2 | Single tag values become lists, and elements gain empty `sources` |
+| 2 → 3 | Connections gain `direction`, and arrowheads leave `layout`. A line drawn with a head at each end becomes `both`; anything else becomes `forward`, since `from` and `to` already said which way it ran |
 
 ## Paradigms
 
@@ -123,7 +129,7 @@ One JSON file. `.modl.json` by convention.
 ```
 
 - `model.elements` is the structure. A consumer needs nothing else.
-- `layout` is keyed by element id. Entities carry `{x, y, width, height}` plus an optional `expanded: {width, height}`. The first is the size drawn when collapsed; the second is the container box drawn when expanded, which also decides membership. They are independent, so opening a group to work inside it does not swell the node it shrinks back to. Connections carry `{waypoints: {x,y}[]}` for hand-placed bends, plus optional `arrowStart` and `arrowEnd`. Arrowheads sit here rather than in the model because `from` and `to` already carry the direction; a head is presentation. An id missing from `layout` gets a computed default, so a generated document can omit `layout` entirely. The default walks entities in sorted id order and places them on a 4-column grid spaced 240 by 140, at 180 by 72 each. Connections get no default, and the renderer routes them between their endpoints.
+- `layout` is keyed by element id. Entities and forks carry `{x, y, width, height}`; an entity may also carry an optional `expanded: {width, height}`. The first is the size drawn when collapsed, the second the container box drawn when expanded, which also decides membership. They are independent, so opening a group to work inside it does not swell the node it shrinks back to. Connections carry `{waypoints: {x,y}[]}` for hand-placed bends. An id missing from `layout` gets a computed default, so a generated document can omit `layout` entirely. The default walks entities in sorted id order and places them on a 4-column grid spaced 240 by 140, at 180 by 72 each. Connections get no default, and the renderer routes them between their endpoints.
 - `view` is the camera. Missing means origin at zoom 1.
 - `formatVersion` increments on any breaking change. A loader reading a higher version than it knows refuses the file and says which version it expected.
 
@@ -195,6 +201,12 @@ The title carries the question or the condition; the connections leaving it carr
 `shape` is presentation, kept on the element rather than in `layout` because it is a choice about what the fork *is* to the author, and it should travel with the fork when a document is read by something that ignores layout.
 
 A fork with connections on only one side draws a `fork-one-sided` warning: a junction that only receives, or only sends, reads as a mistake.
+
+### Direction
+
+`forward` runs from `from` to `to`, `both` is a two-way interaction, and `none` an association with no direction. It defaults to `forward`.
+
+Direction is part of the model rather than the drawing. Arrowheads were presentation at first, off by default, on the argument that `from` and `to` already carried the direction. That held while a line always left the right side of a box and entered the left, so the geometry said which way it ran. Once a line attaches to whichever side is nearest, an arrowhead is the only thing left telling a reader the direction, and something a reader depends on belongs in the model.
 
 ## Many-to-many connections
 

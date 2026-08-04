@@ -48,6 +48,8 @@ Four entity types: `component`, `state`, `step`, and `artifact` for the records,
 
 `from` and `to` are lists meaning *independently*: `from: [A, B]` to `to: [C]` is shorthand for `A -> C` and `B -> C`. When several sources genuinely act together, model the junction as a `fork` and connect through it.
 
+A connection carries `direction`: `forward` from `from` to `to`, `both` for a two-way interaction, `none` for an association with no direction. It defaults to `forward`, so a generated document reads correctly without setting it.
+
 ## Ask whether it reads
 
 `modl check` answers the question a producer cannot answer for itself. It exits non-zero when it finds something.
