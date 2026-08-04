@@ -29,8 +29,10 @@ test.describe('rendering', () => {
 });
 
 test.describe('direct manipulation', () => {
-  test('the toolbar creates an entity', async ({ page }) => {
-    await page.getByTestId('add-entity').click();
+  test('the toolbar places an entity', async ({ page }) => {
+    await page.getByTestId('add-element').click();
+    await page.getByTestId('add-type-component').click();
+    await page.locator('.react-flow__pane').click({ position: { x: 200, y: 200 } });
 
     await expect(page.locator('.react-flow__node')).toHaveCount(1);
     const trace = await getTrace(page);
@@ -897,16 +899,21 @@ test.describe('entity sizing and creation type', () => {
     expect(after.width).toBeGreaterThan(before.width);
   });
 
-  test('double-click creates the type chosen in the toolbar', async ({ page }) => {
+  test('the picker places the type it was armed with', async ({ page }) => {
     await dispatch(page, sampleDomain());
-    await page.getByTestId('entity-type').selectOption('step');
     const before = new Set(Object.keys((await getDocument(page)).model.elements));
 
-    await page.locator('.react-flow__pane').dblclick({ position: { x: 140, y: 560 } });
+    await page.getByTestId('add-element').click();
+    await page.getByTestId('add-type-step').click();
+    await expect(page.getByTestId('placement-hint')).toBeVisible();
+    await page.locator('.react-flow__pane').click({ position: { x: 140, y: 500 } });
 
     const document = await getDocument(page);
     const created = Object.keys(document.model.elements).find((id) => !before.has(id))!;
     expect(document.model.elements[created]).toMatchObject({ type: 'step' });
+
+    // Placing disarms the picker, so the next click does not put down another.
+    await expect(page.getByTestId('placement-hint')).toHaveCount(0);
   });
 });
 
@@ -1247,13 +1254,13 @@ test.describe('framing on load', () => {
   });
 });
 
-test.describe('forks', () => {
+test.describe('connection nodes as junctions', () => {
   const FORK = 'in-stock';
 
   async function decision(page: import('@playwright/test').Page) {
     await dispatch(page, [
       { type: 'create-entity', id: 'submit', entityType: 'step', title: 'Submit', position: { x: 0, y: 120 } },
-      { type: 'create-fork', id: FORK, shape: 'diamond', title: 'in stock?', position: { x: 300, y: 144 } },
+      { type: 'create-connection-node', id: FORK, shape: 'diamond', title: 'in stock?', position: { x: 300, y: 144 } },
       { type: 'create-entity', id: 'ship', entityType: 'step', title: 'Ship', position: { x: 480, y: 20 } },
       { type: 'create-entity', id: 'back', entityType: 'step', title: 'Backorder', position: { x: 480, y: 240 } },
       { type: 'create-connection', id: 'in', connectionType: 'relation', from: ['submit'], to: [FORK], title: '' },
@@ -1266,26 +1273,26 @@ test.describe('forks', () => {
   test('draws a junction that connections reach on both sides', async ({ page }) => {
     await decision(page);
 
-    await expect(page.getByTestId(`fork-${FORK}`)).toBeVisible();
+    await expect(page.getByTestId(`node-${FORK}`)).toBeVisible();
     await expect(page.getByTestId(`connection-yes`)).toContainText('yes');
     await expect(page.getByTestId(`connection-no`)).toContainText('no');
   });
 
   test('switches between a diamond and a circle', async ({ page }) => {
     await decision(page);
-    await page.getByTestId(`fork-${FORK}`).click();
+    await page.getByTestId(`node-${FORK}`).click();
 
-    await expect(page.getByTestId(`fork-${FORK}`)).toHaveAttribute('data-shape', 'diamond');
-    await page.getByTestId(`fork-shape-${FORK}`).click();
+    await expect(page.getByTestId(`node-${FORK}`)).toHaveAttribute('data-shape', 'diamond');
+    await page.getByTestId(`node-shape-${FORK}`).click();
 
-    await expect(page.getByTestId(`fork-${FORK}`)).toHaveAttribute('data-shape', 'circle');
+    await expect(page.getByTestId(`node-${FORK}`)).toHaveAttribute('data-shape', 'circle');
     expect((await getDocument(page)).model.elements[FORK]).toMatchObject({ shape: 'circle' });
   });
 
   test('renames in place like anything else', async ({ page }) => {
     await decision(page);
 
-    await page.getByTestId(`fork-${FORK}`).dblclick();
+    await page.getByTestId(`node-${FORK}`).dblclick();
     const rename = page.getByTestId(`rename-${FORK}`);
     await expect(rename).toBeVisible();
     await rename.fill('has stock?');
@@ -1294,13 +1301,16 @@ test.describe('forks', () => {
     expect((await getDocument(page)).model.elements[FORK]?.title).toBe('has stock?');
   });
 
-  test('the toolbar adds one', async ({ page }) => {
-    await page.getByTestId('add-fork').click();
+  test('the toolbar places one', async ({ page }) => {
+    await page.getByTestId('add-element').click();
+    await page.getByTestId('add-type-decision').click();
+    await page.locator('.react-flow__pane').click({ position: { x: 200, y: 200 } });
 
-    const forks = Object.values((await getDocument(page)).model.elements).filter(
-      (element) => element.kind === 'fork',
+    const junctions = Object.values((await getDocument(page)).model.elements).filter(
+      (element) => element.kind === 'connection-node',
     );
-    expect(forks).toHaveLength(1);
+    expect(junctions).toHaveLength(1);
+    expect(junctions[0]).toMatchObject({ shape: 'diamond' });
   });
 
   test('survives save and load', async ({ page }) => {
@@ -1315,7 +1325,7 @@ test.describe('forks', () => {
 
     await expect(page.getByTestId('toolbar-message')).toContainText('Loaded');
     expect(await serialize(page)).toBe(saved);
-    await expect(page.getByTestId(`fork-${FORK}`)).toBeVisible();
+    await expect(page.getByTestId(`node-${FORK}`)).toBeVisible();
   });
 });
 
@@ -1507,27 +1517,29 @@ test.describe('arrowhead toggles', () => {
 });
 
 test.describe('connection nodes', () => {
-  test('the toolbar calls it a connection node', async ({ page }) => {
-    await expect(page.getByTestId('add-fork')).toHaveText('Add connection node');
+  test('the picker calls it a connection node', async ({ page }) => {
+    await page.getByTestId('add-element').click();
+    await expect(page.getByTestId('add-type-connection-node')).toHaveText('connection node');
+    await expect(page.getByTestId('add-type-decision')).toHaveText('decision');
   });
 
   test('a diamond is a decision, a circle a connection node', async ({ page }) => {
     await dispatch(page, [
-      { type: 'create-fork', id: 'junction', shape: 'diamond', title: 'ready?', position: { x: 0, y: 0 } },
+      { type: 'create-connection-node', id: 'junction', shape: 'diamond', title: 'ready?', position: { x: 0, y: 0 } },
     ]);
-    await page.getByTestId('fork-junction').click();
+    await page.getByTestId('node-junction').click();
 
     await expect(page.getByTestId('editor-junction')).toContainText('decision');
-    await page.getByTestId('fork-shape-junction').click();
+    await page.getByTestId('node-shape-junction').click();
     await expect(page.getByTestId('editor-junction')).toContainText('connection node');
   });
 
   test('a connection point resizes', async ({ page }) => {
     await dispatch(page, [
-      { type: 'create-fork', id: 'junction', shape: 'diamond', title: '', position: { x: 0, y: 0 } },
+      { type: 'create-connection-node', id: 'junction', shape: 'diamond', title: '', position: { x: 0, y: 0 } },
     ]);
     await fit(page);
-    await page.getByTestId('fork-junction').click();
+    await page.getByTestId('node-junction').click();
 
     const before = (await getDocument(page)).layout['junction'] as { width: number };
     const handle = page.locator(
@@ -1545,16 +1557,25 @@ test.describe('connection nodes', () => {
 
   test('a round one keeps handles to drag from, and anchors lines at its middle', async ({ page }) => {
     await dispatch(page, [
-      { type: 'create-fork', id: 'junction', shape: 'circle', title: '', position: { x: 0, y: 0 } },
+      { type: 'create-connection-node', id: 'junction', shape: 'circle', title: '', position: { x: 0, y: 0 } },
       { type: 'create-entity', id: 'target', entityType: 'component', title: 'T', position: { x: 400, y: 0 } },
       { type: 'create-connection', id: 'out', connectionType: 'interaction', from: ['junction'], to: ['target'], title: '' },
     ]);
     await fit(page);
 
-    // Four side handles to start a connection from, plus a centre anchor.
+    // One contact point, at the middle. The four handles stacked there differ
+    // only in the direction they face, so a line's tangent turns with it.
     const node = page.locator('.react-flow__node[data-id="junction"]');
-    await expect(node.locator('.react-flow__handle:not(.handle--centre)')).toHaveCount(4);
-    await expect(node.locator('.handle--centre')).toHaveCount(1);
+    await expect(node.locator('.react-flow__handle:not(.handle--centre)')).toHaveCount(0);
+    await expect(node.locator('.handle--centre')).toHaveCount(4);
+
+    const centres = await node.locator('.handle--centre').evaluateAll((handles) =>
+      handles.map((handle) => {
+        const box = handle.getBoundingClientRect();
+        return `${Math.round(box.x + box.width / 2)},${Math.round(box.y + box.height / 2)}`;
+      }),
+    );
+    expect(new Set(centres).size).toBe(1);
 
     // The line leaves from the middle of the circle, not one of its sides.
     const box = (await page.evaluate(
@@ -1570,7 +1591,7 @@ test.describe('connection nodes', () => {
 
   test('a connection can be dragged from a round node', async ({ page }) => {
     await dispatch(page, [
-      { type: 'create-fork', id: 'junction', shape: 'circle', title: '', position: { x: 0, y: 100 } },
+      { type: 'create-connection-node', id: 'junction', shape: 'circle', title: '', position: { x: 0, y: 100 } },
       { type: 'create-entity', id: 'target', entityType: 'component', title: 'T', position: { x: 320, y: 100 } },
     ]);
     await fit(page);
@@ -1675,5 +1696,113 @@ test.describe('adding a parallel connector', () => {
     const one = (await page.getByTestId('connection-first').boundingBox())!;
     const two = (await page.getByTestId('connection-second').boundingBox())!;
     expect(Math.abs(one.y - two.y)).toBeGreaterThan(10);
+  });
+});
+
+test.describe('junction anchoring', () => {
+  test('a line leaves a junction facing where it is going', async ({ page }) => {
+    // Two nodes on a diagonal: the case where a fixed anchor direction made
+    // the line loop back on itself before heading off.
+    await dispatch(page, [
+      { type: 'create-connection-node', id: 'n1', shape: 'circle', title: '', position: { x: 60, y: 60 } },
+      { type: 'create-connection-node', id: 'n2', shape: 'circle', title: '', position: { x: 400, y: 340 } },
+      { type: 'create-connection', id: 'c', connectionType: 'interaction', from: ['n1'], to: ['n2'], title: '' },
+    ]);
+    await fit(page);
+
+    const d = (await page
+      .locator('.react-flow__edge[data-id^="c"] .react-flow__edge-path')
+      .getAttribute('d'))!;
+    const n = [...d.matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
+    const start = { x: n[0]!, y: n[1]! };
+    const end = { x: n[n.length - 2]!, y: n[n.length - 1]! };
+
+    // The whole path stays inside the box the two ends describe: it never
+    // sets off in the wrong direction and doubles back.
+    const xs = n.filter((_, i) => i % 2 === 0);
+    expect(Math.min(...xs)).toBeGreaterThanOrEqual(Math.min(start.x, end.x) - 1);
+    expect(Math.max(...xs)).toBeLessThanOrEqual(Math.max(start.x, end.x) + 1);
+  });
+
+  test('switching shape keeps the connections drawn', async ({ page }) => {
+    await dispatch(page, [
+      { type: 'create-entity', id: 'a', entityType: 'component', title: 'A', position: { x: 0, y: 60 } },
+      { type: 'create-connection-node', id: 'n', shape: 'diamond', title: '', position: { x: 340, y: 76 } },
+      { type: 'create-connection', id: 'c', connectionType: 'interaction', from: ['a'], to: ['n'], title: '' },
+    ]);
+    await expect(page.locator('.react-flow__edge')).toHaveCount(1);
+
+    // Both shapes anchor at the centre, so an edge never points at a handle
+    // the current shape does not render.
+    await page.evaluate(() =>
+      window.__modl.dispatch({ type: 'set-node-shape', id: 'n', shape: 'circle' } as never),
+    );
+    await expect(page.locator('.react-flow__edge')).toHaveCount(1);
+    await page.evaluate(() =>
+      window.__modl.dispatch({ type: 'set-node-shape', id: 'n', shape: 'diamond' } as never),
+    );
+    await expect(page.locator('.react-flow__edge')).toHaveCount(1);
+  });
+});
+
+test.describe('placing by drag', () => {
+  test('a drag sizes the element it puts down', async ({ page }) => {
+    await page.getByTestId('add-element').click();
+    await page.getByTestId('add-type-component').click();
+
+    const pane = (await page.locator('.react-flow__pane').boundingBox())!;
+    await page.mouse.move(pane.x + 150, pane.y + 120);
+    await page.mouse.down();
+    await page.mouse.move(pane.x + 450, pane.y + 320, { steps: 12 });
+    await expect(page.getByTestId('placement-preview')).toBeVisible();
+    await page.mouse.up();
+
+    const document = await getDocument(page);
+    const id = Object.keys(document.model.elements)[0]!;
+    const layout = document.layout[id] as { width: number; height: number };
+    expect(layout.width).toBeGreaterThan(250);
+    expect(layout.height).toBeGreaterThan(150);
+  });
+
+  test('a click puts one down at its natural size', async ({ page }) => {
+    await page.getByTestId('add-element').click();
+    await page.getByTestId('add-type-component').click();
+    await page.locator('.react-flow__pane').click({ position: { x: 200, y: 200 } });
+
+    const document = await getDocument(page);
+    const id = Object.keys(document.model.elements)[0]!;
+    expect(document.layout[id]).toMatchObject({ width: 180, height: 72 });
+  });
+});
+
+test.describe('converting an element', () => {
+  test('a component becomes a decision and back', async ({ page }) => {
+    await dispatch(page, [
+      { type: 'create-entity', id: 'a', entityType: 'component', title: 'Check', position: { x: 0, y: 0 } },
+      { type: 'create-entity', id: 'b', entityType: 'component', title: 'B', position: { x: 400, y: 0 } },
+      { type: 'create-connection', id: 'c', connectionType: 'interaction', from: ['a'], to: ['b'], title: '' },
+    ]);
+    await page.getByTestId('entity-a').click();
+
+    await page.getByTestId('editor-type-a').click();
+    await page.getByTestId('editor-type-a-decision').click();
+
+    let document = await getDocument(page);
+    expect(document.model.elements['a']).toMatchObject({
+      kind: 'connection-node',
+      shape: 'diamond',
+      title: 'Check',
+    });
+    // The connection still reaches it: the id never changed.
+    expect(document.model.elements['c']).toMatchObject({ from: ['a'], to: ['b'] });
+    await expect(page.getByTestId('node-a')).toBeVisible();
+
+    await page.getByTestId('node-a').click();
+    await page.getByTestId('editor-type-a').click();
+    await page.getByTestId('editor-type-a-component').click();
+
+    document = await getDocument(page);
+    expect(document.model.elements['a']).toMatchObject({ kind: 'entity', type: 'component' });
+    await expect(page.getByTestId('entity-a')).toBeVisible();
   });
 });

@@ -42,12 +42,12 @@ interface Connection extends ElementBase {
   direction: Direction;              // 'forward' | 'both' | 'none'
 }
 
-interface Fork extends ElementBase {
-  kind: 'fork';
+interface ConnectionNode extends ElementBase {
+  kind: 'connection-node';
   shape: ForkShape;
 }
 
-type Element = Entity | Connection | Fork;
+type Element = Entity | Connection | ConnectionNode;
 ```
 
 `kind` discriminates the union. `type` sub-classifies within a kind and carries the paradigm.
@@ -78,12 +78,13 @@ A key holds a list of values, because an element often belongs to more than one 
 
 ### Versions
 
-`formatVersion` is 3. Older documents still load, and saving writes the current version, so a file upgrades the first time it is written.
+`formatVersion` is 4. Older documents still load, and saving writes the current version, so a file upgrades the first time it is written.
 
 | Change | What the reader does |
 |---|---|
 | 1 → 2 | Single tag values become lists, and elements gain empty `sources` |
 | 2 → 3 | Connections gain `direction`, and arrowheads leave `layout`. A line drawn with a head at each end becomes `both`; anything else becomes `forward`, since `from` and `to` already said which way it ran |
+| 3 → 4 | A `fork` becomes a `connection-node`, matching the word a reader sees |
 
 ## Paradigms
 
@@ -179,23 +180,25 @@ Version checking short-circuits: an unreadable `formatVersion` returns on its ow
 | `empty-endpoints` | A connection has an empty `from` or `to` |
 | `orphan-entity` | An entity has no connections and holds no members. A container's connections are its members' |
 | `duplicate-title` | Two elements in the same group share a non-empty title. The same role name in two different groups reads naturally |
-| `fork-one-sided` | A fork has connections on only one side |
+| `connection-node-one-sided` | A connection node has connections on only one side |
 
 A connection pointing at targets from several paradigms produces no `paradigm-mismatch`, because a cross-paradigm connection is legal and only one of its endpoints can be satisfied.
 
 Validation returns `{ errors: Issue[]; warnings: Issue[] }`, where each `Issue` carries a code, an element id, and a message. Nothing throws.
 
-## Forks
+## Connection nodes
 
-A fork is a junction where connections fan in or fan out. It exists so a decision or a join is a thing in the model rather than an arrangement of arrows a reader has to infer.
+A connection node is a junction where connections fan in or fan out. It exists so a decision or a join is a thing in the model rather than an arrangement of arrows a reader has to infer.
 
-The interface calls it a **connection node**, and a diamond-shaped one a **decision**. "Connection point" was the first choice and read as the handles on the sides of a component, which is a different thing entirely.
+A diamond-shaped one is a **decision**; a round one is a plain junction. The shape is the author's choice and carries no meaning the model reads.
 
-The model keeps `kind: 'fork'`: the word is what a reader sees, and renaming the format would break every document to change a label.
+The name went `fork` → "connection point" → **connection node**. "Fork" described the drawing rather than the thing, and "connection point" read as the handles on the sides of a component. The format follows the interface: two names for one idea cost more than a migration.
+
+A connection node anchors its lines at its middle, whichever shape it is, so a line meets it at a point rather than a side. That is why it draws straight rather than easing in along an axis.
 
 ```ts
-interface Fork extends ElementBase {
-  kind: 'fork';
+interface ConnectionNode extends ElementBase {
+  kind: 'connection-node';
   shape: 'circle' | 'diamond';   // the author's choice, no meaning attached
 }
 ```
@@ -204,7 +207,7 @@ The title carries the question or the condition; the connections leaving it carr
 
 `shape` is presentation, kept on the element rather than in `layout` because it is a choice about what the fork *is* to the author, and it should travel with the fork when a document is read by something that ignores layout.
 
-A fork with connections on only one side draws a `fork-one-sided` warning: a junction that only receives, or only sends, reads as a mistake.
+A connection node with connections on only one side draws a `connection-node-one-sided` warning: a junction that only receives, or only sends, reads as a mistake.
 
 ### Direction
 
@@ -218,11 +221,11 @@ Direction is part of the model rather than the drawing. Arrowheads were presenta
 
 `from` and `to` are lists, and they mean **independently**. A connection with `from: [A, B]` and `to: [C]` is shorthand for the cross-product: `A -> C` and `B -> C`, two separate statements that happen to share a description.
 
-Joint semantics, where A and B *together* produce something that reaches C, are what a fork is for:
+Joint semantics, where A and B *together* produce something that reaches C, are what a connection node is for:
 
 ```
 A ──┐
-     ├──(fork)──> C
+     ├──(node)──> C
 B ──┘
 ```
 
@@ -249,4 +252,4 @@ Deleting a group lifts its members to whatever contained the group. Nothing is l
 
 ## Coverage
 
-Implemented: `Entity` across all four types, `Connection`, `Fork`, groups with collapse and expand, the full document format, readable names, validation.
+Implemented: `Entity` across all four types, `Connection`, `ConnectionNode`, groups with collapse and expand, the full document format, readable names, validation.
