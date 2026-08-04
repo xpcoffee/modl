@@ -35,6 +35,7 @@ function connection(id: Id, from: Id[], to: Id[]): Element {
     groupId: null,
     from,
     to,
+    direction: 'forward' as const,
   };
 }
 

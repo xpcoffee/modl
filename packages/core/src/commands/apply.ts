@@ -115,6 +115,7 @@ export function apply(state: AppState, command: Command): CommandResult {
         groupId: null,
         from: [...command.from],
         to: [...command.to],
+        direction: command.direction ?? 'forward',
       };
       return ok(withElement(state, connection, state.document.layout), [
         { type: 'element-created', id: command.id },
@@ -310,27 +311,14 @@ export function apply(state: AppState, command: Command): CommandResult {
       );
     }
 
-    case 'set-arrowheads': {
+    case 'set-direction': {
       const element = state.document.model.elements[command.id];
       if (!element) return unknown(command.type, command.id);
       if (!isConnection(element)) {
         return fail(command.type, 'wrong-kind', `element ${command.id} is not a connection`);
       }
-
-      const previous = state.document.layout[command.id];
-      const existing = previous && 'waypoints' in previous ? previous : { waypoints: [] };
-
       return ok(
-        {
-          ...state,
-          document: {
-            ...state.document,
-            layout: {
-              ...state.document.layout,
-              [command.id]: { ...existing, arrowStart: command.start, arrowEnd: command.end },
-            },
-          },
-        },
+        withElement(state, { ...element, direction: command.direction }, state.document.layout),
         [{ type: 'element-updated', id: command.id }],
       );
     }

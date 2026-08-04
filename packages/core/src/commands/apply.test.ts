@@ -403,28 +403,27 @@ describe('connection layout', () => {
     });
   });
 
-  it('keeps arrowheads when waypoints change', () => {
-    const state = must(
-      base,
-      link(LINK, [A], [B]),
-      { type: 'set-arrowheads', id: LINK, start: false, end: true },
-      { type: 'set-waypoints', id: LINK, waypoints: [{ x: 1, y: 2 }] },
-    );
-    expect(state.document.layout[LINK]).toMatchObject({ arrowEnd: true, waypoints: [{ x: 1, y: 2 }] });
+  it('reads forward unless told otherwise', () => {
+    const state = must(base, link(LINK, [A], [B]));
+    expect(state.document.model.elements[LINK]).toMatchObject({ direction: 'forward' });
   });
 
-  it('keeps waypoints when arrowheads change', () => {
+  it('keeps its direction when waypoints change', () => {
     const state = must(
       base,
       link(LINK, [A], [B]),
+      { type: 'set-direction', id: LINK, direction: 'both' },
       { type: 'set-waypoints', id: LINK, waypoints: [{ x: 1, y: 2 }] },
-      { type: 'set-arrowheads', id: LINK, start: true, end: true },
     );
-    expect(state.document.layout[LINK]).toMatchObject({
-      waypoints: [{ x: 1, y: 2 }],
-      arrowStart: true,
-      arrowEnd: true,
-    });
+    expect(state.document.model.elements[LINK]).toMatchObject({ direction: 'both' });
+    expect(state.document.layout[LINK]).toMatchObject({ waypoints: [{ x: 1, y: 2 }] });
+  });
+
+  it('reads both ways, or neither', () => {
+    let state = must(base, link(LINK, [A], [B]), { type: 'set-direction', id: LINK, direction: 'both' });
+    expect(state.document.model.elements[LINK]).toMatchObject({ direction: 'both' });
+    state = must(state, { type: 'set-direction', id: LINK, direction: 'none' });
+    expect(state.document.model.elements[LINK]).toMatchObject({ direction: 'none' });
   });
 
   it('clears waypoints with an empty list', () => {
@@ -444,8 +443,8 @@ describe('connection layout', () => {
     expect(result.error.code).toBe('wrong-kind');
   });
 
-  it('wrong-kind: rejects arrowheads on an entity', () => {
-    const result = apply(base, { type: 'set-arrowheads', id: A, start: true, end: true });
+  it('wrong-kind: rejects a direction on an entity', () => {
+    const result = apply(base, { type: 'set-direction', id: A, direction: 'both' });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe('wrong-kind');
@@ -468,14 +467,14 @@ describe('connection layout', () => {
       base,
       link(LINK, [A], [B]),
       { type: 'set-waypoints', id: LINK, waypoints: [{ x: 10, y: 20 }] },
-      { type: 'set-arrowheads', id: LINK, start: false, end: true },
+      { type: 'set-direction', id: LINK, direction: 'both' },
     );
     const text = serializeDocument(state.document);
     const parsed = parseDocument(text);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     expect(serializeDocument(parsed.document)).toBe(text);
-    expect(parsed.document.layout[LINK]).toMatchObject({ arrowEnd: true });
+    expect(parsed.document.model.elements[LINK]).toMatchObject({ direction: 'both' });
   });
 });
 

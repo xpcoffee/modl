@@ -42,11 +42,25 @@ export interface Entity extends ElementBase {
   type: EntityType;
 }
 
+/**
+ * Which way a connection reads.
+ *
+ * `forward` runs from `from` to `to`. `both` is a two-way interaction, and
+ * `none` an association with no direction at all.
+ */
+export type Direction = 'forward' | 'both' | 'none';
+
 export interface Connection extends ElementBase {
   kind: 'connection';
   type: ConnectionType;
   from: Id[];
   to: Id[];
+  /**
+   * Direction is part of the model, not the drawing. Once a line can attach
+   * to whichever side of a box is nearest, the geometry no longer says which
+   * way it runs, so the arrowheads have to mean something.
+   */
+  direction: Direction;
 }
 
 export interface Fork extends ElementBase {
@@ -78,9 +92,6 @@ export interface EntityLayout {
 export interface ConnectionLayout {
   /** Hand-placed bends, in order from source to target. */
   waypoints: Point[];
-  /** Arrowheads are presentation: `from` and `to` already carry direction. */
-  arrowStart?: boolean;
-  arrowEnd?: boolean;
 }
 
 export type ElementLayout = EntityLayout | ConnectionLayout;
@@ -102,10 +113,12 @@ export interface Document {
 /**
  * Bumped on any breaking change to the format.
  *
- * 1 -> 2: tag values became lists, and elements gained `sources`. A version 1
- * document still loads: the reader migrates it.
+ * 1 -> 2: tag values became lists, and elements gained `sources`.
+ * 2 -> 3: connections carry `direction`, and arrowheads left `layout`.
+ *
+ * Older documents still load: the reader migrates them.
  */
-export const FORMAT_VERSION = 2;
+export const FORMAT_VERSION = 3;
 export const OLDEST_READABLE_VERSION = 1;
 
 export const DEFAULT_ENTITY_SIZE = { width: 180, height: 72 } as const;

@@ -53,6 +53,7 @@ export const connectionSchema = z.object({
   type: z.enum(['transition', 'relation', 'interaction']),
   from: z.array(idSchema),
   to: z.array(idSchema),
+  direction: z.enum(['forward', 'both', 'none']).default('forward'),
 });
 
 export const forkSchema = z.object({
@@ -82,8 +83,6 @@ export const entityLayoutSchema = z.object({
 
 export const connectionLayoutSchema = z.object({
   waypoints: z.array(pointSchema),
-  arrowStart: z.boolean().optional(),
-  arrowEnd: z.boolean().optional(),
 });
 
 export const elementLayoutSchema = z.union([entityLayoutSchema, connectionLayoutSchema]);

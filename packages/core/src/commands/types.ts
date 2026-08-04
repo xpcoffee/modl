@@ -1,5 +1,6 @@
 import type {
   ConnectionType,
+  Direction,
   Document,
   EntityType,
   ForkShape,
@@ -37,6 +38,7 @@ export type Command =
       from: Id[];
       to: Id[];
       title: string;
+      direction?: Direction;
     }
   | { type: 'move-element'; id: Id; position: Point }
   | { type: 'set-metadata'; id: Id; title?: string; description?: string }
@@ -45,7 +47,7 @@ export type Command =
   | { type: 'rename-tag'; id: Id; from: string; to: string }
   | { type: 'resize-element'; id: Id; width: number; height: number }
   | { type: 'set-waypoints'; id: Id; waypoints: Point[] }
-  | { type: 'set-arrowheads'; id: Id; start: boolean; end: boolean }
+  | { type: 'set-direction'; id: Id; direction: Direction }
   | { type: 'set-element-type'; id: Id; elementType: EntityType | ConnectionType }
   | { type: 'set-endpoints'; id: Id; from: Id[]; to: Id[] }
   | { type: 'delete-element'; id: Id }

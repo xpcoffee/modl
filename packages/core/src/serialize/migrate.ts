@@ -31,7 +31,49 @@ function v1ToV2(document: Loose): Loose {
   return { ...document, formatVersion: 2, model: { ...model, elements: migrated } };
 }
 
-const MIGRATIONS: Record<number, (document: Loose) => Loose> = { 1: v1ToV2 };
+/**
+ * 2 -> 3: connections carry `direction`, and arrowheads left `layout`.
+ *
+ * Arrowheads used to be presentation, off by default, because `from` and `to`
+ * carried the direction and a line always left the right side of a box. Now
+ * that a line attaches to whichever side is nearest, the arrowhead is what
+ * tells a reader which way it runs, so it belongs to the model.
+ */
+function v2ToV3(document: Loose): Loose {
+  const model = (document['model'] ?? {}) as Loose;
+  const elements = (model['elements'] ?? {}) as Record<string, Loose>;
+  const layout = (document['layout'] ?? {}) as Record<string, Loose>;
+
+  const migrated: Record<string, Loose> = {};
+  for (const [id, element] of Object.entries(elements)) {
+    if (element['kind'] !== 'connection') {
+      migrated[id] = element;
+      continue;
+    }
+    // A line drawn with a head at each end was already saying "both ways".
+    // Anything else read as running from `from` to `to`.
+    const box = layout[id] ?? {};
+    const both = box['arrowStart'] === true && box['arrowEnd'] === true;
+    migrated[id] = { ...element, direction: both ? 'both' : 'forward' };
+  }
+
+  const cleaned: Record<string, Loose> = {};
+  for (const [id, box] of Object.entries(layout)) {
+    const { arrowStart, arrowEnd, ...rest } = box;
+    void arrowStart;
+    void arrowEnd;
+    cleaned[id] = rest;
+  }
+
+  return {
+    ...document,
+    formatVersion: 3,
+    model: { ...model, elements: migrated },
+    layout: cleaned,
+  };
+}
+
+const MIGRATIONS: Record<number, (document: Loose) => Loose> = { 1: v1ToV2, 2: v2ToV3 };
 
 export function migrateDocument(raw: unknown): MigrationResult {
   if (typeof raw !== 'object' || raw === null) {

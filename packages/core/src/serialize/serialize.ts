@@ -67,7 +67,14 @@ function orderElement(element: Element): Record<string, unknown> {
 
   if (isEntity(element)) return { ...base, type: element.type, ...tail };
   if (isConnection(element)) {
-    return { ...base, type: element.type, from: [...element.from], to: [...element.to], ...tail };
+    return {
+      ...base,
+      type: element.type,
+      from: [...element.from],
+      to: [...element.to],
+      direction: element.direction,
+      ...tail,
+    };
   }
   return { ...base, shape: element.shape, ...tail };
 }
@@ -93,11 +100,7 @@ function orderLayout(layout: ElementLayout): Record<string, unknown> {
         : {}),
     };
   }
-  return {
-    waypoints: layout.waypoints.map((point) => ({ x: point.x, y: point.y })),
-    ...(layout.arrowStart === undefined ? {} : { arrowStart: layout.arrowStart }),
-    ...(layout.arrowEnd === undefined ? {} : { arrowEnd: layout.arrowEnd }),
-  };
+  return { waypoints: layout.waypoints.map((point) => ({ x: point.x, y: point.y })) };
 }
 
 export type ParseResult =
