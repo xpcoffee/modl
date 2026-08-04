@@ -97,14 +97,16 @@ function measure(state: AppState, expanded: ReadonlySet<Id>): Map<Id, Rect> {
       return own;
     }
 
-    // An expanded entity draws as a container sized by its own rectangle,
-    // which the user resizes. Membership is then simply what sits inside the
-    // box, so dragging an element past the edge takes it out of the group.
+    // An expanded entity draws as a container with a size of its own, kept
+    // apart from the size it collapses to. Membership is then simply what
+    // sits inside the box, so dragging an element past the edge takes it out.
+    const layout = state.document.layout[id];
+    const container = layout && 'x' in layout ? layout.expanded : undefined;
     const box: Rect = {
       x: own.x,
       y: own.y,
-      width: Math.max(own.width, MIN_GROUP_SIZE.width),
-      height: Math.max(own.height, MIN_GROUP_SIZE.height),
+      width: Math.max(container?.width ?? MIN_GROUP_SIZE.width, MIN_GROUP_SIZE.width),
+      height: Math.max(container?.height ?? MIN_GROUP_SIZE.height, MIN_GROUP_SIZE.height),
     };
     rects.set(id, box);
     return box;
