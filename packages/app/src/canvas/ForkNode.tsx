@@ -1,10 +1,11 @@
-import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
+import { Handle, NodeResizer, Position, type Node, type NodeProps } from '@xyflow/react';
 import type { ForkShape } from '@modl/core';
 import { store } from '../store/store.js';
 import type { ForkNodeData } from './derive.js';
 import { ElementEditor } from './ElementEditor.js';
 import { ElementHover } from './ElementHover.js';
 import { InlineTitle } from './InlineTitle.js';
+import { MIN_FORK_SIZE } from './derive.js';
 import { stopEditing } from './editing.js';
 
 /**
@@ -19,6 +20,7 @@ import { stopEditing } from './editing.js';
  */
 export function ForkNode({ data, selected }: NodeProps<Node<ForkNodeData>>) {
   const next: ForkShape = data.shape === 'circle' ? 'diamond' : 'circle';
+  const label = (shape: ForkShape) => (shape === 'diamond' ? 'decision' : 'connection point');
 
   return (
     <div
@@ -28,10 +30,33 @@ export function ForkNode({ data, selected }: NodeProps<Node<ForkNodeData>>) {
       data-testid={`fork-${data.id}`}
       data-shape={data.shape}
     >
-      <Handle type="source" position={Position.Left} id="left" />
-      <Handle type="source" position={Position.Right} id="right" />
-      <Handle type="source" position={Position.Top} id="top" />
-      <Handle type="source" position={Position.Bottom} id="bottom" />
+      <NodeResizer
+        isVisible={!!selected}
+        minWidth={MIN_FORK_SIZE.width}
+        minHeight={MIN_FORK_SIZE.height}
+        keepAspectRatio
+        onResizeEnd={(_, params) =>
+          store.dispatch({
+            type: 'resize-element',
+            id: data.id,
+            width: params.width,
+            height: params.height,
+          })
+        }
+      />
+
+      {/* A circle has no sides to speak of, so lines aim at its middle. A
+          decision is a diamond, whose points are where lines belong. */}
+      {data.shape === 'circle' ? (
+        <Handle type="source" position={Position.Left} id="centre" className="handle--centre" />
+      ) : (
+        <>
+          <Handle type="source" position={Position.Left} id="left" />
+          <Handle type="source" position={Position.Right} id="right" />
+          <Handle type="source" position={Position.Top} id="top" />
+          <Handle type="source" position={Position.Bottom} id="bottom" />
+        </>
+      )}
 
       <div className="fork-node__face" />
 
@@ -53,8 +78,8 @@ export function ForkNode({ data, selected }: NodeProps<Node<ForkNodeData>>) {
           type="button"
           className="fork-node__shape nodrag"
           data-testid={`fork-shape-${data.id}`}
-          aria-label={`Draw as a ${next}`}
-          title={`Draw as a ${next}`}
+          aria-label={`Make this a ${label(next)}`}
+          title={`Make this a ${label(next)}`}
           onClick={() => store.dispatch({ type: 'set-fork-shape', id: data.id, shape: next })}
         >
           {next === 'diamond' ? '◇' : '○'}
@@ -66,14 +91,18 @@ export function ForkNode({ data, selected }: NodeProps<Node<ForkNodeData>>) {
           <ElementEditor
             id={data.id}
             kind="fork"
-            elementType="fork"
+            elementType={label(data.shape)}
             description={data.description}
             tags={data.tags}
           />
         </div>
       ) : (
         <div className="fork-node__hover">
-          <ElementHover elementType="fork" description={data.description} tags={data.tags} />
+          <ElementHover
+            elementType={label(data.shape)}
+            description={data.description}
+            tags={data.tags}
+          />
         </div>
       )}
     </div>

@@ -28,8 +28,11 @@ export function ElementEditor({
 }: {
   id: Id;
   kind: 'entity' | 'connection' | 'fork';
-  /** A fork has no type to choose, so its chip is a label rather than a menu. */
-  elementType: EntityType | ConnectionType | 'fork';
+  /**
+   * A connection point has no type to choose, so its chip is a label rather
+   * than a menu, and it carries the reader's word for the shape.
+   */
+  elementType: EntityType | ConnectionType | 'connection point' | 'decision';
   description: string;
   tags: Record<string, string[]>;
   /** Present for connections: which way the connection reads. */
@@ -58,7 +61,9 @@ export function ElementEditor({
           disabled={types.length === 0}
           onClick={() => setPickingType((open) => !open)}
         >
-          {elementType === 'fork' ? null : <ElementIcon elementType={elementType} />}
+          {elementType === 'connection point' || elementType === 'decision' ? null : (
+            <ElementIcon elementType={elementType} />
+          )}
           <span>{elementType}</span>
         </button>
 
@@ -89,20 +94,44 @@ export function ElementEditor({
       </div>
 
       {direction && (
-        <div className="element-editor__arrows" data-testid={`editor-direction-${id}`}>
-          <span>Reads</span>
-          {(['forward', 'both', 'none'] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              data-testid={`editor-direction-${id}-${option}`}
-              aria-pressed={direction === option}
-              className={direction === option ? 'is-on' : undefined}
-              onClick={() => store.dispatch({ type: 'set-direction', id, direction: option })}
-            >
-              {option === 'forward' ? '→' : option === 'both' ? '↔' : '—'}
-            </button>
-          ))}
+        <div className="element-editor__arrows" data-testid={`editor-arrows-${id}`}>
+          {/* A head at each end, toggled separately. Every combination is
+              reachable, and turning on the start alone flips the connection
+              rather than inventing a second way to say backwards. */}
+          <button
+            type="button"
+            data-testid={`editor-arrow-start-${id}`}
+            aria-label="Arrowhead at the start"
+            aria-pressed={direction === 'both'}
+            className={direction === 'both' ? 'is-on' : undefined}
+            onClick={() =>
+              store.dispatch({
+                type: 'set-arrowheads',
+                id,
+                start: direction !== 'both',
+                end: direction === 'forward' || direction === 'both',
+              })
+            }
+          >
+            ←
+          </button>
+          <button
+            type="button"
+            data-testid={`editor-arrow-end-${id}`}
+            aria-label="Arrowhead at the end"
+            aria-pressed={direction === 'forward' || direction === 'both'}
+            className={direction === 'forward' || direction === 'both' ? 'is-on' : undefined}
+            onClick={() =>
+              store.dispatch({
+                type: 'set-arrowheads',
+                id,
+                start: direction === 'both',
+                end: !(direction === 'forward' || direction === 'both'),
+              })
+            }
+          >
+            →
+          </button>
         </div>
       )}
 

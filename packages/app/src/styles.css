@@ -776,3 +776,15 @@ select {
 .fork-node:hover .fork-node__hover {
   display: block;
 }
+
+/* A round connection point has no sides, so its handle sits at the middle. */
+.handle--centre {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+}
+
+.fork-node.is-selected .handle--centre {
+  opacity: 1;
+}

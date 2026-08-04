@@ -16,6 +16,7 @@ import {
   type ForkShape,
   type Id,
   type Point,
+  type Side,
 } from '@modl/core';
 import type { Edge, Node } from '@xyflow/react';
 
@@ -90,6 +91,8 @@ interface Rect {
 const GROUP_PADDING = { top: 34, side: 20, bottom: 20 } as const;
 /** An empty container still needs somewhere to drop things. */
 export const MIN_GROUP_SIZE = { width: 260, height: 180 } as const;
+/** A connection point stays a point: small, and square so a diamond reads. */
+export const MIN_FORK_SIZE = { width: 40, height: 40 } as const;
 /** Small enough to be useful, large enough to still hold a title. */
 export const MIN_ENTITY_SIZE = { width: 120, height: 60 } as const;
 const FALLBACK_RECT: Rect = { x: 0, y: 0, width: 180, height: 72 };
@@ -347,7 +350,10 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
         type: 'connection',
         source: first.from,
         target: first.to,
-        ...sidesBetween(rects, first.from, first.to),
+        ...sidesBetween(rects, first.from, first.to, {}, {
+          from: isRound(elements, first.from),
+          to: isRound(elements, first.to),
+        }),
         data: {
           connectionId: ids[0] ?? first.from,
           title: `${connections.length} connections`,
@@ -376,7 +382,10 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
         type: 'connection',
         source: from,
         target: to,
-        ...sidesBetween(rects, from, to),
+        ...sidesBetween(rects, from, to, layoutOf(state, element.id), {
+          from: isRound(elements, from),
+          to: isRound(elements, to),
+        }),
         selected: selected.has(element.id),
         ...(selected.has(element.id) ? { zIndex: 1001 } : {}),
         data: {
@@ -438,9 +447,18 @@ function onlySelected(state: AppState, options: DeriveOptions): Id | null {
 }
 
 /** Connection layout, defaulted so callers need no checks. */
-function layoutOf(state: AppState, id: Id): { waypoints: Point[] } {
+function layoutOf(
+  state: AppState,
+  id: Id,
+): { waypoints: Point[]; sourceSide?: Side; targetSide?: Side } {
   const entry = state.document.layout[id];
   return entry && 'waypoints' in entry ? entry : { waypoints: [] };
+}
+
+/** A circle has no sides, so lines aim at its middle. */
+function isRound(elements: Record<Id, Element>, id: Id): boolean {
+  const element = elements[id];
+  return element !== undefined && isFork(element) && element.shape === 'circle';
 }
 
 /**
@@ -453,10 +471,19 @@ function sidesBetween(
   rects: Map<Id, Rect>,
   from: Id,
   to: Id,
+  chosen: { sourceSide?: Side; targetSide?: Side } = {},
+  round: { from: boolean; to: boolean } = { from: false, to: false },
 ): { sourceHandle: string; targetHandle: string } {
   const a = rects.get(from);
   const b = rects.get(to);
-  if (!a || !b) return { sourceHandle: 'right', targetHandle: 'left' };
+  const auto = (source: string, target: string) => ({
+    // A point the reader dragged the line onto wins. Recomputing it moved the
+    // line off the handle they picked the moment either box shifted.
+    sourceHandle: round.from ? 'centre' : (chosen.sourceSide ?? source),
+    targetHandle: round.to ? 'centre' : (chosen.targetSide ?? target),
+  });
+
+  if (!a || !b) return auto('right', 'left');
 
   const dx = b.x + b.width / 2 - (a.x + a.width / 2);
   const dy = b.y + b.height / 2 - (a.y + a.height / 2);
@@ -464,13 +491,9 @@ function sidesBetween(
   // Whichever gap is wider decides the axis, so boxes stacked vertically join
   // top to bottom rather than curling around their sides.
   if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx >= 0
-      ? { sourceHandle: 'right', targetHandle: 'left' }
-      : { sourceHandle: 'left', targetHandle: 'right' };
+    return dx >= 0 ? auto('right', 'left') : auto('left', 'right');
   }
-  return dy >= 0
-    ? { sourceHandle: 'bottom', targetHandle: 'top' }
-    : { sourceHandle: 'top', targetHandle: 'bottom' };
+  return dy >= 0 ? auto('bottom', 'top') : auto('top', 'bottom');
 }
 
 /** Recovers the connection id from a derived edge id. */

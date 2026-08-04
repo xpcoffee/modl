@@ -122,9 +122,9 @@ export function Toolbar() {
         type="button"
         data-testid="add-fork"
         onClick={addFork}
-        title="A junction where connections fan in or out"
+        title="A point where connections fan in or out. Make it a diamond for a decision"
       >
-        Add fork
+        Add connection point
       </button>
       <button
         type="button"

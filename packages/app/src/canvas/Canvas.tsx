@@ -13,7 +13,13 @@ import {
   type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { DEFAULT_ENTITY_SIZE, connectionTypeFor, descendantsOf, isEntity } from '@modl/core';
+import {
+  DEFAULT_ENTITY_SIZE,
+  connectionTypeFor,
+  descendantsOf,
+  isEntity,
+  type Side,
+} from '@modl/core';
 import { store } from '../store/store.js';
 import { useAppState, useLoadCount } from '../store/useStore.js';
 import {
@@ -157,14 +163,26 @@ export function Canvas() {
       (source && isEntity(source) ? connectionTypeFor(source.type) : null) ??
       'interaction';
 
+    const id = crypto.randomUUID();
     store.dispatch({
       type: 'create-connection',
-      id: crypto.randomUUID(),
+      id,
       connectionType,
       from: [connection.source],
       to: [connection.target],
       title: '',
     });
+
+    // The handles the reader actually dragged between. Layout, not structure:
+    // which side of a box a line touches says nothing about the domain.
+    if (connection.sourceHandle || connection.targetHandle) {
+      store.dispatch({
+        type: 'set-connection-sides',
+        id,
+        source: (connection.sourceHandle as Side | null) ?? null,
+        target: (connection.targetHandle as Side | null) ?? null,
+      });
+    }
   }, []);
 
   /**
