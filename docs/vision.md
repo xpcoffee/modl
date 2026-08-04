@@ -20,7 +20,7 @@ This is the differentiating idea, and it is the reason `groupId` sits on every e
 
 ## Forks
 
-Fan-in and fan-out points, drawn as a circle or a diamond by user choice. They let one connection split to many targets, or many sources merge into one.
+Built. A junction where connections fan in or out, drawn as a circle or a diamond by the author's choice, carrying the question or condition in its title. See [the model reference](domain-model.md).
 
 ## Board behaviour beyond iteration 1
 

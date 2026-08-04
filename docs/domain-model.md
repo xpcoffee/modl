@@ -89,6 +89,8 @@ Three modelling paradigms coexist in one document. The `type` field records whic
 | Wizard | `step` | `relation` | An input or output flowing between steps |
 | Components | `component` | `interaction` | An interaction between components |
 
+A fourth entity type, `artifact`, belongs to no paradigm. A record, file or message is a noun that any of the three can point at, so a connection reaching one keeps whatever type it already had and never produces a warning. Drawing into an artifact falls back to the paradigm of the element the line came from.
+
 A connection between entities of different paradigms is legal. The connection type follows the target paradigm: a `state` to `step` connection is a `relation`, and a `state` to `component` connection is a `transition`. When a user draws from a typed entity, the editor preselects the matching connection type. The user can override it, and overriding produces a warning rather than a rejection.
 
 ## Document format
@@ -171,10 +173,42 @@ Version checking short-circuits: an unreadable `formatVersion` returns on its ow
 | `empty-endpoints` | A connection has an empty `from` or `to` |
 | `orphan-entity` | An entity has no connections and holds no members. A container's connections are its members' |
 | `duplicate-title` | Two elements in the same group share a non-empty title. The same role name in two different groups reads naturally |
+| `fork-one-sided` | A fork has connections on only one side |
 
 A connection pointing at targets from several paradigms produces no `paradigm-mismatch`, because a cross-paradigm connection is legal and only one of its endpoints can be satisfied.
 
 Validation returns `{ errors: Issue[]; warnings: Issue[] }`, where each `Issue` carries a code, an element id, and a message. Nothing throws.
+
+## Forks
+
+A fork is a junction where connections fan in or fan out. It exists so a decision or a join is a thing in the model rather than an arrangement of arrows a reader has to infer.
+
+```ts
+interface Fork extends ElementBase {
+  kind: 'fork';
+  shape: 'circle' | 'diamond';   // the author's choice, no meaning attached
+}
+```
+
+The title carries the question or the condition; the connections leaving it carry the answers. A fork is a legal endpoint for a connection at either end, it can sit inside a group, and it can be tagged and filtered like anything else. It cannot hold members: a junction is a point, not a container.
+
+`shape` is presentation, kept on the element rather than in `layout` because it is a choice about what the fork *is* to the author, and it should travel with the fork when a document is read by something that ignores layout.
+
+A fork with connections on only one side draws a `fork-one-sided` warning: a junction that only receives, or only sends, reads as a mistake.
+
+## Many-to-many connections
+
+`from` and `to` are lists, and they mean **independently**. A connection with `from: [A, B]` and `to: [C]` is shorthand for the cross-product: `A -> C` and `B -> C`, two separate statements that happen to share a description.
+
+Joint semantics, where A and B *together* produce something that reaches C, are what a fork is for:
+
+```
+A ──┐
+     ├──(fork)──> C
+B ──┘
+```
+
+The alternative was a flag on the connection saying which reading applies. That puts two ways to express one idea into the model, and it does not compose when the sources are joint but the targets are not. One meaning per shape is easier to read and easier to generate.
 
 ## Groups
 
@@ -195,10 +229,6 @@ Expansion is session state rather than document state. Which groups a reader has
 
 Deleting a group lifts its members to whatever contained the group. Nothing is left pointing at an id that no longer exists.
 
-## Iteration 1 coverage
+## Coverage
 
-Implemented: `Entity`, `Connection`, groups with collapse and expand, the full document format, readable names, validation.
-
-Not implemented: `Fork`. The type exists in the schema and no command creates one.
-
-The file format does not change when forks arrive, so documents written now stay readable.
+Implemented: `Entity` across all four types, `Connection`, `Fork`, groups with collapse and expand, the full document format, readable names, validation.
