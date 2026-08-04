@@ -52,8 +52,15 @@ export interface Model {
 export interface EntityLayout {
   x: number;
   y: number;
+  /** Size drawn when collapsed, or when the entity holds nothing. */
   width: number;
   height: number;
+  /**
+   * Size of the container drawn while expanded. Independent of the collapsed
+   * size: opening a group to work inside it should not swell the box it
+   * shrinks back to.
+   */
+  expanded?: { width: number; height: number };
 }
 
 export interface ConnectionLayout {

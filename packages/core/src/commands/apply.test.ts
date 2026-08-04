@@ -317,6 +317,65 @@ describe('resize-element', () => {
     expect(result.error.code).toBe('schema-invalid');
   });
 
+  it('resizes the container while expanded, leaving the collapsed size alone', () => {
+    const state = must(
+      base,
+      { type: 'set-expanded', id: A, expanded: true },
+      { type: 'resize-element', id: A, width: 500, height: 400 },
+    );
+    expect(state.document.layout[A]).toMatchObject({
+      width: 180,
+      height: 72,
+      expanded: { width: 500, height: 400 },
+    });
+  });
+
+  it('resizes the node while collapsed, leaving the container alone', () => {
+    const state = must(
+      base,
+      { type: 'set-expanded', id: A, expanded: true },
+      { type: 'resize-element', id: A, width: 500, height: 400 },
+      { type: 'set-expanded', id: A, expanded: false },
+      { type: 'resize-element', id: A, width: 220, height: 90 },
+    );
+    expect(state.document.layout[A]).toMatchObject({
+      width: 220,
+      height: 90,
+      expanded: { width: 500, height: 400 },
+    });
+  });
+
+  it('keeps both sizes when the element moves', () => {
+    const state = must(
+      base,
+      { type: 'set-expanded', id: A, expanded: true },
+      { type: 'resize-element', id: A, width: 500, height: 400 },
+      { type: 'set-expanded', id: A, expanded: false },
+      { type: 'move-element', id: A, position: { x: 90, y: 90 } },
+    );
+    expect(state.document.layout[A]).toEqual({
+      x: 90,
+      y: 90,
+      width: 180,
+      height: 72,
+      expanded: { width: 500, height: 400 },
+    });
+  });
+
+  it('round trips both sizes through the serializer', () => {
+    const state = must(
+      base,
+      { type: 'set-expanded', id: A, expanded: true },
+      { type: 'resize-element', id: A, width: 500, height: 400 },
+    );
+    const text = serializeDocument(state.document);
+    const parsed = parseDocument(text);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(serializeDocument(parsed.document)).toBe(text);
+    expect(parsed.document.layout[A]).toMatchObject({ expanded: { width: 500, height: 400 } });
+  });
+
   it('wrong-kind: rejects resizing a connection', () => {
     const state = must(base, link(LINK, [A], [B]));
     const result = apply(state, { type: 'resize-element', id: LINK, width: 10, height: 10 });
@@ -422,6 +481,25 @@ describe('connection layout', () => {
 
 describe('groups', () => {
   const GROUP = '66666666-6666-4666-8666-666666666666';
+
+  it('sizes the container around its members without swelling the collapsed node', () => {
+    const state = must(base, {
+      type: 'group-elements',
+      id: GROUP,
+      title: 'Payments',
+      memberIds: [A, B],
+      position: { x: 0, y: 0 },
+    });
+    const layout = state.document.layout[GROUP] as {
+      width: number;
+      height: number;
+      expanded: { width: number };
+    };
+    expect(layout.width).toBe(180);
+    expect(layout.height).toBe(72);
+    // Wide enough to hold both members, which sit 240 apart.
+    expect(layout.expanded.width).toBeGreaterThan(400);
+  });
 
   it('group-elements creates a group holding the members', () => {
     const state = must(base, {

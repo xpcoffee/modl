@@ -90,10 +90,9 @@ export function apply(state: AppState, command: Command): CommandResult {
         return fail(command.type, 'wrong-kind', `element ${command.id} is not an entity`);
       }
       const previous = state.document.layout[command.id];
-      const size =
-        previous && 'width' in previous
-          ? { width: previous.width, height: previous.height }
-          : DEFAULT_ENTITY_SIZE;
+      // Keeps both sizes, including a container's, so moving is only a move.
+      const existing =
+        previous && 'width' in previous ? previous : { ...DEFAULT_ENTITY_SIZE };
 
       return ok(
         {
@@ -102,7 +101,7 @@ export function apply(state: AppState, command: Command): CommandResult {
             ...state.document,
             layout: {
               ...state.document.layout,
-              [command.id]: { x: command.position.x, y: command.position.y, ...size },
+              [command.id]: { ...existing, x: command.position.x, y: command.position.y },
             },
           },
         },
@@ -223,18 +222,20 @@ export function apply(state: AppState, command: Command): CommandResult {
       }
 
       const previous = state.document.layout[command.id];
-      const origin = previous && 'x' in previous ? { x: previous.x, y: previous.y } : { x: 0, y: 0 };
+      const existing =
+        previous && 'x' in previous ? previous : { x: 0, y: 0, ...DEFAULT_ENTITY_SIZE };
+
+      // Resizes whichever box is on screen. An expanded container and the node
+      // it collapses to keep their own sizes, so opening a group to work
+      // inside it does not swell the box it shrinks back to.
+      const next = state.expanded.includes(command.id)
+        ? { ...existing, expanded: { width: command.width, height: command.height } }
+        : { ...existing, width: command.width, height: command.height };
 
       return ok(
         {
           ...state,
-          document: {
-            ...state.document,
-            layout: {
-              ...state.document.layout,
-              [command.id]: { ...origin, width: command.width, height: command.height },
-            },
-          },
+          document: { ...state.document, layout: { ...state.document.layout, [command.id]: next } },
         },
         [{ type: 'element-updated', id: command.id }],
       );
@@ -590,7 +591,7 @@ function containerBox(
   state: AppState,
   memberIds: Id[],
   fallback: Point,
-): { x: number; y: number; width: number; height: number } {
+): { x: number; y: number; width: number; height: number; expanded: { width: number; height: number } } {
   const boxes = memberIds
     .map((id) => state.document.layout[id])
     .filter((entry): entry is { x: number; y: number; width: number; height: number } =>
@@ -598,7 +599,7 @@ function containerBox(
     );
 
   if (boxes.length === 0) {
-    return { ...fallback, ...MIN_GROUP_SIZE };
+    return { ...fallback, ...DEFAULT_ENTITY_SIZE, expanded: { ...MIN_GROUP_SIZE } };
   }
 
   const x = Math.min(...boxes.map((b) => b.x)) - GROUP_PADDING.side;
@@ -606,11 +607,15 @@ function containerBox(
   const right = Math.max(...boxes.map((b) => b.x + b.width)) + GROUP_PADDING.side;
   const bottom = Math.max(...boxes.map((b) => b.y + b.height)) + GROUP_PADDING.bottom;
 
+  // The box has to hold its members; the collapsed node stays node-sized.
   return {
     x,
     y,
-    width: Math.max(right - x, MIN_GROUP_SIZE.width),
-    height: Math.max(bottom - y, MIN_GROUP_SIZE.height),
+    ...DEFAULT_ENTITY_SIZE,
+    expanded: {
+      width: Math.max(right - x, MIN_GROUP_SIZE.width),
+      height: Math.max(bottom - y, MIN_GROUP_SIZE.height),
+    },
   };
 }
 

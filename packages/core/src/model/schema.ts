@@ -56,6 +56,12 @@ export const entityLayoutSchema = z.object({
   y: z.number().finite(),
   width: z.number().finite().positive(),
   height: z.number().finite().positive(),
+  expanded: z
+    .object({
+      width: z.number().finite().positive(),
+      height: z.number().finite().positive(),
+    })
+    .optional(),
 });
 
 export const connectionLayoutSchema = z.object({

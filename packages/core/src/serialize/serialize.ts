@@ -76,7 +76,15 @@ function orderTags(tags: Record<string, string>): Record<string, string> {
 
 function orderLayout(layout: ElementLayout): Record<string, unknown> {
   if (isEntityLayout(layout)) {
-    return { x: layout.x, y: layout.y, width: layout.width, height: layout.height };
+    return {
+      x: layout.x,
+      y: layout.y,
+      width: layout.width,
+      height: layout.height,
+      ...(layout.expanded
+        ? { expanded: { width: layout.expanded.width, height: layout.expanded.height } }
+        : {}),
+    };
   }
   return {
     waypoints: layout.waypoints.map((point) => ({ x: point.x, y: point.y })),
