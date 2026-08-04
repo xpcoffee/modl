@@ -1,4 +1,4 @@
-import { isConnection, isEntity, isFork, type Document, type Id } from '../model/types.js';
+import { isConnection, isEntity, isConnectionNode, type Document, type Id } from '../model/types.js';
 import { membersOf } from './groups.js';
 
 /**
@@ -48,7 +48,7 @@ function boxesOf(document: Document): { boxes: Box[]; missing: Id[] } {
   const missing: Id[] = [];
 
   for (const element of Object.values(document.model.elements)) {
-    if (!isEntity(element) && !isFork(element)) continue;
+    if (!isEntity(element) && !isConnectionNode(element)) continue;
     const layout = document.layout[element.id];
     if (!layout || !('x' in layout)) {
       missing.push(element.id);

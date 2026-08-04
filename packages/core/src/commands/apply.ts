@@ -1,9 +1,9 @@
 import {
   DEFAULT_ENTITY_SIZE,
-  FORK_SIZE,
+  CONNECTION_NODE_SIZE,
   isConnection,
   isEntity,
-  isFork,
+  isConnectionNode,
   type Connection,
   type Direction,
   type Document,
@@ -64,13 +64,13 @@ export function apply(state: AppState, command: Command): CommandResult {
       );
     }
 
-    case 'create-fork': {
+    case 'create-connection-node': {
       if (state.document.model.elements[command.id]) {
         return fail(command.type, 'duplicate-id', `element ${command.id} already exists`);
       }
-      const fork: Element = {
+      const node: Element = {
         id: command.id,
-        kind: 'fork',
+        kind: 'connection-node',
         shape: command.shape,
         title: command.title,
         description: '',
@@ -79,19 +79,19 @@ export function apply(state: AppState, command: Command): CommandResult {
         groupId: null,
       };
       return ok(
-        withElement(state, fork, {
+        withElement(state, node, {
           ...state.document.layout,
-          [command.id]: { x: command.position.x, y: command.position.y, ...FORK_SIZE },
+          [command.id]: { x: command.position.x, y: command.position.y, ...CONNECTION_NODE_SIZE },
         }),
         [{ type: 'element-created', id: command.id }],
       );
     }
 
-    case 'set-fork-shape': {
+    case 'set-node-shape': {
       const element = state.document.model.elements[command.id];
       if (!element) return unknown(command.type, command.id);
-      if (!isFork(element)) {
-        return fail(command.type, 'wrong-kind', `element ${command.id} is not a fork`);
+      if (!isConnectionNode(element)) {
+        return fail(command.type, 'wrong-kind', `element ${command.id} is not a node`);
       }
       return ok(withElement(state, { ...element, shape: command.shape }, state.document.layout), [
         { type: 'element-updated', id: command.id },
@@ -221,6 +221,39 @@ export function apply(state: AppState, command: Command): CommandResult {
       }
 
       return fail(command.type, 'wrong-kind', `element ${command.id} carries no type`);
+    }
+
+    case 'convert-element': {
+      const element = state.document.model.elements[command.id];
+      if (!element) return unknown(command.type, command.id);
+      if (isConnection(element)) {
+        return fail(command.type, 'wrong-kind', `element ${command.id} is a connection`);
+      }
+
+      // Everything a reader wrote survives the change: only what the two
+      // kinds disagree about is replaced. The id stays, so the connections
+      // reaching it are untouched.
+      const { title, description, tags, sources, groupId, id } = element;
+      const shared = { id, title, description, tags, sources, groupId };
+
+      const converted: Element =
+        command.to === 'connection-node' || command.to === 'decision'
+          ? { ...shared, kind: 'connection-node', shape: command.to === 'decision' ? 'diamond' : 'circle' }
+          : { ...shared, kind: 'entity', type: command.to };
+
+      // A junction is a point; an entity is a box. Size follows the kind
+      // unless the reader has already chosen one for that kind.
+      const previous = state.document.layout[command.id];
+      const origin = previous && 'x' in previous ? { x: previous.x, y: previous.y } : { x: 0, y: 0 };
+      const size = converted.kind === 'connection-node' ? CONNECTION_NODE_SIZE : DEFAULT_ENTITY_SIZE;
+
+      return ok(
+        withElement(state, converted, {
+          ...state.document.layout,
+          [command.id]: { ...origin, ...size },
+        }),
+        [{ type: 'element-updated', id: command.id }],
+      );
     }
 
     case 'rename-tag': {
@@ -693,7 +726,7 @@ function checkEndpoints(
         commandType,
       };
     }
-    // A fork is a junction, so it is a legal endpoint. A connection is not:
+    // A node is a junction, so it is a legal endpoint. A connection is not:
     // joining one to another says nothing the model can read.
     if (isConnection(target)) {
       return {

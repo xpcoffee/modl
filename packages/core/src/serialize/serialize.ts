@@ -1,12 +1,12 @@
 import {
   DEFAULT_ENTITY_SIZE,
   DEFAULT_VIEW,
-  FORK_SIZE,
+  CONNECTION_NODE_SIZE,
   FORMAT_VERSION,
   isConnection,
   isEntity,
   isEntityLayout,
-  isFork,
+  isConnectionNode,
   type Document,
   type Element,
   type ElementLayout,
@@ -171,10 +171,10 @@ export function withDefaultLayout(
       .sort()
       .filter((id) => {
         const element = elements[id];
-        // Forks are placed too: a junction with no position is invisible.
+        // Connection nodes are placed too: a junction with no position is invisible.
         return (
           element !== undefined &&
-          (isEntity(element) || isFork(element)) &&
+          (isEntity(element) || isConnectionNode(element)) &&
           element.groupId === groupId
         );
       });
@@ -186,7 +186,7 @@ export function withDefaultLayout(
     const already = existing && 'x' in existing ? existing : undefined;
     const origin = already ? { x: already.x, y: already.y } : at;
     const element = elements[id];
-    const ownSize = element && isFork(element) ? FORK_SIZE : DEFAULT_ENTITY_SIZE;
+    const ownSize = element && isConnectionNode(element) ? CONNECTION_NODE_SIZE : DEFAULT_ENTITY_SIZE;
 
     if (members.length === 0) {
       if (!already) {

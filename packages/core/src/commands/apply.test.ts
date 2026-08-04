@@ -854,17 +854,17 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-describe('forks', () => {
-  const FORK = 'fork-1';
+describe('connection nodes', () => {
+  const FORK = 'node-1';
 
-  function fork(id: string, shape: 'circle' | 'diamond' = 'diamond'): Command {
-    return { type: 'create-fork', id, shape, title: 'ready?', position: { x: 120, y: 120 } };
+  function node(id: string, shape: 'circle' | 'diamond' = 'diamond'): Command {
+    return { type: 'create-connection-node', id, shape, title: 'ready?', position: { x: 120, y: 120 } };
   }
 
   it('creates a junction with a position', () => {
-    const state = must(base, fork(FORK));
+    const state = must(base, node(FORK));
     expect(state.document.model.elements[FORK]).toMatchObject({
-      kind: 'fork',
+      kind: 'connection-node',
       shape: 'diamond',
       title: 'ready?',
     });
@@ -874,7 +874,7 @@ describe('forks', () => {
   it('joins connections on both sides', () => {
     const state = must(
       base,
-      fork(FORK),
+      node(FORK),
       { type: 'create-connection', id: LINK, connectionType: 'interaction', from: [A], to: [FORK], title: '' },
       { type: 'create-connection', id: 'out-1', connectionType: 'interaction', from: [FORK], to: [B], title: '' },
     );
@@ -883,19 +883,19 @@ describe('forks', () => {
   });
 
   it('changes shape', () => {
-    const state = must(base, fork(FORK), { type: 'set-fork-shape', id: FORK, shape: 'circle' });
+    const state = must(base, node(FORK), { type: 'set-node-shape', id: FORK, shape: 'circle' });
     expect(state.document.model.elements[FORK]).toMatchObject({ shape: 'circle' });
   });
 
-  it('wrong-kind: rejects reshaping something that is not a fork', () => {
-    const result = apply(base, { type: 'set-fork-shape', id: A, shape: 'circle' });
+  it('wrong-kind: rejects reshaping something that is not a node', () => {
+    const result = apply(base, { type: 'set-node-shape', id: A, shape: 'circle' });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe('wrong-kind');
   });
 
   it('moves like anything else on the board', () => {
-    const state = must(base, fork(FORK), { type: 'move-element', id: FORK, position: { x: 5, y: 6 } });
+    const state = must(base, node(FORK), { type: 'move-element', id: FORK, position: { x: 5, y: 6 } });
     expect(state.document.layout[FORK]).toMatchObject({ x: 5, y: 6 });
   });
 
@@ -910,12 +910,12 @@ describe('forks', () => {
   });
 
   it('can sit inside a group', () => {
-    const state = must(base, fork(FORK), { type: 'set-group', id: FORK, groupId: A });
+    const state = must(base, node(FORK), { type: 'set-group', id: FORK, groupId: A });
     expect(state.document.model.elements[FORK]?.groupId).toBe(A);
   });
 
   it('not-a-group: cannot itself hold members', () => {
-    const state = must(base, fork(FORK));
+    const state = must(base, node(FORK));
     const result = apply(state, { type: 'set-group', id: A, groupId: FORK });
     expect(result.ok).toBe(false);
     if (result.ok) return;

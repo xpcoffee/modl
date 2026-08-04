@@ -56,16 +56,16 @@ export const connectionSchema = z.object({
   direction: z.enum(['forward', 'both', 'none']).default('forward'),
 });
 
-export const forkSchema = z.object({
+export const connectionNodeSchema = z.object({
   ...elementBaseShape,
-  kind: z.literal('fork'),
+  kind: z.literal('connection-node'),
   shape: z.enum(['circle', 'diamond']),
 });
 
 export const elementSchema = z.discriminatedUnion('kind', [
   entitySchema,
   connectionSchema,
-  forkSchema,
+  connectionNodeSchema,
 ]);
 
 export const entityLayoutSchema = z.object({

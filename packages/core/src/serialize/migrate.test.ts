@@ -130,3 +130,41 @@ describe('2 -> 3', () => {
     expect((result.document as { formatVersion: number }).formatVersion).toBe(FORMAT_VERSION);
   });
 });
+
+describe('3 -> 4', () => {
+  const V3 = {
+    formatVersion: 3,
+    id: 'doc',
+    title: 'Three',
+    model: {
+      elements: {
+        a: { id:'a', kind:'entity', type:'component', title:'A',
+             description:'', tags:{}, sources:[], groupId:null },
+        j: { id:'j', kind:'fork', shape:'diamond', title:'ready?',
+             description:'', tags:{}, sources:[], groupId:null },
+      },
+    },
+    layout: {},
+    view: { pan: { x: 0, y: 0 }, zoom: 1 },
+  };
+
+  it('renames a fork to a connection node', () => {
+    const result = migrateDocument(V3);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const elements = (result.document as typeof V3).model.elements as Record<string, { kind: string }>;
+    expect(elements['j']!.kind).toBe('connection-node');
+    expect(elements['a']!.kind).toBe('entity');
+  });
+
+  it('loads a version 3 document with a fork in it', () => {
+    const result = parseDocument(JSON.stringify(V3));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.document.formatVersion).toBe(FORMAT_VERSION);
+    expect(result.document.model.elements['j']).toMatchObject({
+      kind: 'connection-node',
+      shape: 'diamond',
+    });
+  });
+});

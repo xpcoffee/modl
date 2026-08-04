@@ -73,7 +73,24 @@ function v2ToV3(document: Loose): Loose {
   };
 }
 
-const MIGRATIONS: Record<number, (document: Loose) => Loose> = { 1: v1ToV2, 2: v2ToV3 };
+/** 3 -> 4: `fork` became `connection-node`. */
+function v3ToV4(document: Loose): Loose {
+  const model = (document['model'] ?? {}) as Loose;
+  const elements = (model['elements'] ?? {}) as Record<string, Loose>;
+
+  const migrated: Record<string, Loose> = {};
+  for (const [id, element] of Object.entries(elements)) {
+    migrated[id] = element['kind'] === 'fork' ? { ...element, kind: 'connection-node' } : element;
+  }
+
+  return { ...document, formatVersion: 4, model: { ...model, elements: migrated } };
+}
+
+const MIGRATIONS: Record<number, (document: Loose) => Loose> = {
+  1: v1ToV2,
+  2: v2ToV3,
+  3: v3ToV4,
+};
 
 export function migrateDocument(raw: unknown): MigrationResult {
   if (typeof raw !== 'object' || raw === null) {

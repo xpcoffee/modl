@@ -26,7 +26,7 @@ export type IssueCode =
   | 'empty-endpoints'
   | 'orphan-entity'
   | 'duplicate-title'
-  | 'fork-one-sided';
+  | 'connection-node-one-sided';
 
 export interface Issue {
   code: IssueCode;
@@ -153,10 +153,10 @@ export function validateDocument(input: unknown): ValidationResult {
     });
   }
 
-  // A fork is a junction. One that only receives, or only sends, is a dead
+  // A node is a junction. One that only receives, or only sends, is a dead
   // end that reads as a mistake.
   for (const element of Object.values(elements)) {
-    if (element.kind !== 'fork') continue;
+    if (element.kind !== 'connection-node') continue;
     let incoming = 0;
     let outgoing = 0;
     for (const candidate of Object.values(elements)) {
@@ -166,9 +166,9 @@ export function validateDocument(input: unknown): ValidationResult {
     }
     if (incoming === 0 || outgoing === 0) {
       warnings.push({
-        code: 'fork-one-sided',
+        code: 'connection-node-one-sided',
         elementId: element.id,
-        message: `fork has ${incoming} incoming and ${outgoing} outgoing connections`,
+        message: `node has ${incoming} incoming and ${outgoing} outgoing connections`,
       });
     }
   }
