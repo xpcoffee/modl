@@ -69,6 +69,8 @@ export interface ConnectionEdgeData extends Record<string, unknown> {
   direction: Direction;
   /** Ids this edge stands in for, empty unless it is a roll-up. */
   rolledUp: Id[];
+  /** True when a reader pinned this line's sides, which may need rescuing. */
+  rescue: boolean;
   /** True when that end anchors at a point rather than a side. */
   centredSource: boolean;
   centredTarget: boolean;
@@ -372,6 +374,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           soleSelection: false,
           waypoints: [],
           direction,
+          rescue: false,
           rolledUp: ids,
           centredSource: isCentred(elements, first.from),
           centredTarget: isCentred(elements, first.to),
@@ -386,20 +389,41 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
     // They spread outwards from the first: 0, +1, -1, +2, -2. Centring the
     // set instead re-placed every line each time one was added, so drawing a
     // second connection made the first twitch.
-    drawn.forEach(({ from, to, connection: element }, index) => {
-      const chosen = layoutOf(state, element.id);
-      // A line a reader pinned to a side keeps it, however many share the pair.
-      const pinned = chosen.sourceSide !== undefined || chosen.targetSide !== undefined;
-      const sides = sidesBetween(rects, from, to, chosen, {
+    // Sides come from geometry alone, so no line is pushed onto one facing
+    // away from where it is going.
+    const routes = drawn.map(({ from, to, connection: element }) =>
+      sidesBetween(rects, from, to, layoutOf(state, element.id), {
         from: isCentred(elements, from),
         to: isCentred(elements, to),
-      });
+      }),
+    );
+
+    /*
+     * Lines only need holding apart when they would land on top of each
+     * other, which means sharing a pair of handles. Everything else is left
+     * exactly where the geometry puts it.
+     *
+     * The ones after the first leave by a different side. Their ends stay on
+     * real handles, the line already there does not move, and each is still
+     * drawn by React Flow.
+     */
+    const sharing = new Map<string, number>();
+
+    drawn.forEach(({ from, to, connection: element }, index) => {
+      const primary = routes[index]!;
+      const key = `${primary.sourceHandle} ${primary.targetHandle}`;
+      const seen = sharing.get(key) ?? 0;
+      sharing.set(key, seen + 1);
+
+      const chosen = layoutOf(state, element.id);
+      const pinned = chosen.sourceSide !== undefined || chosen.targetSide !== undefined;
+      const sides = pinned ? primary : leaveBy(primary, seen);
       edges.push({
         id: `${element.id}:${from}:${to}`,
         type: 'connection',
         source: from,
         target: to,
-        ...(pinned ? sides : fanned(sides, index)),
+        ...sides,
         selected: selected.has(element.id),
         ...(selected.has(element.id) ? { zIndex: 1001 } : {}),
         reconnectable: selected.has(element.id),
@@ -414,6 +438,8 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           soleSelection: soleSelection === element.id,
           waypoints: layoutOf(state, element.id).waypoints,
           direction: element.direction,
+          // Only a side a reader pinned may need rescuing from itself.
+          rescue: pinned,
           rolledUp: [],
           centredSource: isCentred(elements, from),
           centredTarget: isCentred(elements, to),
@@ -481,25 +507,21 @@ function isCentred(elements: Record<Id, Element>, id: Id): boolean {
  * the board looped around its own endpoints.
  */
 /**
- * Where parallel lines go after the first.
+ * The side a line takes when others already leave by the same one.
  *
- * They take a different pair of sides rather than the same pair nudged apart:
- * an end that has been moved off its handle floats in space next to the
- * element, which is worse than two lines sharing a side.
+ * Only the leaving side changes, so lines fan out where they start and come
+ * together where they arrive, and the line already drawn keeps its side.
  */
-function fanned(
+function leaveBy(
   primary: { sourceHandle: string; targetHandle: string },
-  index: number,
+  seen: number,
 ): { sourceHandle: string; targetHandle: string } {
-  if (index === 0) return primary;
+  if (seen === 0) return primary;
 
-  // Only the leaving side changes, so the lines fan out where they start and
-  // come together where they arrive. Moving both ends sent a line all the way
-  // round two sides of the board to join a top handle to a top handle.
   const horizontal =
     primary.sourceHandle.endsWith('left') || primary.sourceHandle.endsWith('right');
-  const alternatives = horizontal ? ['bottom', 'top'] : ['right', 'left'];
-  const pick = alternatives[(index - 1) % alternatives.length]!;
+  const alternatives = horizontal ? ['top', 'bottom'] : ['right', 'left'];
+  const pick = alternatives[(seen - 1) % alternatives.length]!;
 
   return {
     // A junction anchors at its middle whichever side is named.

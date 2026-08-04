@@ -52,7 +52,9 @@ function routedPath(
   to: Point,
   exits: { source: Point; target: Point },
 ): string {
-  const reach = Math.max(36, Math.min(90, Math.hypot(to.x - from.x, to.y - from.y) * 0.35));
+  // Matches React Flow's own control offset, so a line drawn here sits along
+  // the curve it would have drawn rather than cutting across it.
+  const reach = Math.hypot(to.x - from.x, to.y - from.y) * 0.25;
   // Ghosts sit behind each end along its own normal, which sets the tangent
   // there: a hand-bent line still leaves the way the plain bezier would.
   const before = { x: from.x - exits.source.x * reach, y: from.y - exits.source.y * reach };
@@ -120,18 +122,16 @@ export function ConnectionEdge({
   const connectionId = data?.connectionId ?? id;
   const waypoints = data?.waypoints ?? [];
 
-  // Ends sit exactly on their handles. Parallel lines are separated by the
-  // sides they take, chosen when the edge is derived, so nothing here has to
-  // move an end away from the element it belongs to.
+  // Ends sit exactly on their handles, always.
   const source = { x: sourceX, y: sourceY };
   const target = { x: targetX, y: targetY };
 
   const [bezier, bezierLabelX, bezierLabelY] = getBezierPath({
-    sourceX: source.x,
-    sourceY: source.y,
+    sourceX,
+    sourceY,
     sourcePosition,
-    targetX: target.x,
-    targetY: target.y,
+    targetX,
+    targetY,
     targetPosition,
     // Two junctions anchor at points, so the line between them runs straight.
     // With a box at either end the curvature has to stay: it is what carries
@@ -140,29 +140,27 @@ export function ConnectionEdge({
   });
 
   /*
-   * The bezier is the path a reader saw while dragging, and it is the right
-   * answer almost always: an automatically chosen side faces its target, so
-   * the curve leaves and arrives cleanly.
-   *
-   * It only fails when a reader has pinned a line to a side pointing away
-   * from where it goes. A single cubic cannot both leave that way and reach
-   * the target without cutting back across the element, so those get a bend
-   * pushed out along the normal first.
+   * A line only needs rescuing from its own exit when a reader has pinned it
+   * to a side that faces away from where it goes. A side chosen from the
+   * geometry never does that, and a line separated from its neighbours leaves
+   * by a side that still points somewhere sensible, so neither is touched.
    */
-  const detour = [
-    // A junction anchors at a point, so it has nothing to clear and never
-    // needs one.
-    ...(!data?.centredSource && facesAway(outward(sourcePosition), source, target)
-      ? [standoffPoint(source, outward(sourcePosition), source, target)]
-      : []),
-    ...(!data?.centredTarget && facesAway(outward(targetPosition), target, source)
-      ? [standoffPoint(target, outward(targetPosition), source, target)]
-      : []),
-  ];
+  const detour = !data?.rescue
+    ? []
+    : [
+        ...(!data.centredSource && facesAway(outward(sourcePosition), source, target)
+          ? [standoffPoint(source, outward(sourcePosition), source, target)]
+          : []),
+        ...(!data.centredTarget && facesAway(outward(targetPosition), target, source)
+          ? [standoffPoint(target, outward(targetPosition), source, target)]
+          : []),
+      ];
 
-  const routed = waypoints.length > 0 || detour.length > 0;
+  // Everything else is the path React Flow drew while the line was dragged.
+  const middle = waypoints.length > 0 ? waypoints : detour;
+  const routed = middle.length > 0;
   const path = routed
-    ? routedPath(source, waypoints.length > 0 ? waypoints : detour, target, {
+    ? routedPath(source, middle, target, {
         source: outward(sourcePosition),
         target: outward(targetPosition),
       })
@@ -170,7 +168,7 @@ export function ConnectionEdge({
 
   const handles = addHandles(source, waypoints, target);
   const labelPoint = routed
-    ? routeMidpoint(source, waypoints.length > 0 ? waypoints : detour, target)
+    ? routeMidpoint(source, middle, target)
     : { x: bezierLabelX, y: bezierLabelY };
   const rolledUp = (data?.rolledUp ?? []).length > 0;
 
