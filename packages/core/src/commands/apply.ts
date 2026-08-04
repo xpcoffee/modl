@@ -1,7 +1,9 @@
 import {
   DEFAULT_ENTITY_SIZE,
+  FORK_SIZE,
   isConnection,
   isEntity,
+  isFork,
   type Connection,
   type Document,
   type Element,
@@ -61,6 +63,40 @@ export function apply(state: AppState, command: Command): CommandResult {
       );
     }
 
+    case 'create-fork': {
+      if (state.document.model.elements[command.id]) {
+        return fail(command.type, 'duplicate-id', `element ${command.id} already exists`);
+      }
+      const fork: Element = {
+        id: command.id,
+        kind: 'fork',
+        shape: command.shape,
+        title: command.title,
+        description: '',
+        tags: {},
+        sources: [],
+        groupId: null,
+      };
+      return ok(
+        withElement(state, fork, {
+          ...state.document.layout,
+          [command.id]: { x: command.position.x, y: command.position.y, ...FORK_SIZE },
+        }),
+        [{ type: 'element-created', id: command.id }],
+      );
+    }
+
+    case 'set-fork-shape': {
+      const element = state.document.model.elements[command.id];
+      if (!element) return unknown(command.type, command.id);
+      if (!isFork(element)) {
+        return fail(command.type, 'wrong-kind', `element ${command.id} is not a fork`);
+      }
+      return ok(withElement(state, { ...element, shape: command.shape }, state.document.layout), [
+        { type: 'element-updated', id: command.id },
+      ]);
+    }
+
     case 'create-connection': {
       if (state.document.model.elements[command.id]) {
         return fail(command.type, 'duplicate-id', `element ${command.id} already exists`);
@@ -88,8 +124,8 @@ export function apply(state: AppState, command: Command): CommandResult {
     case 'move-element': {
       const element = state.document.model.elements[command.id];
       if (!element) return unknown(command.type, command.id);
-      if (!isEntity(element)) {
-        return fail(command.type, 'wrong-kind', `element ${command.id} is not an entity`);
+      if (isConnection(element)) {
+        return fail(command.type, 'wrong-kind', `element ${command.id} is a connection`);
       }
       const previous = state.document.layout[command.id];
       // Keeps both sizes, including a container's, so moving is only a move.
@@ -216,8 +252,8 @@ export function apply(state: AppState, command: Command): CommandResult {
     case 'resize-element': {
       const element = state.document.model.elements[command.id];
       if (!element) return unknown(command.type, command.id);
-      if (!isEntity(element)) {
-        return fail(command.type, 'wrong-kind', `element ${command.id} is not an entity`);
+      if (isConnection(element)) {
+        return fail(command.type, 'wrong-kind', `element ${command.id} is a connection`);
       }
       if (!(command.width > 0) || !(command.height > 0)) {
         return fail(command.type, 'schema-invalid', 'width and height must be positive');
@@ -621,10 +657,12 @@ function checkEndpoints(
         commandType,
       };
     }
-    if (!isEntity(target)) {
+    // A fork is a junction, so it is a legal endpoint. A connection is not:
+    // joining one to another says nothing the model can read.
+    if (isConnection(target)) {
       return {
         code: 'invalid-endpoint',
-        message: `endpoint ${ref} is a ${target.kind}, connections join entities`,
+        message: `endpoint ${ref} is a connection, which cannot be an endpoint`,
         commandType,
       };
     }

@@ -1,10 +1,12 @@
 import {
   DEFAULT_ENTITY_SIZE,
   DEFAULT_VIEW,
+  FORK_SIZE,
   FORMAT_VERSION,
   isConnection,
   isEntity,
   isEntityLayout,
+  isFork,
   type Document,
   type Element,
   type ElementLayout,
@@ -162,7 +164,12 @@ export function withDefaultLayout(
       .sort()
       .filter((id) => {
         const element = elements[id];
-        return element !== undefined && isEntity(element) && element.groupId === groupId;
+        // Forks are placed too: a junction with no position is invisible.
+        return (
+          element !== undefined &&
+          (isEntity(element) || isFork(element)) &&
+          element.groupId === groupId
+        );
       });
 
   /** Places a branch and reports the room it needed. */
@@ -171,12 +178,14 @@ export function withDefaultLayout(
     const existing = resolved[id];
     const already = existing && 'x' in existing ? existing : undefined;
     const origin = already ? { x: already.x, y: already.y } : at;
+    const element = elements[id];
+    const ownSize = element && isFork(element) ? FORK_SIZE : DEFAULT_ENTITY_SIZE;
 
     if (members.length === 0) {
       if (!already) {
-        resolved[id] = { ...origin, ...DEFAULT_ENTITY_SIZE };
+        resolved[id] = { ...origin, ...ownSize };
       }
-      const box = (resolved[id] ?? { ...origin, ...DEFAULT_ENTITY_SIZE }) as {
+      const box = (resolved[id] ?? { ...origin, ...ownSize }) as {
         width: number;
         height: number;
       };

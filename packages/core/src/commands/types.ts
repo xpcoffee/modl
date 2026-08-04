@@ -2,6 +2,7 @@ import type {
   ConnectionType,
   Document,
   EntityType,
+  ForkShape,
   Id,
   Point,
   SourceRef,
@@ -27,6 +28,8 @@ export interface AppState {
  */
 export type Command =
   | { type: 'create-entity'; id: Id; entityType: EntityType; title: string; position: Point }
+  | { type: 'create-fork'; id: Id; shape: ForkShape; title: string; position: Point }
+  | { type: 'set-fork-shape'; id: Id; shape: ForkShape }
   | {
       type: 'create-connection';
       id: Id;

@@ -806,3 +806,84 @@ function deepFreeze<T>(value: T): T {
   }
   return value;
 }
+
+describe('forks', () => {
+  const FORK = 'fork-1';
+
+  function fork(id: string, shape: 'circle' | 'diamond' = 'diamond'): Command {
+    return { type: 'create-fork', id, shape, title: 'ready?', position: { x: 120, y: 120 } };
+  }
+
+  it('creates a junction with a position', () => {
+    const state = must(base, fork(FORK));
+    expect(state.document.model.elements[FORK]).toMatchObject({
+      kind: 'fork',
+      shape: 'diamond',
+      title: 'ready?',
+    });
+    expect(state.document.layout[FORK]).toEqual({ x: 120, y: 120, width: 64, height: 64 });
+  });
+
+  it('joins connections on both sides', () => {
+    const state = must(
+      base,
+      fork(FORK),
+      { type: 'create-connection', id: LINK, connectionType: 'interaction', from: [A], to: [FORK], title: '' },
+      { type: 'create-connection', id: 'out-1', connectionType: 'interaction', from: [FORK], to: [B], title: '' },
+    );
+    expect(state.document.model.elements[LINK]).toMatchObject({ to: [FORK] });
+    expect(state.document.model.elements['out-1']).toMatchObject({ from: [FORK] });
+  });
+
+  it('changes shape', () => {
+    const state = must(base, fork(FORK), { type: 'set-fork-shape', id: FORK, shape: 'circle' });
+    expect(state.document.model.elements[FORK]).toMatchObject({ shape: 'circle' });
+  });
+
+  it('wrong-kind: rejects reshaping something that is not a fork', () => {
+    const result = apply(base, { type: 'set-fork-shape', id: A, shape: 'circle' });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('wrong-kind');
+  });
+
+  it('moves like anything else on the board', () => {
+    const state = must(base, fork(FORK), { type: 'move-element', id: FORK, position: { x: 5, y: 6 } });
+    expect(state.document.layout[FORK]).toMatchObject({ x: 5, y: 6 });
+  });
+
+  it('invalid-endpoint: still refuses a connection as an endpoint', () => {
+    const state = must(base, { type: 'create-connection', id: LINK, connectionType: 'interaction', from: [A], to: [B], title: '' });
+    const result = apply(state, {
+      type: 'create-connection', id: 'bad', connectionType: 'interaction', from: [LINK], to: [B], title: '',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('invalid-endpoint');
+  });
+
+  it('can sit inside a group', () => {
+    const state = must(base, fork(FORK), { type: 'set-group', id: FORK, groupId: A });
+    expect(state.document.model.elements[FORK]?.groupId).toBe(A);
+  });
+
+  it('not-a-group: cannot itself hold members', () => {
+    const state = must(base, fork(FORK));
+    const result = apply(state, { type: 'set-group', id: A, groupId: FORK });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('not-a-group');
+  });
+});
+
+describe('artifacts', () => {
+  it('is an entity type a connection can point at without a paradigm', () => {
+    const state = must(
+      base,
+      { type: 'set-element-type', id: B, elementType: 'artifact' },
+      { type: 'create-connection', id: LINK, connectionType: 'transition', from: [A], to: [B], title: '' },
+    );
+    expect(state.document.model.elements[B]).toMatchObject({ type: 'artifact' });
+    expect(state.document.model.elements[LINK]).toMatchObject({ type: 'transition' });
+  });
+});
