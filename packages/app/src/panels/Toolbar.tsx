@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { isGroup, parseDocument, selectIds } from '@modl/core';
+import { canRedo, canUndo, isGroup, parseDocument, selectIds } from '@modl/core';
 import { store } from '../store/store.js';
 import { ElementIcon } from '../canvas/ElementIcon.js';
 import { PLACEABLE, arm, usePending } from '../canvas/placement.js';
@@ -123,6 +123,27 @@ export function Toolbar() {
           click to place, or drag to size it
         </span>
       )}
+
+      <button
+        type="button"
+        data-testid="undo"
+        onClick={() => store.dispatch({ type: 'undo' })}
+        disabled={!canUndo(state)}
+        title="Undo (Ctrl+Z)"
+      >
+        Undo
+      </button>
+      <button
+        type="button"
+        data-testid="redo"
+        onClick={() => store.dispatch({ type: 'redo' })}
+        disabled={!canRedo(state)}
+        title="Redo (Ctrl+Y)"
+      >
+        Redo
+      </button>
+
+      <span className="toolbar__divider" />
 
       <button
         type="button"

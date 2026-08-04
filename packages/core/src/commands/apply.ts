@@ -20,7 +20,8 @@ import { isConnectionType, isEntityType } from '../model/paradigm.js';
 import { parseFilter } from '../query/filter.js';
 import { membersOf, wouldCycle } from '../query/groups.js';
 import { hiddenElementIds, suppressedConnectionIds } from '../query/view.js';
-import { loadDocument } from '../serialize/serialize.js';
+import { emptyDocument, loadDocument } from '../serialize/serialize.js';
+import { isUndoable } from './undo.js';
 import type {
   AppState,
   Command,
@@ -42,6 +43,69 @@ function fail(commandType: CommandType, code: ErrorCode, message: string): Comma
  * caller can assert on the error code.
  */
 export function apply(state: AppState, command: Command): CommandResult {
+  if (command.type === 'undo') return moveCursor(state, state.undo.cursor - 1, command.type);
+  if (command.type === 'redo') return moveCursor(state, state.undo.cursor + 1, command.type);
+
+  const result = reduce(state, command);
+  if (!result.ok || !isUndoable(command)) return result;
+
+  // A new command discards anything undone past the cursor: once the
+  // timeline diverges there is no branch for redo to come back to.
+  const history = [...state.undo.history.slice(0, state.undo.cursor), command];
+  return {
+    ...result,
+    state: { ...result.state, undo: { ...state.undo, history, cursor: history.length } },
+  };
+}
+
+/**
+ * Moves the history cursor and rebuilds state by refolding the command log
+ * up to it, so undo works for every command without inverse logic.
+ */
+function moveCursor(state: AppState, cursor: number, commandType: 'undo' | 'redo'): CommandResult {
+  if (cursor < 0) {
+    return fail(commandType, 'nothing-to-undo', 'the history is already at its beginning');
+  }
+  if (cursor > state.undo.history.length) {
+    return fail(commandType, 'nothing-to-redo', 'the history is already at its end');
+  }
+
+  let refolded: AppState = {
+    document: emptyDocument(state.undo.base.id, state.undo.base.title),
+    filter: '',
+    selection: [],
+    expanded: [],
+    hidden: [],
+    selectionHighlight: state.selectionHighlight,
+    undo: { ...state.undo, cursor },
+  };
+  for (const command of state.undo.history.slice(0, cursor)) {
+    const result = reduce(refolded, command);
+    // Every history entry applied once already; a rejection here means the
+    // reducer changed underneath a saved trace. Skipping it keeps the rest
+    // of the history reachable.
+    if (result.ok) refolded = result.state;
+  }
+
+  // The camera, filter, selection, and expansion are what the user is
+  // looking at, not what they did: undoing a move must not also fling the
+  // viewport back. They carry over, pruned to elements that still exist.
+  const elements = refolded.document.model.elements;
+  return ok(
+    {
+      ...refolded,
+      document: { ...refolded.document, view: state.document.view },
+      filter: state.filter,
+      selection: state.selection.filter((id) => elements[id] !== undefined),
+      expanded: state.expanded.filter((id) => elements[id] !== undefined),
+      hidden: state.hidden.filter((id) => elements[id] !== undefined),
+      selectionHighlight: state.selectionHighlight,
+    },
+    [{ type: 'history-moved', direction: commandType, cursor }],
+  );
+}
+
+function reduce(state: AppState, command: Command): CommandResult {
   switch (command.type) {
     case 'create-entity': {
       if (state.document.model.elements[command.id]) {
@@ -711,6 +775,7 @@ export function apply(state: AppState, command: Command): CommandResult {
       // it is the only session field a load keeps.
       return ok(
         {
+          ...state,
           document: result.document,
           filter: '',
           selection: [],

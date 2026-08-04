@@ -8,6 +8,7 @@ export * from './serialize/serialize.js';
 export * from './serialize/migrate.js';
 export * from './commands/types.js';
 export * from './commands/apply.js';
+export * from './commands/undo.js';
 export * from './query/filter.js';
 export * from './query/groups.js';
 export * from './query/layout-report.js';

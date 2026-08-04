@@ -2566,3 +2566,126 @@ test.describe('styles', () => {
     });
   });
 });
+
+test.describe('undo and redo', () => {
+  test('Ctrl+Z removes the last change and Ctrl+Y brings it back', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await expect(page.locator('.react-flow__node')).toHaveCount(3);
+
+    await page.keyboard.press('Control+z');
+    // The last document change was a set-tag, so undo it and two creations.
+    await page.keyboard.press('Control+z');
+    await page.keyboard.press('Control+z');
+    await page.keyboard.press('Control+z');
+
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.post]).toBeUndefined();
+
+    await page.keyboard.press('Control+y');
+    expect((await getDocument(page)).model.elements[IDS.post]).toBeDefined();
+  });
+
+  test('Ctrl+Shift+Z also redoes', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    const before = await serialize(page);
+
+    await page.keyboard.press('Control+z');
+    expect(await serialize(page)).not.toBe(before);
+
+    await page.keyboard.press('Control+Shift+z');
+    expect(await serialize(page)).toBe(before);
+  });
+
+  test('toolbar buttons follow the history and drive it', async ({ page }) => {
+    await expect(page.getByTestId('undo')).toBeDisabled();
+    await expect(page.getByTestId('redo')).toBeDisabled();
+
+    await dispatch(page, sampleDomain());
+    await expect(page.getByTestId('undo')).toBeEnabled();
+    await expect(page.getByTestId('redo')).toBeDisabled();
+
+    await page.getByTestId('undo').click();
+    await expect(page.getByTestId('redo')).toBeEnabled();
+    // sampleDomain ends with a set-tag on the ledger, so that came off first.
+    expect((await getDocument(page)).model.elements[IDS.ledger]?.tags['team']).toBeUndefined();
+
+    await page.getByTestId('redo').click();
+    expect((await getDocument(page)).model.elements[IDS.ledger]?.tags['team']).toEqual(['payments']);
+  });
+
+  test('selection does not enter the history, and does not kill redo', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.keyboard.press('Control+z');
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+
+    await expect(page.getByTestId('redo')).toBeEnabled();
+    await page.keyboard.press('Control+y');
+    expect((await getDocument(page)).model.elements[IDS.ledger]?.tags['team']).toEqual(['payments']);
+  });
+
+  test('Ctrl+Z inside a text field leaves the document alone', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    const before = await serialize(page);
+
+    await page.getByTestId('filter-input').click();
+    await page.keyboard.press('Control+z');
+
+    expect(await serialize(page)).toBe(before);
+  });
+
+  test('undo works through the runtime API', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    const result = await page.evaluate(() => window.__modl.undo());
+    expect(result).toMatchObject({ ok: true });
+
+    const rejected = await page.evaluate(() => {
+      for (let i = 0; i < 20; i++) window.__modl.undo();
+      return window.__modl.undo();
+    });
+    expect(rejected).toMatchObject({ ok: false, error: { code: 'nothing-to-undo' } });
+    expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(0);
+  });
+
+  test('a replayed trace can be undone and redone through the whole session', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    const finished = await serialize(page);
+    const trace = await getTrace(page);
+
+    // replay() starts from a fresh state itself, keeping the document identity.
+    await page.evaluate((entries) => window.__modl.replay(entries), trace);
+    expect(await serialize(page)).toBe(finished);
+
+    await page.evaluate(() => {
+      while (window.__modl.getState().undo.cursor > 0) window.__modl.undo();
+    });
+    expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(0);
+
+    await page.evaluate(() => {
+      const undo = window.__modl.getState().undo;
+      for (let i = undo.cursor; i < undo.history.length; i++) window.__modl.redo();
+    });
+    expect(await serialize(page)).toBe(finished);
+    await expect(page.locator('.react-flow__node')).toHaveCount(3);
+  });
+
+  test('undoing a load restores the document that was open', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    const before = await serialize(page);
+    // An empty document with the same format, loaded over the session.
+    await page.evaluate((text) => {
+      const doc = JSON.parse(text) as { id: string; title: string; model: object; layout: object };
+      doc.id = 'other-doc';
+      doc.title = 'Other';
+      doc.model = { elements: {} };
+      doc.layout = {};
+      window.__modl.dispatch({ type: 'load-document', document: doc as never });
+    }, before);
+    expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(0);
+
+    await page.keyboard.press('Control+z');
+    expect(await serialize(page)).toBe(before);
+    await expect(page.locator('.react-flow__node')).toHaveCount(3);
+  });
+});
