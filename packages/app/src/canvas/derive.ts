@@ -8,6 +8,7 @@ import {
   selectIds,
   type AppState,
   type ConnectionType,
+  type Connection,
   type Element,
   type EntityType,
   type Id,
@@ -20,7 +21,7 @@ export interface EntityNodeData extends Record<string, unknown> {
   title: string;
   description: string;
   elementType: EntityType;
-  tags: Record<string, string>;
+  tags: Record<string, string[]>;
   dimmed: boolean;
   editing: boolean;
   /** True only when this is the single selected element, which opens the editor. */
@@ -40,13 +41,17 @@ export interface ConnectionEdgeData extends Record<string, unknown> {
   title: string;
   description: string;
   elementType: ConnectionType;
-  tags: Record<string, string>;
+  tags: Record<string, string[]>;
   dimmed: boolean;
   editing: boolean;
   soleSelection: boolean;
   waypoints: Point[];
   arrowStart: boolean;
   arrowEnd: boolean;
+  /** Ids this edge stands in for, empty unless it is a roll-up. */
+  rolledUp: Id[];
+  /** Offset from the direct route, so parallel connections stay apart. */
+  spread?: number;
 }
 
 export interface DeriveOptions {
@@ -235,7 +240,9 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
   const visible = selectIds(elements, state.filter);
   const selected = new Set(state.selection);
   const soleSelection = onlySelected(state, options);
-  const edges: Edge<ConnectionEdgeData>[] = [];
+
+  /** Every drawn connection, keyed by the pair of anchors it runs between. */
+  const byPair = new Map<string, { from: Id; to: Id; connections: Connection[] }>();
 
   for (const element of Object.values(elements)) {
     if (!isConnection(element)) continue;
@@ -246,31 +253,96 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
     for (const from of anchors.from) {
       for (const to of anchors.to) {
         if (from === to) continue;
-        edges.push({
-          id: `${element.id}:${from}:${to}`,
-          type: 'connection',
-          source: from,
-          target: to,
-          selected: selected.has(element.id),
-          ...(selected.has(element.id) ? { zIndex: 1001 } : {}),
-          data: {
-            connectionId: element.id,
-            title: element.title,
-            description: element.description,
-            elementType: element.type,
-            tags: element.tags,
-            dimmed: !visible.has(element.id),
-            editing: options.editingId === element.id,
-            soleSelection: soleSelection === element.id,
-            waypoints: layoutOf(state, element.id).waypoints,
-            arrowStart: layoutOf(state, element.id).arrowStart ?? false,
-            arrowEnd: layoutOf(state, element.id).arrowEnd ?? false,
-          },
-        });
+        const key = `${from} ${to}`;
+        const entry = byPair.get(key) ?? { from, to, connections: [] };
+        entry.connections.push(element);
+        byPair.set(key, entry);
       }
     }
   }
+
+  const edges: Edge<ConnectionEdgeData>[] = [];
+
+  for (const { from, to, connections } of byPair.values()) {
+    // Several connections collapsing onto one pair of anchors draw as one
+    // edge carrying a count. At a zoom-out this is the difference between a
+    // readable line and a stack of overlapping labels.
+    const rolledUp = connections.length > 1 && connections.some((c) => isRolledUp(elements, c, expanded));
+
+    if (rolledUp) {
+      const ids = connections.map((c) => c.id).sort();
+      edges.push({
+        id: `rollup:${from}:${to}`,
+        type: 'connection',
+        source: from,
+        target: to,
+        data: {
+          connectionId: ids[0] ?? from,
+          title: `${connections.length} connections`,
+          description: connections.map((c) => c.title || readableTitle(c)).join('\n'),
+          elementType: connections[0]!.type,
+          tags: {},
+          dimmed: !connections.some((c) => visible.has(c.id)),
+          editing: false,
+          soleSelection: false,
+          waypoints: [],
+          arrowStart: false,
+          arrowEnd: connections.some((c) => layoutOf(state, c.id).arrowEnd ?? false),
+          rolledUp: ids,
+        },
+      });
+      continue;
+    }
+
+    // Parallel connections between the same visible pair fan out, so three
+    // between one pair of components no longer land on top of each other.
+    connections.forEach((element, index) => {
+      const spread = connections.length > 1 ? index - (connections.length - 1) / 2 : 0;
+      edges.push({
+        id: `${element.id}:${from}:${to}`,
+        type: 'connection',
+        source: from,
+        target: to,
+        selected: selected.has(element.id),
+        ...(selected.has(element.id) ? { zIndex: 1001 } : {}),
+        data: {
+          connectionId: element.id,
+          title: element.title,
+          description: element.description,
+          elementType: element.type,
+          tags: element.tags,
+          dimmed: !visible.has(element.id),
+          editing: options.editingId === element.id,
+          soleSelection: soleSelection === element.id,
+          waypoints: layoutOf(state, element.id).waypoints,
+          arrowStart: layoutOf(state, element.id).arrowStart ?? false,
+          arrowEnd: layoutOf(state, element.id).arrowEnd ?? false,
+          spread: spread * PARALLEL_SPREAD,
+          rolledUp: [],
+        },
+      });
+    });
+  }
+
   return edges;
+}
+
+/** Vertical gap between parallel connections joining the same pair. */
+const PARALLEL_SPREAD = 26;
+
+/** True when either end of this connection is hidden inside a collapsed group. */
+function isRolledUp(
+  elements: Record<Id, Element>,
+  connection: Connection,
+  expanded: ReadonlySet<Id>,
+): boolean {
+  return [...connection.from, ...connection.to].some(
+    (id) => !isRendered(elements, id, expanded),
+  );
+}
+
+function readableTitle(connection: Connection): string {
+  return `${connection.type} ${connection.id.slice(0, 8)}`;
 }
 
 /**

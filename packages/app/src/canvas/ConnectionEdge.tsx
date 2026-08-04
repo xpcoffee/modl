@@ -107,12 +107,18 @@ export function ConnectionEdge({
     targetPosition,
   });
 
-  const routed = waypoints.length > 0;
-  const path = routed ? routedPath(source, waypoints, target) : bezier;
+  // Parallel connections bow apart so three between one pair of components do
+  // not land on top of each other.
+  const spread = data?.spread ?? 0;
+  const bowed = spread === 0 ? [] : [{ x: (sourceX + targetX) / 2, y: (sourceY + targetY) / 2 + spread }];
+
+  const routed = waypoints.length > 0 || bowed.length > 0;
+  const path = routed ? routedPath(source, waypoints.length > 0 ? waypoints : bowed, target) : bezier;
   const handles = addHandles(source, waypoints, target);
   const labelPoint = routed
-    ? routeMidpoint(source, waypoints, target)
+    ? routeMidpoint(source, waypoints.length > 0 ? waypoints : bowed, target)
     : { x: bezierLabelX, y: bezierLabelY };
+  const rolledUp = (data?.rolledUp ?? []).length > 0;
 
   const dimmed = data?.dimmed ?? false;
 
@@ -150,7 +156,7 @@ export function ConnectionEdge({
       <EdgeLabelRenderer>
         {/* Handles live in this layer rather than the edge SVG so they stack
             above the label instead of being swallowed by it. */}
-        {selected && (
+        {selected && !rolledUp && (
           <div className="waypoints" data-testid={`waypoints-${connectionId}`}>
             {handles.map((handle, position) => (
               <button
@@ -193,11 +199,21 @@ export function ConnectionEdge({
         <div
           className={`edge-label${dimmed ? ' is-dimmed' : ''}${selected ? ' is-selected' : ''}`}
           style={{ transform: `translate(-50%, -50%) translate(${labelPoint.x}px, ${labelPoint.y}px)` }}
-          data-testid={`connection-${connectionId}`}
-          data-connection-id={connectionId}
+          // A roll-up stands in for several connections, so it does not answer
+          // to any one of their ids.
+          data-testid={rolledUp ? `rollup-edge-${id}` : `connection-${connectionId}`}
+          data-connection-id={rolledUp ? undefined : connectionId}
           data-type={data?.elementType}
         >
-          {data?.editing ? (
+          {rolledUp ? (
+            <span
+              className="edge-label__title edge-label__rollup"
+              data-testid={`rollup-${data?.rolledUp[0]}`}
+              title={data?.description}
+            >
+              {data?.title}
+            </span>
+          ) : data?.editing ? (
             <InlineTitle
               id={connectionId}
               title={data.title}
@@ -211,7 +227,7 @@ export function ConnectionEdge({
             </span>
           )}
 
-          {data?.soleSelection ? (
+          {data?.soleSelection && !rolledUp ? (
             <div className="edge-label__editor">
               <ElementEditor
                 id={connectionId}

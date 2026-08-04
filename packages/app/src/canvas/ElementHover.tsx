@@ -11,7 +11,7 @@ export function ElementHover({
 }: {
   elementType: string;
   description: string;
-  tags: Record<string, string>;
+  tags: Record<string, string[]>;
 }) {
   const entries = Object.entries(tags);
 
@@ -29,7 +29,7 @@ export function ElementHover({
         <ul className="hover-card__tags">
           {entries.map(([key, value]) => (
             <li key={key}>
-              {key}={value}
+              {key}={value.join(', ')}
             </li>
           ))}
         </ul>

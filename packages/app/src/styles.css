@@ -685,3 +685,10 @@ select {
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
+
+/* A stack of connections collapsing onto one pair of anchors */
+.edge-label__rollup {
+  color: var(--accent);
+  font-weight: 500;
+  cursor: help;
+}

@@ -29,7 +29,7 @@ export function ElementEditor({
   kind: 'entity' | 'connection';
   elementType: EntityType | ConnectionType;
   description: string;
-  tags: Record<string, string>;
+  tags: Record<string, string[]>;
   /** Present for connections, which can carry a head at either end. */
   arrows?: { start: boolean; end: boolean };
 }) {
@@ -122,7 +122,7 @@ export function ElementEditor({
       />
 
       <ul className="element-editor__tags" data-testid={`editor-tags-${id}`}>
-        {Object.entries(tags).map(([key, value]) => (
+        {Object.entries(tags).map(([key, values]) => (
           <li key={key} className="tag-chip">
             <input
               className="tag-chip__key"
@@ -141,10 +141,20 @@ export function ElementEditor({
             <input
               className="tag-chip__value"
               aria-label={`Tag value for ${key}`}
-              value={value}
-              size={Math.max(value.length, 3)}
+              // Several values, comma separated: an element often belongs to
+              // more than one flow or team at once.
+              value={values.join(', ')}
+              size={Math.max(values.join(', ').length, 3)}
               onChange={(event) =>
-                store.dispatch({ type: 'set-tag', id, key, value: event.target.value })
+                store.dispatch({
+                  type: 'set-tag',
+                  id,
+                  key,
+                  values: event.target.value
+                    .split(',')
+                    .map((entry) => entry.trim())
+                    .filter((entry) => entry !== ''),
+                })
               }
             />
             <button
@@ -168,7 +178,7 @@ export function ElementEditor({
               onChange={(event) => {
                 const key = event.target.value.trim();
                 if (key === '') return;
-                store.dispatch({ type: 'set-tag', id, key, value: '' });
+                store.dispatch({ type: 'set-tag', id, key, values: [] });
                 setAddingTag(false);
               }}
             />
