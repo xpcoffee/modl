@@ -1,5 +1,5 @@
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "id": "00000000-0000-4000-8000-000000000000",
   "title": "Checkout domain",
   "model": {
@@ -11,8 +11,11 @@
         "title": "Checkout UI",
         "description": "Browser-side checkout flow.",
         "tags": {
-          "team": "web"
+          "team": [
+            "web"
+          ]
         },
+        "sources": [],
         "groupId": null
       },
       "22222222-2222-4222-8222-222222222222": {
@@ -22,9 +25,14 @@
         "title": "Payment gateway",
         "description": "",
         "tags": {
-          "team": "payments",
-          "tier": "1"
+          "team": [
+            "payments"
+          ],
+          "tier": [
+            "1"
+          ]
         },
+        "sources": [],
         "groupId": null
       },
       "33333333-3333-4333-8333-333333333333": {
@@ -34,8 +42,11 @@
         "title": "Ledger",
         "description": "Double-entry record of settled payments.",
         "tags": {
-          "team": "payments"
+          "team": [
+            "payments"
+          ]
         },
+        "sources": [],
         "groupId": null
       },
       "44444444-4444-4444-8444-444444444444": {
@@ -51,8 +62,11 @@
         "title": "authorise",
         "description": "",
         "tags": {
-          "protocol": "https"
+          "protocol": [
+            "https"
+          ]
         },
+        "sources": [],
         "groupId": null
       },
       "55555555-5555-4555-8555-555555555555": {
@@ -68,8 +82,11 @@
         "title": "post entry",
         "description": "",
         "tags": {
-          "protocol": "amqp"
+          "protocol": [
+            "amqp"
+          ]
         },
+        "sources": [],
         "groupId": null
       }
     }

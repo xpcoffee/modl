@@ -49,7 +49,7 @@ describe('round trip', () => {
     const document = loadCheckout();
     const target = document.model.elements['22222222-2222-4222-8222-222222222222'];
     if (!target) throw new Error('fixture element missing');
-    target.tags = { tier: '1', team: 'payments' };
+    target.tags = { tier: ['1'], team: ['payments'] };
     const text = serializeDocument(document);
     expect(text.indexOf('"team"')).toBeLessThan(text.indexOf('"tier"'));
   });
@@ -85,11 +85,41 @@ describe('layout defaults', () => {
       height: 72,
     });
     expect(result.document.layout['22222222-2222-4222-8222-222222222222']).toEqual({
-      x: 240,
+      x: 280,
       y: 0,
       width: 180,
       height: 72,
     });
+  });
+
+  it('places members inside the group that holds them', () => {
+    const document = loadCheckout();
+    const gateway = '22222222-2222-4222-8222-222222222222';
+    const ui = '11111111-1111-4111-8111-111111111111';
+    const grouped = {
+      ...document,
+      layout: {},
+      model: {
+        elements: {
+          ...document.model.elements,
+          [ui]: { ...document.model.elements[ui]!, groupId: gateway },
+        },
+      },
+    };
+
+    const result = loadDocument(grouped);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const container = result.document.layout[gateway] as {
+      x: number; y: number; expanded: { width: number; height: number };
+    };
+    const member = result.document.layout[ui] as { x: number; y: number };
+
+    // Inside the box, not scattered across a flat grid by sorted id.
+    expect(member.x).toBeGreaterThan(container.x);
+    expect(member.y).toBeGreaterThan(container.y);
+    expect(member.x).toBeLessThan(container.x + container.expanded.width);
   });
 
   it('loads a document with no layout section at all', () => {

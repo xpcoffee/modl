@@ -11,6 +11,7 @@ import {
   type Id,
 } from '../model/types.js';
 import { isLoadable, validateDocument, type ValidationResult } from '../model/validate.js';
+import { migrateDocument } from './migrate.js';
 
 /**
  * Writes a document as JSON. Deterministic: the same document always produces
@@ -55,6 +56,10 @@ function orderElement(element: Element): Record<string, unknown> {
     title: element.title,
     description: element.description,
     tags: orderTags(element.tags),
+    sources: element.sources.map((source) => ({
+      ref: source.ref,
+      ...(source.note === undefined ? {} : { note: source.note }),
+    })),
     groupId: element.groupId,
   };
 
@@ -65,11 +70,11 @@ function orderElement(element: Element): Record<string, unknown> {
   return { ...base, shape: element.shape, ...tail };
 }
 
-function orderTags(tags: Record<string, string>): Record<string, string> {
-  const ordered: Record<string, string> = {};
+function orderTags(tags: Record<string, string[]>): Record<string, string[]> {
+  const ordered: Record<string, string[]> = {};
   for (const key of Object.keys(tags).sort()) {
-    const value = tags[key];
-    if (value !== undefined) ordered[key] = value;
+    const values = tags[key];
+    if (values !== undefined) ordered[key] = [...values].sort();
   }
   return ordered;
 }
@@ -119,7 +124,8 @@ export function loadDocument(raw: unknown): ParseResult {
   const result = validateDocument(raw);
   if (!isLoadable(result)) return { ok: false, errors: result.errors };
 
-  const input = raw as Document;
+  const upgraded = migrateDocument(raw);
+  const input = (upgraded.ok ? upgraded.document : raw) as Document;
   const document: Document = {
     formatVersion: FORMAT_VERSION,
     id: input.id,
@@ -133,33 +139,86 @@ export function loadDocument(raw: unknown): ParseResult {
 }
 
 const GRID_COLUMNS = 4;
-const GRID_SPACING = { x: 240, y: 140 } as const;
+const GRID_SPACING = { x: 280, y: 180 } as const;
+const MEMBER_PADDING = { top: 48, side: 28, bottom: 28 } as const;
 
 /**
- * Gives every entity a position. Ids absent from `layout` are placed on a
- * grid in sorted id order, which keeps the result deterministic.
+ * Gives every entity a position, placing members inside the group that holds
+ * them.
+ *
+ * A flat grid in sorted id order scatters a grouped document, because ids
+ * carry no meaning: members land nowhere near their container, and since the
+ * container box also decides membership, the document reads as noise. A
+ * producer emitting structure alone should still get something legible.
  */
 export function withDefaultLayout(
   elements: Record<Id, Element>,
   layout: Record<Id, ElementLayout>,
 ): Record<Id, ElementLayout> {
   const resolved: Record<Id, ElementLayout> = { ...layout };
-  let placed = 0;
 
-  for (const id of Object.keys(elements).sort()) {
-    const element = elements[id];
-    if (!element || !isEntity(element)) continue;
-    if (resolved[id]) {
-      placed += 1;
-      continue;
+  const membersOfGroup = (groupId: Id | null): Id[] =>
+    Object.keys(elements)
+      .sort()
+      .filter((id) => {
+        const element = elements[id];
+        return element !== undefined && isEntity(element) && element.groupId === groupId;
+      });
+
+  /** Places a branch and reports the room it needed. */
+  const place = (id: Id, at: { x: number; y: number }): { width: number; height: number } => {
+    const members = membersOfGroup(id);
+    const existing = resolved[id];
+    const already = existing && 'x' in existing ? existing : undefined;
+    const origin = already ? { x: already.x, y: already.y } : at;
+
+    if (members.length === 0) {
+      if (!already) {
+        resolved[id] = { ...origin, ...DEFAULT_ENTITY_SIZE };
+      }
+      const box = (resolved[id] ?? { ...origin, ...DEFAULT_ENTITY_SIZE }) as {
+        width: number;
+        height: number;
+      };
+      return { width: box.width, height: box.height };
     }
+
+    // Members sit in a row inside their container, innermost sized first.
+    let cursor = origin.x + MEMBER_PADDING.side;
+    let tallest = 0;
+    for (const member of members) {
+      const size = place(member, { x: cursor, y: origin.y + MEMBER_PADDING.top });
+      cursor += size.width + MEMBER_PADDING.side;
+      tallest = Math.max(tallest, size.height);
+    }
+
+    const width = cursor - origin.x;
+    const height = MEMBER_PADDING.top + tallest + MEMBER_PADDING.bottom;
+    // A size the document already carries wins: this fills gaps, it does not
+    // re-lay-out a board someone has arranged.
+    const box = already?.expanded ?? { width, height };
     resolved[id] = {
-      x: (placed % GRID_COLUMNS) * GRID_SPACING.x,
-      y: Math.floor(placed / GRID_COLUMNS) * GRID_SPACING.y,
-      width: DEFAULT_ENTITY_SIZE.width,
-      height: DEFAULT_ENTITY_SIZE.height,
+      ...origin,
+      ...DEFAULT_ENTITY_SIZE,
+      ...(already ? { width: already.width, height: already.height } : {}),
+      expanded: box,
     };
-    placed += 1;
+    return box;
+  };
+
+  let column = 0;
+  let rowY = 0;
+  let rowHeight = 0;
+
+  for (const id of membersOfGroup(null)) {
+    const size = place(id, { x: column * GRID_SPACING.x, y: rowY });
+    rowHeight = Math.max(rowHeight, size.height);
+    column += Math.max(1, Math.ceil(size.width / GRID_SPACING.x));
+    if (column >= GRID_COLUMNS) {
+      column = 0;
+      rowY += rowHeight + GRID_SPACING.y - DEFAULT_ENTITY_SIZE.height;
+      rowHeight = 0;
+    }
   }
 
   return resolved;

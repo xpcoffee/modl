@@ -7,6 +7,12 @@
 
 export type Id = string;
 
+/** A source backing a claim: a file and line, a ticket, a document. */
+export interface SourceRef {
+  ref: string;
+  note?: string;
+}
+
 export type EntityType = 'state' | 'component' | 'step';
 export type ConnectionType = 'transition' | 'relation' | 'interaction';
 export type ForkShape = 'circle' | 'diamond';
@@ -20,8 +26,14 @@ export interface ElementBase {
   id: Id;
   title: string;
   description: string;
-  tags: Record<string, string>;
-  /** Id of the entity this element collapses into. Always null in iteration 1. */
+  /**
+   * Filterable labels. A key holds several values because one element often
+   * belongs to more than one flow, team, or subdomain at once.
+   */
+  tags: Record<string, string[]>;
+  /** Where the claim came from. Empty for anything drawn by hand. */
+  sources: SourceRef[];
+  /** Id of the entity this element collapses into. */
   groupId: Id | null;
 }
 
@@ -87,8 +99,14 @@ export interface Document {
   view: View;
 }
 
-/** Bumped on any breaking change to the document format. */
-export const FORMAT_VERSION = 1;
+/**
+ * Bumped on any breaking change to the format.
+ *
+ * 1 -> 2: tag values became lists, and elements gained `sources`. A version 1
+ * document still loads: the reader migrates it.
+ */
+export const FORMAT_VERSION = 2;
+export const OLDEST_READABLE_VERSION = 1;
 
 export const DEFAULT_ENTITY_SIZE = { width: 180, height: 72 } as const;
 export const DEFAULT_VIEW: View = { pan: { x: 0, y: 0 }, zoom: 1 };
