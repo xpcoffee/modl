@@ -9,7 +9,7 @@ import {
 } from '@modl/core';
 import { store } from '../store/store.js';
 import { DeleteButton } from './DeleteButton.js';
-import { ElementIcon } from './ElementIcon.js';
+import { ElementIcon, type JunctionLabel } from './ElementIcon.js';
 
 /**
  * Editing surface attached to the selected element, so details are changed
@@ -71,9 +71,7 @@ export function ElementEditor({
           disabled={types.length === 0}
           onClick={() => setPickingType((open) => !open)}
         >
-          {elementType === 'connection node' || elementType === 'decision' ? null : (
-            <ElementIcon elementType={elementType as EntityType | ConnectionType} />
-          )}
+          <ElementIcon elementType={elementType} />
           <span>{elementType}</span>
         </button>
 
@@ -116,9 +114,7 @@ export function ElementEditor({
                     setPickingType(false);
                   }}
                 >
-                  {type === 'connection node' || type === 'decision' ? null : (
-                    <ElementIcon elementType={type as EntityType | ConnectionType} />
-                  )}
+                  <ElementIcon elementType={type as EntityType | ConnectionType | JunctionLabel} />
                   {type}
                 </button>
               </li>

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { isGroup, parseDocument, selectIds } from '@modl/core';
 import { store } from '../store/store.js';
+import { ElementIcon } from '../canvas/ElementIcon.js';
 import { PLACEABLE, arm, usePending } from '../canvas/placement.js';
 import { useAppState } from '../store/useStore.js';
 
@@ -100,6 +101,15 @@ export function Toolbar() {
                     setPicking(false);
                   }}
                 >
+                  <ElementIcon
+                    elementType={
+                      entry.type === 'connection-node'
+                        ? 'connection node'
+                        : entry.type === 'decision'
+                          ? 'decision'
+                          : entry.type
+                    }
+                  />
                   {entry.label}
                 </button>
               </li>

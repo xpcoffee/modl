@@ -854,3 +854,9 @@ select {
   color: var(--muted);
   font-size: 12px;
 }
+
+.toolbar__types button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
