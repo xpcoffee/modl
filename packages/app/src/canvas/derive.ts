@@ -142,7 +142,11 @@ function measure(state: AppState, expanded: ReadonlySet<Id>): Map<Id, Rect> {
   };
 
   for (const element of Object.values(elements)) {
-    if (isEntity(element) && isRendered(elements, element.id, expanded)) sizeOf(element.id);
+    // Connection nodes are measured too. Without them a line to a junction
+    // had no geometry to choose sides from and fell back to right-to-left,
+    // which points the wrong way as often as not.
+    if (isConnection(element)) continue;
+    if (isRendered(elements, element.id, expanded)) sizeOf(element.id);
   }
   return rects;
 }

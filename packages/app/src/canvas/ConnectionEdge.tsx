@@ -25,16 +25,23 @@ function outward(position: Position): Point {
   return { x: 0, y: 1 };
 }
 
-/**
- * How far a line runs straight out of an element before it starts bending.
- *
- * Without this the curve turns immediately and, when two lines share a side,
- * the second one bows back across the box it just left. Far enough to clear
- * the element, and never so far that a short link balloons.
- */
-function standoff(from: Point, to: Point): number {
-  const distance = Math.hypot(to.x - from.x, to.y - from.y);
-  return Math.max(36, Math.min(90, distance * 0.35));
+/** Across the side a line leaves from, which is how parallel lines separate. */
+function across(position: Position): Point {
+  const out = outward(position);
+  return { x: -out.y, y: out.x };
+}
+
+/** True when a line has to set off away from where it is going. */
+function facesAway(normal: Point, at: Point, towards: Point): boolean {
+  const span = { x: towards.x - at.x, y: towards.y - at.y };
+  const length = Math.hypot(span.x, span.y) || 1;
+  return (normal.x * span.x + normal.y * span.y) / length < -0.2;
+}
+
+/** A point out along the normal, far enough to clear the element. */
+function standoffPoint(at: Point, normal: Point, from: Point, to: Point): Point {
+  const reach = Math.max(50, Math.min(110, Math.hypot(to.x - from.x, to.y - from.y) * 0.4));
+  return { x: at.x + normal.x * reach, y: at.y + normal.y * reach };
 }
 
 /**
@@ -49,25 +56,14 @@ function routedPath(
   from: Point,
   waypoints: Point[],
   to: Point,
-  exits: { source: Point | null; target: Point | null },
+  exits: { source: Point; target: Point },
 ): string {
-  const lead = exits.source
-    ? [{ x: from.x + exits.source.x * standoff(from, to), y: from.y + exits.source.y * standoff(from, to) }]
-    : [];
-  const trail = exits.target
-    ? [{ x: to.x + exits.target.x * standoff(from, to), y: to.y + exits.target.y * standoff(from, to) }]
-    : [];
-
-  const inner = [from, ...lead, ...waypoints, ...trail, to];
-  const reach = standoff(from, to);
-  const before = exits.source
-    ? { x: from.x - exits.source.x * reach, y: from.y - exits.source.y * reach }
-    : { x: from.x - reach, y: from.y };
-  const after = exits.target
-    ? { x: to.x - exits.target.x * reach, y: to.y - exits.target.y * reach }
-    : { x: to.x + reach, y: to.y };
-
-  const points = [before, ...inner, after];
+  const reach = Math.max(36, Math.min(90, Math.hypot(to.x - from.x, to.y - from.y) * 0.35));
+  // Ghosts sit behind each end along its own normal, which sets the tangent
+  // there: a hand-bent line still leaves the way the plain bezier would.
+  const before = { x: from.x - exits.source.x * reach, y: from.y - exits.source.y * reach };
+  const after = { x: to.x - exits.target.x * reach, y: to.y - exits.target.y * reach };
+  const points = [before, from, ...waypoints, to, after];
 
   let path = `M ${from.x} ${from.y}`;
   for (let i = 1; i < points.length - 2; i += 1) {
@@ -130,56 +126,69 @@ export function ConnectionEdge({
   const connectionId = data?.connectionId ?? id;
   const waypoints = data?.waypoints ?? [];
 
-  const source = { x: sourceX, y: sourceY };
-  const target = { x: targetX, y: targetY };
+  /*
+   * Parallel connections separate by shifting their ends across the side they
+   * leave, then handing the job back to React Flow.
+   *
+   * The path a reader sees while dragging is `getBezierPath`, and it already
+   * leaves perpendicular to the handle and clears the element. Replacing it
+   * with a hand-rolled curve to make room for a second line is what dragged
+   * lines back through the box they had just left.
+   */
+  const spread = data?.spread ?? 0;
+  // One shift for both ends. Using each end's own perpendicular pushed them
+  // opposite ways for a left-to-right pair, so the lines crossed in the
+  // middle and met again exactly where they were supposed to be apart.
+  const shift = across(sourcePosition);
+  const source = { x: sourceX + shift.x * spread, y: sourceY + shift.y * spread };
+  const target = { x: targetX + shift.x * spread, y: targetY + shift.y * spread };
 
   const [bezier, bezierLabelX, bezierLabelY] = getBezierPath({
-    sourceX,
-    sourceY,
+    sourceX: source.x,
+    sourceY: source.y,
     sourcePosition,
-    targetX,
-    targetY,
+    targetX: target.x,
+    targetY: target.y,
     targetPosition,
-    // A junction anchors at a point rather than an edge, so a line meeting it
-    // reads better running straight than easing in along an axis.
-    ...(data?.centredSource || data?.centredTarget ? { curvature: 0 } : {}),
+    // Two junctions anchor at points, so the line between them runs straight.
+    // With a box at either end the curvature has to stay: it is what carries
+    // the line clear of the box before it turns.
+    ...(data?.centredSource && data?.centredTarget ? { curvature: 0 } : {}),
   });
 
-  // Parallel connections bow apart so several between one pair of components
-  // do not land on top of each other. The offset runs perpendicular to the
-  // line's own direction: pushing it straight down instead made a line to
-  // something above-right dip under its own source before climbing.
-  const spread = data?.spread ?? 0;
-  const span = { x: targetX - sourceX, y: targetY - sourceY };
-  const length = Math.hypot(span.x, span.y) || 1;
-  const normal = { x: -span.y / length, y: span.x / length };
-  const bowed =
-    spread === 0
-      ? []
-      : [
-          {
-            x: (sourceX + targetX) / 2 + normal.x * spread,
-            y: (sourceY + targetY) / 2 + normal.y * spread,
-          },
-        ];
+  /*
+   * The bezier is the path a reader saw while dragging, and it is the right
+   * answer almost always: an automatically chosen side faces its target, so
+   * the curve leaves and arrives cleanly.
+   *
+   * It only fails when a reader has pinned a line to a side pointing away
+   * from where it goes. A single cubic cannot both leave that way and reach
+   * the target without cutting back across the element, so those get a bend
+   * pushed out along the normal first.
+   */
+  const detour = [
+    // A junction anchors at a point, so it has nothing to clear and never
+    // needs one.
+    ...(!data?.centredSource && facesAway(outward(sourcePosition), source, target)
+      ? [standoffPoint(source, outward(sourcePosition), source, target)]
+      : []),
+    ...(!data?.centredTarget && facesAway(outward(targetPosition), target, source)
+      ? [standoffPoint(target, outward(targetPosition), source, target)]
+      : []),
+  ];
 
-  // A junction anchors at its middle, so there is no edge to clear and the
-  // line runs straight at it. A box gets a perpendicular exit.
-  const exits = {
-    source: data?.centredSource ? null : outward(sourcePosition),
-    target: data?.centredTarget ? null : outward(targetPosition),
-  };
-  const needsExit = exits.source !== null || exits.target !== null;
-
-  const routed = waypoints.length > 0 || bowed.length > 0 || needsExit;
+  const routed = waypoints.length > 0 || detour.length > 0;
   const path = routed
-    ? routedPath(source, waypoints.length > 0 ? waypoints : bowed, target, exits)
+    ? routedPath(source, waypoints.length > 0 ? waypoints : detour, target, {
+        source: outward(sourcePosition),
+        target: outward(targetPosition),
+      })
     : bezier;
+
   const handles = addHandles(source, waypoints, target);
-  const labelPoint =
-    waypoints.length > 0 || bowed.length > 0
-      ? routeMidpoint(source, waypoints.length > 0 ? waypoints : bowed, target)
-      : { x: bezierLabelX, y: bezierLabelY };
+  const labelPoint = routed
+    ? routeMidpoint(source, waypoints.length > 0 ? waypoints : detour, target)
+    : { x: bezierLabelX, y: bezierLabelY };
   const rolledUp = (data?.rolledUp ?? []).length > 0;
 
   const dimmed = data?.dimmed ?? false;
