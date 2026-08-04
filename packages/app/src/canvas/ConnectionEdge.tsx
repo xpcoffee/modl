@@ -38,6 +38,55 @@ function standoffPoint(at: Point, normal: Point, from: Point, to: Point): Point 
   return { x: at.x + normal.x * reach, y: at.y + normal.y * reach };
 }
 
+/** The two control points of a cubic path, so a line can be shifted off it. */
+function controlsOf(path: string): [Point, Point] | null {
+  const parts = /^M\s*(\S+),(\S+)\s*C\s*(\S+),(\S+)\s+(\S+),(\S+)\s+(\S+),(\S+)$/.exec(path.trim());
+  if (!parts) return null;
+  const numbers = parts.slice(1).map(Number);
+  if (numbers.some(Number.isNaN)) return null;
+  return [
+    { x: numbers[2]!, y: numbers[3]! },
+    { x: numbers[4]!, y: numbers[5]! },
+  ];
+}
+
+/**
+ * The same line, eased sideways.
+ *
+ * Moving both control points by `by` leaves a cubic whose distance from the
+ * original is `3·|by|·t(1-t)`: nothing at either end, most in the middle, and
+ * a smooth ramp between. Two lines shifted by different amounts stay clear of
+ * each other for their whole length, and both are still the bezier React Flow
+ * drew, so neither changes shape or leaves its handle.
+ */
+function shifted(path: string, by: Point): string {
+  const controls = controlsOf(path);
+  if (!controls) return path;
+  const ends = /^M\s*(\S+,\S+)\s*C\s*\S+,\S+\s+\S+,\S+\s+(\S+,\S+)$/.exec(path.trim());
+  if (!ends) return path;
+  const [first, second] = controls;
+  return (
+    `M ${ends[1]!.replace(',', ' ')}` +
+    ` C ${first.x + by.x} ${first.y + by.y},` +
+    ` ${second.x + by.x} ${second.y + by.y},` +
+    ` ${ends[2]!.replace(',', ' ')}`
+  );
+}
+
+/**
+ * How far a line moves aside to clear the ones already between the same pair
+ * of handles. Small, and the same step each time, so a third line reads as one
+ * more in a bundle. The line already on the board is rank 0 and never moves.
+ */
+const SEPARATION = 26;
+
+/** Sideways from the straight run between two points, always the same way. */
+function aside(from: Point, to: Point, by: number): Point {
+  const span = { x: to.x - from.x, y: to.y - from.y };
+  const length = Math.hypot(span.x, span.y) || 1;
+  return { x: (-span.y / length) * by, y: (span.x / length) * by };
+}
+
 /**
  * A smooth curve through every waypoint, so adding a bend reshapes the line
  * rather than turning it into a polyline.
@@ -156,20 +205,25 @@ export function ConnectionEdge({
           : []),
       ];
 
-  // Everything else is the path React Flow drew while the line was dragged.
+  // Everything else is the path React Flow drew while the line was dragged,
+  // eased aside by however many lines already run between the same handles.
   const middle = waypoints.length > 0 ? waypoints : detour;
   const routed = middle.length > 0;
+  const rank = data?.rank ?? 0;
   const path = routed
     ? routedPath(source, middle, target, {
         source: outward(sourcePosition),
         target: outward(targetPosition),
       })
-    : bezier;
+    : shifted(bezier, aside(source, target, rank * SEPARATION));
 
   const handles = addHandles(source, waypoints, target);
+  // The label rides with the line. Halfway along, a shifted cubic sits three
+  // quarters of the shift off the one it came from.
+  const carry = aside(source, target, rank * SEPARATION * 0.75);
   const labelPoint = routed
     ? routeMidpoint(source, middle, target)
-    : { x: bezierLabelX, y: bezierLabelY };
+    : { x: bezierLabelX + carry.x, y: bezierLabelY + carry.y };
   const rolledUp = (data?.rolledUp ?? []).length > 0;
 
   const dimmed = data?.dimmed ?? false;

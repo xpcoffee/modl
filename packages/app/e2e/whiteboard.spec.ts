@@ -1932,7 +1932,7 @@ test.describe('lines stay on their anchors', () => {
     for (const gap of gaps) expect(gap).toBeLessThan(10);
   });
 
-  test('parallel lines still take different routes', async ({ page }) => {
+  test('parallel lines share their handles and part in the middle', async ({ page }) => {
     await dispatch(page, [
       { type: 'create-entity', id: 'a', entityType: 'component', title: 'A', position: { x: 0, y: 0 } },
       { type: 'create-entity', id: 'b', entityType: 'component', title: 'B', position: { x: 400, y: 0 } },
@@ -1941,13 +1941,36 @@ test.describe('lines stay on their anchors', () => {
     ]);
     await fit(page);
 
-    const starts = await page.evaluate(() =>
-      [...document.querySelectorAll('.react-flow__edge-path')].map((path) => {
-        const point = (path as SVGPathElement).getPointAtLength(0);
-        return `${Math.round(point.x)},${Math.round(point.y)}`;
+    // Twenty-one points along each line, so the two can be compared all the
+    // way rather than only at their ends.
+    const [one, two] = await page.evaluate(() =>
+      [...document.querySelectorAll('.react-flow__edge-path')].map((element) => {
+        const path = element as SVGPathElement;
+        const length = path.getTotalLength();
+        return Array.from({ length: 21 }, (_, i) => {
+          const point = path.getPointAtLength((length * i) / 20);
+          return { x: point.x, y: point.y };
+        });
       }),
     );
-    // They leave from different handles rather than the same one.
-    expect(new Set(starts).size).toBe(2);
+
+    const apart = one!.map((point, i) => Math.hypot(point.x - two![i]!.x, point.y - two![i]!.y));
+
+    // Both keep the same pair of handles, so they meet at either end.
+    expect(apart[0]!).toBeLessThan(1);
+    expect(apart[apart.length - 1]!).toBeLessThan(1);
+
+    // In between, the second is far enough off the first to read as its own
+    // line, and gently enough that it is no wider than a small element.
+    expect(Math.max(...apart)).toBeGreaterThan(12);
+    expect(Math.max(...apart)).toBeLessThan(40);
+
+    // The gap opens and closes once, without the two ever crossing back over
+    // each other: separation ramps in rather than switching on.
+    const peak = apart.indexOf(Math.max(...apart));
+    const rising = apart.slice(0, peak + 1);
+    const falling = apart.slice(peak);
+    expect(rising.every((gap, i) => i === 0 || gap >= rising[i - 1]! - 0.01)).toBe(true);
+    expect(falling.every((gap, i) => i === 0 || gap <= falling[i - 1]! + 0.01)).toBe(true);
   });
 });

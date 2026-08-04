@@ -71,6 +71,8 @@ export interface ConnectionEdgeData extends Record<string, unknown> {
   rolledUp: Id[];
   /** True when a reader pinned this line's sides, which may need rescuing. */
   rescue: boolean;
+  /** How many lines already run between this pair of handles. */
+  rank: number;
   /** True when that end anchors at a point rather than a side. */
   centredSource: boolean;
   centredTarget: boolean;
@@ -375,6 +377,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           waypoints: [],
           direction,
           rescue: false,
+          rank: 0,
           rolledUp: ids,
           centredSource: isCentred(elements, first.from),
           centredTarget: isCentred(elements, first.to),
@@ -403,21 +406,20 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
      * other, which means sharing a pair of handles. Everything else is left
      * exactly where the geometry puts it.
      *
-     * The ones after the first leave by a different side. Their ends stay on
-     * real handles, the line already there does not move, and each is still
-     * drawn by React Flow.
+     * Each one after the first is told how many are already on that pair, and
+     * eases away by that much. Nothing changes sides and no end moves, so
+     * there is no moment where a line jumps into a different arrangement.
      */
     const sharing = new Map<string, number>();
 
     drawn.forEach(({ from, to, connection: element }, index) => {
-      const primary = routes[index]!;
-      const key = `${primary.sourceHandle} ${primary.targetHandle}`;
-      const seen = sharing.get(key) ?? 0;
-      sharing.set(key, seen + 1);
+      const sides = routes[index]!;
+      const key = `${sides.sourceHandle} ${sides.targetHandle}`;
+      const rank = sharing.get(key) ?? 0;
+      sharing.set(key, rank + 1);
 
       const chosen = layoutOf(state, element.id);
       const pinned = chosen.sourceSide !== undefined || chosen.targetSide !== undefined;
-      const sides = pinned ? primary : leaveBy(primary, seen);
       edges.push({
         id: `${element.id}:${from}:${to}`,
         type: 'connection',
@@ -440,6 +442,8 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           direction: element.direction,
           // Only a side a reader pinned may need rescuing from itself.
           rescue: pinned,
+          // How many lines already share this pair of handles.
+          rank,
           rolledUp: [],
           centredSource: isCentred(elements, from),
           centredTarget: isCentred(elements, to),
@@ -506,30 +510,6 @@ function isCentred(elements: Record<Id, Element>, id: Id): boolean {
  * the left forced every line to run left-to-right, so a connection back up
  * the board looped around its own endpoints.
  */
-/**
- * The side a line takes when others already leave by the same one.
- *
- * Only the leaving side changes, so lines fan out where they start and come
- * together where they arrive, and the line already drawn keeps its side.
- */
-function leaveBy(
-  primary: { sourceHandle: string; targetHandle: string },
-  seen: number,
-): { sourceHandle: string; targetHandle: string } {
-  if (seen === 0) return primary;
-
-  const horizontal =
-    primary.sourceHandle.endsWith('left') || primary.sourceHandle.endsWith('right');
-  const alternatives = horizontal ? ['top', 'bottom'] : ['right', 'left'];
-  const pick = alternatives[(seen - 1) % alternatives.length]!;
-
-  return {
-    // A junction anchors at its middle whichever side is named.
-    sourceHandle: primary.sourceHandle.startsWith('centre-') ? `centre-${pick}` : pick,
-    targetHandle: primary.targetHandle,
-  };
-}
-
 function sidesBetween(
   rects: Map<Id, Rect>,
   from: Id,
