@@ -14,7 +14,7 @@ Everything here is stable across iterations. Where iteration 1 only implements p
 ## Types
 
 ```ts
-type Id = string;                    // UUID, any version, lowercase, hyphenated
+type Id = string;                    // opaque: a UUID, or a readable slug
 
 type EntityType     = 'state' | 'component' | 'step';
 type ConnectionType = 'transition' | 'relation' | 'interaction';
@@ -24,7 +24,8 @@ interface ElementBase {
   id: Id;
   title: string;                     // human label, may be empty
   description: string;               // long form, may be empty
-  tags: Record<string, string>;      // filterable key-value pairs
+  tags: Record<string, string[]>;    // filterable labels, several per key
+  sources: SourceRef[];              // where the claim came from
   groupId: Id | null;                // id of the entity this collapses into
 }
 
@@ -52,13 +53,31 @@ type Element = Entity | Connection | Fork;
 
 ### Ids
 
-Any UUID version passes, matched against:
+An id is an opaque string of 1 to 128 characters:
 
 ```
-/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
 ```
 
-The app mints v4. A programmatic producer should mint v5 from its own keys and a fixed namespace, so re-running an import against an unchanged source produces the same ids and the resulting document diffs cleanly.
+The app mints UUID v4. A producer generating from a source should mint UUID v5 from its own keys and a fixed namespace, so re-running against an unchanged source gives the same ids and the document diffs cleanly.
+
+A document written by hand should use readable ids like `checkout-ui`. Requiring UUIDs everywhere meant only a program could author a document, since every `from` and `to` was an unreadable string.
+
+### Tags
+
+A key holds a list of values, because an element often belongs to more than one flow, team, or subdomain at once. A filter term matches when any value matches.
+
+### Sources
+
+`sources` records where a claim came from: a file and line, a ticket, a document link. Empty for anything drawn by hand. A generated document is only worth trusting if its claims can be traced, and prose in `description` cannot be queried.
+
+```json
+"sources": [{ "ref": "src/checkout.ts:42", "note": "calls authorise" }]
+```
+
+### Versions
+
+`formatVersion` is 2. A version 1 document still loads: the reader migrates it, turning single tag values into lists and adding empty `sources`. Saving writes the current version, so a file upgrades the first time it is written.
 
 ## Paradigms
 
@@ -139,6 +158,7 @@ Two tiers, and they behave differently.
 | `id-key-mismatch` | An element's map key differs from its `id` |
 | `unknown-reference` | A `from`, `to`, or `groupId` names an id absent from `elements` |
 | `not-a-group` | `groupId` names a connection or a fork, and a group is an entity |
+| `unknown-command` | A dispatched command has a type the reducer does not know |
 | `group-cycle` | `groupId` chain closes a loop, including an element naming itself |
 
 Version checking short-circuits: an unreadable `formatVersion` returns on its own, because errors found by a parser that does not know the format mislead more than they help.
@@ -149,8 +169,8 @@ Version checking short-circuits: an unreadable `formatVersion` returns on its ow
 |---|---|
 | `paradigm-mismatch` | A connection type differs from the paradigm its targets imply |
 | `empty-endpoints` | A connection has an empty `from` or `to` |
-| `orphan-entity` | An entity has no connections |
-| `duplicate-title` | Two elements share a non-empty title |
+| `orphan-entity` | An entity has no connections and holds no members. A container's connections are its members' |
+| `duplicate-title` | Two elements in the same group share a non-empty title. The same role name in two different groups reads naturally |
 
 A connection pointing at targets from several paradigms produces no `paradigm-mismatch`, because a cross-paradigm connection is legal and only one of its endpoints can be satisfied.
 

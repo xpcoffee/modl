@@ -6,9 +6,10 @@ The loop is: write structure, ask whether it reads, look at it.
 
 ```bash
 npm run build                          # once, so `render` has an app to drive
-npm run modl -- check   domain.modl.json
+npm run modl -- check   domain.modl.json   # alias: validate
 npm run modl -- layout  domain.modl.json
 npm run modl -- render  domain.modl.json -o domain.png
+npm run modl -- schema  -o modl.schema.json
 ```
 
 ## Write structure
@@ -17,7 +18,7 @@ Emit the model and leave `layout` out. [The model reference](domain-model.md) is
 
 ```json
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "id": "0a1b…",
   "title": "Checkout",
   "model": {
@@ -25,14 +26,23 @@ Emit the model and leave `layout` out. [The model reference](domain-model.md) is
       "11111111-1111-4111-8111-111111111111": {
         "id": "11111111-1111-4111-8111-111111111111",
         "kind": "entity", "type": "component", "title": "Checkout UI",
-        "description": "", "tags": { "team": "web" }, "groupId": null
+        "description": "", "tags": { "team": ["web"] }, "sources": [], "groupId": null
       }
     }
   }
 }
 ```
 
-Mint ids as UUID v5 from a namespace and your own key, so re-running against an unchanged source produces the same ids and the document diffs cleanly.
+Ids are opaque strings. Mint UUID v5 from a namespace and your own key when generating, so re-running against an unchanged source gives the same ids and the document diffs cleanly. Readable ids like `checkout-ui` are legal too, which is what makes a document writable by hand.
+
+A tag key holds a list, so an element can belong to several flows at once. `sources` records where each claim came from, which is what makes a generated document auditable:
+
+```json
+"tags": { "flow": ["checkout", "refund"] },
+"sources": [{ "ref": "src/checkout.ts:42" }]
+```
+
+`modl schema` emits the format as JSON Schema, so a producer in another language can validate before writing rather than after loading.
 
 ## Ask whether it reads
 
@@ -50,7 +60,9 @@ It reports overlapping entities, a member drawn outside the container that claim
 
 ## Fill in positions
 
-`modl layout` places entities that have no position and leaves anything already placed alone, so it is safe to run over a document a human has arranged. Members go inside their container.
+Positions are optional. The loader places anything without one, putting members inside the container that holds them, so a producer emitting structure alone still gets a legible board.
+
+`modl layout` does the same and writes the result back to the file, so the positions are in the document rather than recomputed on every load. It leaves anything already placed alone, so it is safe over a document a human has arranged.
 
 `autoLayout` is exported from `@modl/core` for the same job in process.
 
@@ -75,5 +87,9 @@ window.__modl.getDocument();
 window.__modl.getTrace();
 window.__modl.replay(trace);
 ```
+
+`merge-document` upserts by id, so a producer working in rounds can regenerate one subsystem without touching the rest. With stable ids the trace then shows exactly what that round changed.
+
+An unrecognised command type is rejected like any other failure, so a batch keeps going rather than crashing partway.
 
 Commands carry explicit ids, so a trace replays without a random source. Rejections come back as `{ok: false, error: {code, message}}` rather than throwing, so a caller can assert on the code.

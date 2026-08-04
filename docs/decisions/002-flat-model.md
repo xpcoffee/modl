@@ -26,7 +26,7 @@ Reading a group's members means scanning for `groupId`, which is a linear pass r
 
 Arrowheads live in `layout`, not the model: `from` and `to` already carry direction, so a head is presentation.
 
-Tags are single-valued (`Record<string, string>`). `owner` cannot hold two people. Widening to arrays breaks every consumer and needs a `formatVersion` bump.
+Tags hold a list of values per key. They were single-valued at first, on the argument that `key=value` is the common case and one value keeps hand-authored JSON simple. A producer generating a real document hit the limit immediately: a connection in two flows, a step in two subdomains, could say only one thing, and the rest went into prose where a filter cannot see it. Widening cost a `formatVersion` bump and a migration, which is the price of having guessed wrong.
 
 ## Rejected
 
@@ -36,6 +36,10 @@ Tags are single-valued (`Record<string, string>`). `owner` cannot hold two peopl
 
 **Separate files for model and layout.** Cleaner in theory; the user saves and loads one thing.
 
+**Ids are opaque strings**, not necessarily UUIDs. Requiring a UUID meant only a program could write a document, since every `from` and `to` was unreadable. Generated documents should still use v5 for stable diffs.
+
+**Elements carry `sources`.** A generated document is worth trusting only if its claims can be traced back, and a reference buried in prose cannot be queried.
+
 ## What would reverse this
 
-A second consumer needing multi-valued tags. Bump `formatVersion` and migrate.
+A format where the flat map costs more than it saves: a document large enough that scanning for members shows up in profiling.
