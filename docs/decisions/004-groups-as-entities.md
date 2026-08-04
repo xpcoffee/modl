@@ -12,6 +12,8 @@ Groups are how zooming works: a set of elements collapses into one, and expandin
 
 **A container is sized by its own rectangle**, which the reader resizes, and membership follows that box: dropping an element inside joins it, dragging one past the edge takes it out.
 
+That rectangle is held apart from the size the entity draws at when collapsed. Sharing one rectangle means a container opened up to hold six things collapses into a node the size of a container, and shrinking that node back down squeezes the box its members live in.
+
 This is the load-bearing part. Sizing a container from the bounding box of its members reads better and breaks twice: moving the container changes nothing, because it snaps back to where its contents are, and a member dragged away carries the box along and can never leave. The box has to be independent of what is in it.
 
 **Expansion is session state, not document state.** Which groups a reader has open is their view of the domain. Two people reading one file should not fight over it.
