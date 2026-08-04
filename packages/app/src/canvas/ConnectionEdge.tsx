@@ -36,6 +36,13 @@ function turnedAway(normal: Point, at: Point, towards: Point): number {
 }
 
 /**
+ * As far out as a line ever sets off before turning. What it is getting around
+ * is its own element, and that stays the same size however far away the other
+ * end is, so past this there is nothing left to gain.
+ */
+const FURTHEST = 250;
+
+/**
  * How much further out a line has to set off to get clear of its own element.
  *
  * Squared, so a side that only just points the wrong way is barely touched
@@ -47,7 +54,7 @@ function standoff(normal: Point, at: Point, towards: Point): Point {
   const away = turnedAway(normal, at, towards);
   if (away === 0) return { x: 0, y: 0 };
   const span = Math.hypot(towards.x - at.x, towards.y - at.y);
-  const reach = away * away * Math.min(span * 2, 750);
+  const reach = Math.min(away * away * span * 2, FURTHEST);
   return { x: normal.x * reach, y: normal.y * reach };
 }
 

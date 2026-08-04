@@ -1882,6 +1882,39 @@ test.describe('lines clearing their element', () => {
     expect(Math.max(...steps)).toBeLessThan(20);
   });
 
+  test('a distant element does not make the detour any wider', async ({ page }) => {
+    // What a line is getting around is its own element, which is the same size
+    // however far off the other end is. A long line was arcing out three times
+    // as far as a short one for no more reason than the distance.
+    await dispatch(page, [
+      { type: 'create-entity', id: 'a', entityType: 'component', title: 'A', position: { x: 0, y: 0 } },
+      { type: 'create-entity', id: 'b', entityType: 'component', title: 'B', position: { x: 330, y: 500 } },
+      { type: 'create-connection', id: 'c', connectionType: 'interaction', from: ['a'], to: ['b'], title: '' },
+      { type: 'set-connection-sides', id: 'c', source: 'top', target: 'top' },
+    ]);
+
+    const reach = async () =>
+      page.locator('.react-flow__edge-path').evaluate((element) => {
+        const path = element as SVGPathElement;
+        const length = path.getTotalLength();
+        const start = path.getPointAtLength(0);
+        let top = start.y;
+        for (let i = 0; i <= 200; i += 1) {
+          top = Math.min(top, path.getPointAtLength((length * i) / 200).y);
+        }
+        return start.y - top;
+      });
+
+    const near = await reach();
+    await dispatch(page, [{ type: 'move-element', id: 'b', position: { x: 330, y: 2000 } }]);
+    const far = await reach();
+
+    // Four times the distance, and the line reaches out no further.
+    expect(far).toBeLessThan(near + 10);
+    // It is still detouring, rather than the cap having flattened it away.
+    expect(far).toBeGreaterThan(60);
+  });
+
   test('a line leaves perpendicular to the side it starts on', async ({ page }) => {
     await dispatch(page, [
       { type: 'create-entity', id: 'a', entityType: 'component', title: 'A', position: { x: 0, y: 0 } },
