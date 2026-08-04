@@ -4,6 +4,7 @@ import type {
   EntityType,
   Id,
   Point,
+  SourceRef,
   View,
 } from '../model/types.js';
 
@@ -36,7 +37,7 @@ export type Command =
     }
   | { type: 'move-element'; id: Id; position: Point }
   | { type: 'set-metadata'; id: Id; title?: string; description?: string }
-  | { type: 'set-tag'; id: Id; key: string; value: string }
+  | { type: 'set-tag'; id: Id; key: string; values: string[] }
   | { type: 'remove-tag'; id: Id; key: string }
   | { type: 'rename-tag'; id: Id; from: string; to: string }
   | { type: 'resize-element'; id: Id; width: number; height: number }
@@ -52,7 +53,9 @@ export type Command =
   | { type: 'set-selection'; ids: Id[] }
   | { type: 'set-filter'; expression: string }
   | { type: 'set-view'; pan: Point; zoom: number }
-  | { type: 'load-document'; document: Document };
+  | { type: 'set-sources'; id: Id; sources: SourceRef[] }
+  | { type: 'load-document'; document: Document }
+  | { type: 'merge-document'; document: Document };
 
 export type CommandType = Command['type'];
 
@@ -68,7 +71,8 @@ export type ErrorCode =
   | 'version-unsupported'
   | 'wrong-kind'
   | 'group-cycle'
-  | 'not-a-group';
+  | 'not-a-group'
+  | 'unknown-command';
 
 export interface CommandError {
   code: ErrorCode;

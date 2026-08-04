@@ -29,12 +29,25 @@ describe('a valid document', () => {
 });
 
 describe('errors', () => {
-  it('version-unsupported: formatVersion is from the future', () => {
+  it('version-unsupported: formatVersion is newer than this build reads', () => {
     const document = fixture();
     document['formatVersion'] = 99;
     const result = validateDocument(document);
     expect(codes(result.errors)).toContain('version-unsupported');
-    expect(result.errors[0]?.message).toContain('expected 1');
+    expect(result.errors[0]?.message).toContain('newer than this build');
+  });
+
+  it('reads a version 1 document by migrating it', () => {
+    const document = fixture();
+    document['formatVersion'] = 1;
+    // Version 1 held one value per tag and had no sources.
+    for (const element of Object.values(document['model']['elements']) as Record<string, any>[]) {
+      element['tags'] = Object.fromEntries(
+        Object.entries(element['tags']).map(([key, values]) => [key, (values as string[])[0]]),
+      );
+      delete element['sources'];
+    }
+    expect(validateDocument(document).errors).toEqual([]);
   });
 
   it('schema-invalid: a required field is missing', () => {
@@ -50,9 +63,21 @@ describe('errors', () => {
     expect(codes(validateDocument(document).errors)).toContain('schema-invalid');
   });
 
-  it('schema-invalid: an id that is not a UUID', () => {
+  it('accepts a readable id, so a document can be written by hand', () => {
     const document = fixture();
-    document['model']['elements']['nope'] = { ...document['model']['elements'][UI], id: 'nope' };
+    document['model']['elements']['checkout-ui'] = {
+      ...document['model']['elements'][UI],
+      id: 'checkout-ui',
+    };
+    expect(codes(validateDocument(document).errors)).not.toContain('schema-invalid');
+  });
+
+  it('schema-invalid: an id with a space in it', () => {
+    const document = fixture();
+    document['model']['elements']['not valid'] = {
+      ...document['model']['elements'][UI],
+      id: 'not valid',
+    };
     expect(codes(validateDocument(document).errors)).toContain('schema-invalid');
   });
 

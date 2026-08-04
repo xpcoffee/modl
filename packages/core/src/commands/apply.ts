@@ -44,6 +44,7 @@ export function apply(state: AppState, command: Command): CommandResult {
         title: command.title,
         description: '',
         tags: {},
+        sources: [],
         groupId: null,
       };
       return ok(
@@ -74,6 +75,7 @@ export function apply(state: AppState, command: Command): CommandResult {
         title: command.title,
         description: '',
         tags: {},
+        sources: [],
         groupId: null,
         from: [...command.from],
         to: [...command.to],
@@ -130,7 +132,7 @@ export function apply(state: AppState, command: Command): CommandResult {
       }
       const updated: Element = {
         ...element,
-        tags: { ...element.tags, [command.key]: command.value },
+        tags: { ...element.tags, [command.key]: [...command.values] },
       };
       return ok(withElement(state, updated, state.document.layout), [
         { type: 'element-updated', id: command.id },
@@ -201,7 +203,7 @@ export function apply(state: AppState, command: Command): CommandResult {
       }
 
       // Rebuilt in order so a rename keeps the tag where the reader left it.
-      const tags: Record<string, string> = {};
+      const tags: Record<string, string[]> = {};
       for (const [key, value] of Object.entries(element.tags)) {
         if (key === command.from) tags[command.to] = value;
         else tags[key] = value;
@@ -405,6 +407,7 @@ export function apply(state: AppState, command: Command): CommandResult {
         title: command.title,
         description: '',
         tags: {},
+        sources: [],
         groupId: null,
       };
 
@@ -522,6 +525,68 @@ export function apply(state: AppState, command: Command): CommandResult {
       return ok({ document: result.document, filter: '', selection: [], expanded: [] }, [
         { type: 'document-loaded', id: result.document.id },
       ]);
+    }
+
+    case 'merge-document': {
+      const result = loadDocument(command.document);
+      if (!result.ok) {
+        return fail(command.type, 'schema-invalid', result.errors.map((e) => e.message).join('; '));
+      }
+
+      // Upserts by id, so a producer can regenerate one subsystem and leave
+      // the rest of the document alone. With stable ids the trace then shows
+      // exactly what that round changed.
+      const elements = { ...state.document.model.elements };
+      const layout = { ...state.document.layout };
+      const events: DomainEvent[] = [];
+
+      for (const [id, element] of Object.entries(result.document.model.elements)) {
+        events.push({ type: elements[id] ? 'element-updated' : 'element-created', id });
+        elements[id] = element;
+        const incoming = result.document.layout[id];
+        if (incoming) layout[id] = incoming;
+      }
+
+      const merged = { ...state.document, model: { elements }, layout };
+      const check = loadDocument(merged);
+      if (!check.ok) {
+        return fail(
+          command.type,
+          'schema-invalid',
+          `merging would break the document: ${check.errors.map((e) => e.message).join('; ')}`,
+        );
+      }
+
+      return ok({ ...state, document: check.document }, events);
+    }
+
+    case 'set-sources': {
+      const element = state.document.model.elements[command.id];
+      if (!element) return unknown(command.type, command.id);
+      if (command.sources.some((source) => source.ref.trim() === '')) {
+        return fail(command.type, 'schema-invalid', 'a source needs a ref');
+      }
+      const updated: Element = {
+        ...element,
+        sources: command.sources.map((source) => ({
+          ref: source.ref,
+          ...(source.note === undefined ? {} : { note: source.note }),
+        })),
+      };
+      return ok(withElement(state, updated, state.document.layout), [
+        { type: 'element-updated', id: command.id },
+      ]);
+    }
+
+    default: {
+      // A caller guessing at a command name gets a rejection it can read,
+      // rather than `undefined` crashing the dispatcher two frames later.
+      const unknownCommand = command as { type?: unknown };
+      return fail(
+        String(unknownCommand.type) as CommandType,
+        'unknown-command',
+        `there is no command "${String(unknownCommand.type)}"`,
+      );
     }
   }
 }

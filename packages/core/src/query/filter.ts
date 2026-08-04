@@ -43,11 +43,17 @@ export function parseFilter(expression: string): FilterParseResult {
   return { ok: true, terms };
 }
 
-/** True when the element satisfies every term. */
+/**
+ * True when the element satisfies every term. A key holds several values, and
+ * a term matches when any one of them does.
+ */
 export function matchesTerms(element: Element, terms: FilterTerm[]): boolean {
   return terms.every((term) => {
     const actual = element.tags[term.key];
-    const present = actual !== undefined && (term.value === undefined || actual === term.value);
+    const present =
+      actual !== undefined &&
+      actual.length >= 0 &&
+      (term.value === undefined || actual.includes(term.value));
     return term.negated ? !present : present;
   });
 }
@@ -81,8 +87,7 @@ export function tagKeys(elements: Record<Id, Element>): string[] {
 export function tagValues(elements: Record<Id, Element>, key: string): string[] {
   const values = new Set<string>();
   for (const element of Object.values(elements)) {
-    const value = element.tags[key];
-    if (value !== undefined) values.add(value);
+    for (const value of element.tags[key] ?? []) values.add(value);
   }
   return [...values].sort();
 }

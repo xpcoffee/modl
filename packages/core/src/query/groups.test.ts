@@ -20,7 +20,7 @@ const OUTSIDE = '40000000-0000-4000-8000-000000000000';
 const LINK = '50000000-0000-4000-8000-000000000000';
 
 function entity(id: Id, groupId: Id | null = null): Element {
-  return { id, kind: 'entity', type: 'component', title: id, description: '', tags: {}, groupId };
+  return { id, kind: 'entity', type: 'component', title: id, description: '', tags: {}, sources: [], groupId };
 }
 
 function connection(id: Id, from: Id[], to: Id[]): Element {
@@ -31,6 +31,7 @@ function connection(id: Id, from: Id[], to: Id[]): Element {
     title: '',
     description: '',
     tags: {},
+    sources: [],
     groupId: null,
     from,
     to,

@@ -1,6 +1,7 @@
 import { documentSchema } from './schema.js';
 import { PARADIGM_CONNECTION } from './paradigm.js';
 import { cyclicGroupIds } from '../query/groups.js';
+import { migrateDocument } from '../serialize/migrate.js';
 import {
   FORMAT_VERSION,
   isConnection,
@@ -48,7 +49,13 @@ export function validateDocument(input: unknown): ValidationResult {
   const errors: Issue[] = [];
   const warnings: Issue[] = [];
 
-  const parsed = documentSchema.safeParse(input);
+  const upgraded = migrateDocument(input);
+  if (!upgraded.ok) {
+    errors.push({ code: 'version-unsupported', message: upgraded.message });
+    return { errors, warnings };
+  }
+
+  const parsed = documentSchema.safeParse(upgraded.document);
   if (!parsed.success) {
     for (const issue of parsed.error.issues) {
       const path = issue.path.join('.');
@@ -61,14 +68,6 @@ export function validateDocument(input: unknown): ValidationResult {
   }
 
   const document = parsed.data as Document;
-
-  if (document.formatVersion !== FORMAT_VERSION) {
-    errors.push({
-      code: 'version-unsupported',
-      message: `formatVersion ${document.formatVersion} is unreadable, expected ${FORMAT_VERSION}`,
-    });
-    return { errors, warnings };
-  }
 
   const elements = document.model.elements;
   const known = new Set(Object.keys(elements));
@@ -136,30 +135,41 @@ export function validateDocument(input: unknown): ValidationResult {
       for (const ref of [...element.from, ...element.to]) connected.add(ref);
     }
   }
+  // A container's connections are its members' connections, so a group that
+  // holds something is doing its job without any of its own.
+  const containers = new Set<Id>();
   for (const element of Object.values(elements)) {
-    if (isEntity(element) && !connected.has(element.id)) {
-      warnings.push({
-        code: 'orphan-entity',
-        elementId: element.id,
-        message: 'entity has no connections',
-      });
-    }
+    if (element.groupId !== null) containers.add(element.groupId);
   }
 
+  for (const element of Object.values(elements)) {
+    if (!isEntity(element)) continue;
+    if (connected.has(element.id) || containers.has(element.id)) continue;
+    warnings.push({
+      code: 'orphan-entity',
+      elementId: element.id,
+      message: 'entity has no connections',
+    });
+  }
+
+  // Scoped to siblings. The same role name inside two different groups reads
+  // naturally, and warning about it pushes producers into awkward names.
   const byTitle = new Map<string, Id[]>();
   for (const element of Object.values(elements)) {
     if (element.title === '') continue;
-    const seen = byTitle.get(element.title) ?? [];
+    const scope = `${element.groupId ?? ''}\u0000${element.title}`;
+    const seen = byTitle.get(scope) ?? [];
     seen.push(element.id);
-    byTitle.set(element.title, seen);
+    byTitle.set(scope, seen);
   }
-  for (const [title, ids] of byTitle) {
+  for (const [scope, ids] of byTitle) {
     if (ids.length < 2) continue;
+    const title = scope.split('\u0000')[1] ?? '';
     for (const id of ids) {
       warnings.push({
         code: 'duplicate-title',
         elementId: id,
-        message: `title "${title}" is shared by ${ids.length} elements`,
+        message: `title "${title}" is shared by ${ids.length} elements in the same group`,
       });
     }
   }

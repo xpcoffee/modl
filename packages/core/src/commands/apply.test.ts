@@ -156,21 +156,21 @@ describe('metadata and tags', () => {
   });
 
   it('sets and removes tags', () => {
-    let state = must(base, { type: 'set-tag', id: A, key: 'team', value: 'web' });
-    expect(state.document.model.elements[A]?.tags).toEqual({ team: 'web' });
+    let state = must(base, { type: 'set-tag', id: A, key: 'team', values: ['web'] });
+    expect(state.document.model.elements[A]?.tags).toEqual({ team: ['web'] });
     state = must(state, { type: 'remove-tag', id: A, key: 'team' });
     expect(state.document.model.elements[A]?.tags).toEqual({});
   });
 
   it('schema-invalid: rejects an empty tag key', () => {
-    const result = apply(base, { type: 'set-tag', id: A, key: '', value: 'x' });
+    const result = apply(base, { type: 'set-tag', id: A, key: '', values: ['x'] });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe('schema-invalid');
   });
 
   it('unknown-element: rejects tagging a missing element', () => {
-    const result = apply(base, { type: 'set-tag', id: MISSING, key: 'k', value: 'v' });
+    const result = apply(base, { type: 'set-tag', id: MISSING, key: 'k', values: ['v'] });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe('unknown-element');
@@ -256,16 +256,16 @@ describe('rename-tag', () => {
   it('keeps the value and the position among the other tags', () => {
     const state = must(
       base,
-      { type: 'set-tag', id: A, key: 'team', value: 'web' },
-      { type: 'set-tag', id: A, key: 'tier', value: '1' },
+      { type: 'set-tag', id: A, key: 'team', values: ['web'] },
+      { type: 'set-tag', id: A, key: 'tier', values: ['1'] },
       { type: 'rename-tag', id: A, from: 'team', to: 'squad' },
     );
-    expect(state.document.model.elements[A]?.tags).toEqual({ squad: 'web', tier: '1' });
+    expect(state.document.model.elements[A]?.tags).toEqual({ squad: ['web'], tier: ['1'] });
     expect(Object.keys(state.document.model.elements[A]?.tags ?? {})).toEqual(['squad', 'tier']);
   });
 
   it('lands as one command in the trace', () => {
-    const state = must(base, { type: 'set-tag', id: A, key: 'team', value: 'web' });
+    const state = must(base, { type: 'set-tag', id: A, key: 'team', values: ['web'] });
     const result = apply(state, { type: 'rename-tag', id: A, from: 'team', to: 'squad' });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -280,7 +280,7 @@ describe('rename-tag', () => {
   });
 
   it('schema-invalid: rejects an empty new key', () => {
-    const state = must(base, { type: 'set-tag', id: A, key: 'team', value: 'web' });
+    const state = must(base, { type: 'set-tag', id: A, key: 'team', values: ['web'] });
     const result = apply(state, { type: 'rename-tag', id: A, from: 'team', to: '  ' });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -290,8 +290,8 @@ describe('rename-tag', () => {
   it('duplicate-id: refuses to overwrite another tag', () => {
     const state = must(
       base,
-      { type: 'set-tag', id: A, key: 'team', value: 'web' },
-      { type: 'set-tag', id: A, key: 'tier', value: '1' },
+      { type: 'set-tag', id: A, key: 'team', values: ['web'] },
+      { type: 'set-tag', id: A, key: 'tier', values: ['1'] },
     );
     const result = apply(state, { type: 'rename-tag', id: A, from: 'team', to: 'tier' });
     expect(result.ok).toBe(false);
@@ -681,14 +681,112 @@ describe('load-document', () => {
     expect(result.error.code).toBe('version-unsupported');
   });
 
-  it('schema-invalid: rejects a malformed document', () => {
+  it('rejects a document with no formatVersion', () => {
     const result = apply(base, {
       type: 'load-document',
       document: { nonsense: true } as never,
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
+    expect(result.error.code).toBe('version-unsupported');
+  });
+
+  it('schema-invalid: rejects a document whose elements are malformed', () => {
+    const result = apply(base, {
+      type: 'load-document',
+      document: { formatVersion: 2, id: A, title: '', model: { elements: { x: 1 } } } as never,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
     expect(result.error.code).toBe('schema-invalid');
+  });
+});
+
+describe('unknown commands', () => {
+  it('rejects rather than returning nothing', () => {
+    // A caller guessing a name gets something it can read, instead of
+    // `undefined` crashing the dispatcher two frames later.
+    const result = apply(base, { type: 'expand-group', id: A } as never);
+    expect(result).toBeDefined();
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('unknown-command');
+    expect(result.error.message).toContain('expand-group');
+  });
+});
+
+describe('merge-document', () => {
+  it('upserts by id and leaves the rest alone', () => {
+    const other = must(initialState(DOC), entity(C, 'Ledger'));
+    const renamed = {
+      ...other.document,
+      model: {
+        elements: {
+          [C]: { ...other.document.model.elements[C]!, title: 'Ledger v2' },
+        },
+      },
+    };
+
+    const merged = must(base, { type: 'merge-document', document: renamed });
+    expect(merged.document.model.elements[A]).toBeDefined();
+    expect(merged.document.model.elements[C]?.title).toBe('Ledger v2');
+  });
+
+  it('reports created and updated separately', () => {
+    const other = must(initialState(DOC), entity(C, 'Ledger'));
+    const first = apply(base, { type: 'merge-document', document: other.document });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.events).toEqual([{ type: 'element-created', id: C }]);
+
+    const again = apply(first.state, { type: 'merge-document', document: other.document });
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    expect(again.events).toEqual([{ type: 'element-updated', id: C }]);
+  });
+
+  it('refuses a merge that would break the document', () => {
+    const dangling = {
+      ...base.document,
+      model: {
+        elements: {
+          [LINK]: {
+            id: LINK, kind: 'connection' as const, type: 'interaction' as const,
+            title: '', description: '', tags: {}, sources: [], groupId: null,
+            from: [A], to: [MISSING],
+          },
+        },
+      },
+    };
+    const result = apply(base, { type: 'merge-document', document: dangling as never });
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe('set-sources', () => {
+  it('records where a claim came from', () => {
+    const state = must(base, {
+      type: 'set-sources',
+      id: A,
+      sources: [{ ref: 'src/checkout.ts:42', note: 'calls authorise' }],
+    });
+    expect(state.document.model.elements[A]?.sources).toEqual([
+      { ref: 'src/checkout.ts:42', note: 'calls authorise' },
+    ]);
+  });
+
+  it('schema-invalid: rejects a source with no ref', () => {
+    const result = apply(base, { type: 'set-sources', id: A, sources: [{ ref: '  ' }] });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('schema-invalid');
+  });
+});
+
+describe('multi-valued tags', () => {
+  it('holds several values under one key', () => {
+    const state = must(base, { type: 'set-tag', id: A, key: 'flow', values: ['checkout', 'refund'] });
+    expect(state.document.model.elements[A]?.tags['flow']).toEqual(['checkout', 'refund']);
   });
 });
 

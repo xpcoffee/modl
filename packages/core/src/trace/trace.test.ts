@@ -33,7 +33,7 @@ const SCRIPT: Command[] = [
   { type: 'create-entity', id: A, entityType: 'component', title: 'Checkout UI', position: { x: 0, y: 0 } },
   { type: 'create-entity', id: B, entityType: 'component', title: 'Gateway', position: { x: 240, y: 0 } },
   { type: 'create-connection', id: LINK, connectionType: 'interaction', from: [A], to: [B], title: 'authorise' },
-  { type: 'set-tag', id: A, key: 'team', value: 'web' },
+  { type: 'set-tag', id: A, key: 'team', values: ['web'] },
   { type: 'move-element', id: A, position: { x: 20, y: 40 } },
   { type: 'set-metadata', id: B, description: 'Third-party gateway.' },
 ];

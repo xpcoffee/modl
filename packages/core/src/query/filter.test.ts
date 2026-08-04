@@ -6,14 +6,14 @@ const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
 const C = '33333333-3333-4333-8333-333333333333';
 
-function entity(id: Id, tags: Record<string, string>): Element {
-  return { id, kind: 'entity', type: 'component', title: id, description: '', tags, groupId: null };
+function entity(id: Id, tags: Record<string, string[]>): Element {
+  return { id, kind: 'entity', type: 'component', title: id, description: '', tags, sources: [], groupId: null };
 }
 
 const ELEMENTS: Record<Id, Element> = {
-  [A]: entity(A, { team: 'web', tier: '1' }),
-  [B]: entity(B, { team: 'payments', tier: '1' }),
-  [C]: entity(C, { team: 'payments', deprecated: 'yes' }),
+  [A]: entity(A, { team: ['web'], tier: ['1'] }),
+  [B]: entity(B, { team: ['payments'], tier: ['1'] }),
+  [C]: entity(C, { team: ['payments'], deprecated: ['yes'] }),
 };
 
 describe('parseFilter', () => {
