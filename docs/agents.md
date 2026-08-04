@@ -18,7 +18,7 @@ Emit the model and leave `layout` out. [The model reference](domain-model.md) is
 
 ```json
 {
-  "formatVersion": 2,
+  "formatVersion": 5,
   "id": "0a1b…",
   "title": "Checkout",
   "model": {

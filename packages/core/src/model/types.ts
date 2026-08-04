@@ -17,6 +17,29 @@ export type EntityType = 'state' | 'component' | 'step' | 'artifact';
 export type ConnectionType = 'transition' | 'relation' | 'interaction';
 export type NodeShape = 'circle' | 'diamond';
 
+export const STROKE_STYLES = ['solid', 'dashed', 'dotted'] as const;
+export type StrokeStyle = (typeof STROKE_STYLES)[number];
+
+export const ARROWHEADS = ['triangle', 'open', 'diamond'] as const;
+export type Arrowhead = (typeof ARROWHEADS)[number];
+
+/**
+ * The author's colours and line treatment. On the element rather than in
+ * `layout` for the same reason a node's `shape` is: it is a choice the author
+ * made about the element, and it should survive a re-layout and travel with
+ * the element into any tool that ignores geometry. Every field is optional;
+ * an absent field means the theme default.
+ */
+export interface ElementStyle {
+  /** Background tint, `#rrggbb`. Entities and nodes; drawn mostly transparent. */
+  fill?: string;
+  /** Border and line colour, `#rrggbb`. */
+  stroke?: string;
+  strokeStyle?: StrokeStyle;
+  /** Connections only: the glyph drawn at whichever ends `direction` points. */
+  arrowhead?: Arrowhead;
+}
+
 export interface Point {
   x: number;
   y: number;
@@ -35,6 +58,8 @@ export interface ElementBase {
   sources: SourceRef[];
   /** Id of the entity this element collapses into. */
   groupId: Id | null;
+  /** Absent means the theme default for every field. */
+  style?: ElementStyle;
 }
 
 export interface Entity extends ElementBase {
@@ -128,10 +153,13 @@ export interface Document {
  * 3 -> 4: a `fork` became a `connection-node`, to match the word a reader
  *         sees. "Fork" described the shape of the drawing rather than the
  *         thing, and the two names drifting apart cost more than the rename.
+ * 4 -> 5: elements may carry `style`. Additive, but still a bump: a version 4
+ *         build saving a version 5 file would silently strip every colour,
+ *         and refusing the file is better than losing the work.
  *
  * Older documents still load: the reader migrates them.
  */
-export const FORMAT_VERSION = 4;
+export const FORMAT_VERSION = 5;
 export const OLDEST_READABLE_VERSION = 1;
 
 export const DEFAULT_ENTITY_SIZE = { width: 180, height: 72 } as const;

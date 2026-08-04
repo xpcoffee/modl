@@ -1,5 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 
+/**
+ * Overridable so two worktrees can run the suite at the same time. With the
+ * port fixed at 5173 and `reuseExistingServer` on, a second run silently
+ * drove the first worktree's dev server and tested the wrong code.
+ */
+const port = Number(process.env['MODL_PORT'] ?? 5173);
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -9,14 +16,16 @@ export default defineConfig({
   // `list` keeps failures readable in a terminal for an agent.
   reporter: [['list']],
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: `http://localhost:${port}`,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5173',
+    // `--strictPort` fails loudly when the port is taken, rather than letting
+    // vite drift to the next port while the tests stay on this one.
+    command: `npm run dev -- --port ${port} --strictPort`,
+    url: `http://localhost:${port}`,
     reuseExistingServer: !process.env['CI'],
     stdout: 'ignore',
     stderr: 'pipe',

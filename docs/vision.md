@@ -24,7 +24,7 @@ Built. A junction where connections fan in or out, drawn as a circle or a diamon
 
 ## Board behaviour beyond iteration 1
 
-- Colouring of background, text, and stroke.
+- Colouring of text. Fill and stroke colours are built; see [the model reference](domain-model.md).
 - Expanding an existing element into a bounding box to start a new group.
 - Selecting elements and collapsing them into a new group.
 - Descriptions revealed by an expand action on hover.

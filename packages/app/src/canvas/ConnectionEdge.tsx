@@ -16,6 +16,7 @@ import { ElementHover } from './ElementHover.js';
 import { ElementIcon } from './ElementIcon.js';
 import { InlineTitle } from './InlineTitle.js';
 import { stopEditing } from './editing.js';
+import { lineCss, markerRefs } from './styling.js';
 
 /** The way out of an element, given the side a line leaves from. */
 function outward(position: Position): Point {
@@ -279,9 +280,10 @@ export function ConnectionEdge({
         id={id}
         path={path}
         className={`connection-edge${selected ? ' is-selected' : ''}${dimmed ? ' is-dimmed' : ''}`}
-        {...(data?.direction === 'both' ? { markerStart: 'url(#modl-arrow-start)' } : {})}
+        style={lineCss(data?.style)}
+        {...(data?.direction === 'both' ? { markerStart: markerRefs(data?.style).start } : {})}
         {...(data?.direction === 'forward' || data?.direction === 'both'
-          ? { markerEnd: 'url(#modl-arrow-end)' }
+          ? { markerEnd: markerRefs(data?.style).end }
           : {})}
       />
 
