@@ -9,5 +9,6 @@ export * from './commands/types.js';
 export * from './commands/apply.js';
 export * from './query/filter.js';
 export * from './query/groups.js';
+export * from './query/layout-report.js';
 export * from './trace/trace.js';
 export * from './state.js';
