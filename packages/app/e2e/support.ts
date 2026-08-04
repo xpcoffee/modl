@@ -49,8 +49,8 @@ export function sampleDomain(): Command[] {
     { type: 'create-entity', id: IDS.ledger, entityType: 'component', title: 'Ledger', position: { x: 560, y: 0 } },
     { type: 'create-connection', id: IDS.authorise, connectionType: 'interaction', from: [IDS.ui], to: [IDS.gateway], title: 'authorise' },
     { type: 'create-connection', id: IDS.post, connectionType: 'interaction', from: [IDS.gateway], to: [IDS.ledger], title: 'post entry' },
-    { type: 'set-tag', id: IDS.ui, key: 'team', value: 'web' },
-    { type: 'set-tag', id: IDS.gateway, key: 'team', value: 'payments' },
-    { type: 'set-tag', id: IDS.ledger, key: 'team', value: 'payments' },
+    { type: 'set-tag', id: IDS.ui, key: 'team', values: ['web'] },
+    { type: 'set-tag', id: IDS.gateway, key: 'team', values: ['payments'] },
+    { type: 'set-tag', id: IDS.ledger, key: 'team', values: ['payments'] },
   ];
 }

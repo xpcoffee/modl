@@ -493,7 +493,7 @@ test.describe('in-situ editor', () => {
     await page.getByTestId(`editor-new-tag-${IDS.ui}`).fill('tier');
 
     const document = await getDocument(page);
-    expect(document.model.elements[IDS.ui]?.tags).toMatchObject({ tier: '' });
+    expect(document.model.elements[IDS.ui]?.tags).toMatchObject({ tier: [] });
   });
 
   test('edits a tag value in place', async ({ page }) => {
@@ -503,7 +503,7 @@ test.describe('in-situ editor', () => {
     await page.getByLabel('Tag value for team').fill('platform');
 
     const document = await getDocument(page);
-    expect(document.model.elements[IDS.ui]?.tags['team']).toBe('platform');
+    expect(document.model.elements[IDS.ui]?.tags['team']).toEqual(['platform']);
   });
 
   test('renames a tag key as one command', async ({ page }) => {
@@ -514,7 +514,7 @@ test.describe('in-situ editor', () => {
     await page.getByTestId(`editor-description-${IDS.ui}`).click();
 
     const document = await getDocument(page);
-    expect(document.model.elements[IDS.ui]?.tags).toEqual({ squad: 'web' });
+    expect(document.model.elements[IDS.ui]?.tags).toEqual({ squad: ['web'] });
 
     const renames = (await getTrace(page)).filter((e) => e.command.type === 'rename-tag');
     expect(renames).toHaveLength(1);
@@ -1025,5 +1025,144 @@ test.describe('first element', () => {
     const node = (await page.locator(`.react-flow__node[data-id="${created}"]`).boundingBox())!;
     expect(Math.abs(node.x + node.width / 2 - (box.x + click.x))).toBeLessThan(2);
     expect(Math.abs(node.y + node.height / 2 - (box.y + click.y))).toBeLessThan(2);
+  });
+});
+
+test.describe('crowded connections', () => {
+  const GROUP_A = 'group-web';
+  const GROUP_B = 'group-payments';
+  const EXTRA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  test('parallel connections between one pair fan apart', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      {
+        type: 'create-connection',
+        id: EXTRA,
+        connectionType: 'interaction',
+        from: [IDS.ui],
+        to: [IDS.gateway],
+        title: 'refund',
+      },
+    ]);
+    await fit(page);
+
+    // Two connections join the same pair, so neither runs straight across.
+    const first = (await page.getByTestId(`connection-${IDS.authorise}`).boundingBox())!;
+    const second = (await page.getByTestId(`connection-${EXTRA}`).boundingBox())!;
+    expect(Math.abs(first.y - second.y)).toBeGreaterThan(10);
+  });
+
+  test('connections into a collapsed group roll up into one labelled edge', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      {
+        type: 'create-connection',
+        id: EXTRA,
+        connectionType: 'interaction',
+        from: [IDS.ui],
+        to: [IDS.gateway],
+        title: 'refund',
+      },
+      { type: 'group-elements', id: GROUP_A, title: 'Web', memberIds: [IDS.ui], position: { x: 0, y: 0 } },
+      {
+        type: 'group-elements',
+        id: GROUP_B,
+        title: 'Payments',
+        memberIds: [IDS.gateway, IDS.ledger],
+        position: { x: 280, y: 0 },
+      },
+      { type: 'set-selection', ids: [] },
+    ]);
+    await fit(page);
+
+    // Both underlying connections now run between the same pair of groups.
+    await expect(page.getByTestId(`connection-${IDS.authorise}`)).toHaveCount(0);
+    const rollup = page.locator('.edge-label__rollup');
+    await expect(rollup).toHaveCount(1);
+    await expect(rollup).toContainText('2 connections');
+  });
+
+  test('expanding a group restores the individual connections', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'group-elements', id: GROUP_B, title: 'Payments', memberIds: [IDS.gateway], position: { x: 280, y: 0 } },
+      { type: 'set-selection', ids: [] },
+    ]);
+    await fit(page);
+    await expect(page.locator('.edge-label__rollup')).toHaveCount(0);
+
+    await page.getByTestId(`expand-${GROUP_B}`).click();
+    await fit(page);
+
+    await expect(page.getByTestId(`connection-${IDS.authorise}`)).toBeVisible();
+  });
+});
+
+test.describe('readable ids and multi-valued tags', () => {
+  test('accepts a document written with readable ids', async ({ page }) => {
+    const document = {
+      formatVersion: 2,
+      id: 'checkout-domain',
+      title: 'Checkout',
+      model: {
+        elements: {
+          'checkout-ui': {
+            id: 'checkout-ui', kind: 'entity', type: 'component', title: 'Checkout UI',
+            description: '', tags: { flow: ['checkout', 'refund'] }, sources: [], groupId: null,
+          },
+          gateway: {
+            id: 'gateway', kind: 'entity', type: 'component', title: 'Gateway',
+            description: '', tags: {}, sources: [], groupId: null,
+          },
+          authorise: {
+            id: 'authorise', kind: 'connection', type: 'interaction',
+            from: ['checkout-ui'], to: ['gateway'],
+            title: 'authorise', description: '', tags: {}, sources: [], groupId: null,
+          },
+        },
+      },
+      layout: {},
+      view: { pan: { x: 0, y: 0 }, zoom: 1 },
+    };
+
+    const result = await page.evaluate(
+      (doc) => window.__modl.dispatch({ type: 'load-document', document: doc as never }),
+      document,
+    );
+    expect(result.ok).toBe(true);
+    await expect(page.getByTestId('entity-checkout-ui')).toBeVisible();
+  });
+
+  test('filters on any value of a multi-valued tag', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'set-tag', id: IDS.ui, key: 'flow', values: ['checkout', 'refund'] },
+    ]);
+
+    await page.getByTestId('filter-input').fill('flow=refund');
+
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).toHaveClass(/is-dimmed/);
+  });
+
+  test('an unknown command is rejected rather than crashing the dispatcher', async ({ page }) => {
+    const results = await page.evaluate(() =>
+      window.__modl.dispatchAll([
+        { type: 'expand-group', id: 'nope' } as never,
+        {
+          type: 'create-entity',
+          id: 'after-the-bad-one',
+          entityType: 'component',
+          title: 'Still ran',
+          position: { x: 0, y: 0 },
+        } as never,
+      ]),
+    );
+
+    expect(results[0]).toMatchObject({ ok: false });
+    // The batch kept going, which is the point.
+    expect(results[1]).toMatchObject({ ok: true });
+    await expect(page.getByTestId('entity-after-the-bad-one')).toBeVisible();
   });
 });
