@@ -20,6 +20,7 @@ import {
   isConnection,
   isEntity,
   type Id,
+  type Point,
   type Side,
 } from '@modl/core';
 import { store } from '../store/store.js';
@@ -33,15 +34,16 @@ import {
   type EntityNodeData,
 } from './derive.js';
 import { EntityNode } from './EntityNode.js';
-import { ForkNode } from './ForkNode.js';
+import { ConnectionNodeView } from './ConnectionNodeView.js';
 import { GroupNode } from './GroupNode.js';
 import { ConnectionEdge } from './ConnectionEdge.js';
 import { ArrowMarkers } from './ArrowMarkers.js';
+import { PlacementPreview } from './PlacementPreview.js';
+import { arm, disarm, getPending, usePending } from './placement.js';
 import { SelectionActions } from './SelectionActions.js';
-import { getNewElementType } from './newElementType.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
 
-const NODE_TYPES = { entity: EntityNode, group: GroupNode, fork: ForkNode };
+const NODE_TYPES = { entity: EntityNode, group: GroupNode, 'connection-node': ConnectionNodeView };
 const EDGE_TYPES = { connection: ConnectionEdge };
 
 /** The subset of a React Flow change this app acts on. */
@@ -59,6 +61,8 @@ export function Canvas() {
 
   // A selection box in flight keeps element editors shut.
   const [boxSelecting, setBoxSelecting] = useState(false);
+  const pending = usePending();
+  const [draft, setDraft] = useState<{ from: Point; to: Point | null } | null>(null);
   const options = useMemo(() => ({ editingId, boxSelecting }), [editingId, boxSelecting]);
   const derived = useMemo(() => deriveNodes(state, options), [state, options]);
   const edges = useMemo(() => deriveEdges(state, options), [state, options]);
@@ -112,7 +116,7 @@ export function Canvas() {
 
         // A group carries its members whether it is open or shut. Moving it
         // while collapsed and leaving them behind would scatter them back to
-        // their old positions the moment it is expanded. A fork holds nothing.
+        // their old positions the moment it is expanded. A node holds nothing.
         const carriesMembers =
           node.data.isContainer === true || (node.data.memberCount as number | undefined) !== undefined
             ? node.data.isContainer === true || ((node.data.memberCount as number) ?? 0) > 0
@@ -159,7 +163,7 @@ export function Canvas() {
     const target = elements[connection.target];
     const source = elements[connection.source];
     // The connection takes the paradigm of what it points at. An artifact or
-    // a fork has no paradigm, so fall back to where the line came from.
+    // a node has no paradigm, so fall back to where the line came from.
     const connectionType =
       (target && isEntity(target) ? connectionTypeFor(target.type) : null) ??
       (source && isEntity(source) ? connectionTypeFor(source.type) : null) ??
@@ -177,12 +181,14 @@ export function Canvas() {
 
     // The handles the reader actually dragged between. Layout, not structure:
     // which side of a box a line touches says nothing about the domain.
-    if (connection.sourceHandle || connection.targetHandle) {
+    const sourceSide = asSide(connection.sourceHandle);
+    const targetSide = asSide(connection.targetHandle);
+    if (sourceSide || targetSide) {
       store.dispatch({
         type: 'set-connection-sides',
         id,
-        source: (connection.sourceHandle as Side | null) ?? null,
-        target: (connection.targetHandle as Side | null) ?? null,
+        source: sourceSide,
+        target: targetSide,
       });
     }
   }, []);
@@ -196,6 +202,15 @@ export function Canvas() {
    * the two clicks can land on different elements and the browser then
    * reports their common ancestor, which is the pane even for a node.
    */
+  /**
+   * A side worth remembering. A junction's handles are picked by the renderer
+   * rather than the reader, so they are not stored.
+   */
+  const asSide = (handle: string | null | undefined): Side | null =>
+    handle === 'left' || handle === 'right' || handle === 'top' || handle === 'bottom'
+      ? handle
+      : null;
+
   /**
    * Dragging an end of a selected connection onto another element re-points
    * it. The edge id carries which pair this line stands for, so a
@@ -228,10 +243,44 @@ export function Canvas() {
     store.dispatch({
       type: 'set-connection-sides',
       id,
-      source: (connection.sourceHandle as Side | null) ?? null,
-      target: (connection.targetHandle as Side | null) ?? null,
+      source: asSide(connection.sourceHandle),
+      target: asSide(connection.targetHandle),
     });
   }, []);
+
+  /** Puts down whatever the picker has armed, at a point or across a drag. */
+  const place = useCallback(
+    (rect: { x: number; y: number; width: number; height: number }) => {
+      const type = getPending();
+      if (!type) return;
+      const id = crypto.randomUUID();
+
+      if (type === 'connection-node' || type === 'decision') {
+        store.dispatch({
+          type: 'create-connection-node',
+          id,
+          shape: type === 'decision' ? 'diamond' : 'circle',
+          title: '',
+          position: { x: rect.x, y: rect.y },
+        });
+      } else {
+        store.dispatch({
+          type: 'create-entity',
+          id,
+          entityType: type,
+          title: `New ${type}`,
+          position: { x: rect.x, y: rect.y },
+        });
+      }
+
+      // A drag says how big; a click leaves the natural size alone.
+      if (rect.width > 0 && rect.height > 0) {
+        store.dispatch({ type: 'resize-element', id, width: rect.width, height: rect.height });
+      }
+      disarm();
+    },
+    [],
+  );
 
   const onDoubleClick = useCallback(
     (event: React.MouseEvent) => {
@@ -254,8 +303,8 @@ export function Canvas() {
       store.dispatch({
         type: 'create-entity',
         id: crypto.randomUUID(),
-        entityType: getNewElementType(),
-        title: `New ${getNewElementType()}`,
+        entityType: 'component',
+        title: 'New component',
         position: {
           x: at.x - DEFAULT_ENTITY_SIZE.width / 2,
           y: at.y - DEFAULT_ENTITY_SIZE.height / 2,
@@ -311,8 +360,42 @@ export function Canvas() {
   );
 
   return (
-    <div className="canvas" data-testid="canvas">
+    <div
+      className={`canvas${pending ? ' is-placing' : ''}`}
+      data-testid="canvas"
+      data-placing={pending ?? undefined}
+      onPointerDownCapture={(event) => {
+        if (!pending) return;
+        const target = event.target as HTMLElement;
+        if (!target.classList.contains('react-flow__pane')) return;
+        event.stopPropagation();
+        setDraft({ from: screenToFlowPosition({ x: event.clientX, y: event.clientY }), to: null });
+      }}
+      onPointerMove={(event) => {
+        if (!draft) return;
+        setDraft({ ...draft, to: screenToFlowPosition({ x: event.clientX, y: event.clientY }) });
+      }}
+      onPointerUp={(event) => {
+        if (!draft) return;
+        const end = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        const width = Math.abs(end.x - draft.from.x);
+        const height = Math.abs(end.y - draft.from.y);
+        const dragged = width > 20 && height > 20;
+        place({
+          x: dragged ? Math.min(draft.from.x, end.x) : draft.from.x,
+          y: dragged ? Math.min(draft.from.y, end.y) : draft.from.y,
+          width: dragged ? width : 0,
+          height: dragged ? height : 0,
+        });
+        setDraft(null);
+      }}
+      onKeyDown={(event) => event.key === 'Escape' && disarm()}
+      tabIndex={-1}
+    >
       <ArrowMarkers />
+      {draft?.to && (
+        <PlacementPreview from={draft.from} to={draft.to} />
+      )}
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -324,6 +407,14 @@ export function Canvas() {
         onConnect={onConnect}
         onReconnect={onReconnect}
         reconnectRadius={16}
+        // A connection node's contact point is a dot at its middle. Snapping
+        // from further out means a reader drops a line on the node rather
+        // than pinpointing its centre.
+        connectionRadius={45}
+        // While the picker is armed the drag sizes an element, so the board
+        // has to hold still: panning with it kept the flow position under the
+        // pointer identical from start to finish, and every drag measured zero.
+        panOnDrag={!pending}
         onDoubleClick={onDoubleClick}
         onPaneClick={stopEditing}
         onSelectionStart={() => setBoxSelecting(true)}

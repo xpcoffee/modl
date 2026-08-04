@@ -105,6 +105,9 @@ export function ConnectionEdge({
     targetX,
     targetY,
     targetPosition,
+    // A junction anchors at a point rather than an edge, so a line meeting it
+    // reads better running straight than easing in along an axis.
+    ...(data?.straight ? { curvature: 0 } : {}),
   });
 
   // Parallel connections bow apart so three between one pair of components do

@@ -27,7 +27,7 @@ export function ElementEditor({
   direction,
 }: {
   id: Id;
-  kind: 'entity' | 'connection' | 'fork';
+  kind: 'entity' | 'connection' | 'node';
   /**
    * A connection point has no type to choose, so its chip is a label rather
    * than a menu, and it carries the reader's word for the shape.
@@ -40,8 +40,18 @@ export function ElementEditor({
 }) {
   const [addingTag, setAddingTag] = useState(false);
   const [pickingType, setPickingType] = useState(false);
+  /**
+   * What this element could be instead.
+   *
+   * An entity and a connection node are different kinds, but from a reader's
+   * seat they are both "the thing in the box", so changing between them
+   * belongs in the same list as changing an entity's type. A connection has
+   * nothing to convert into, so it lists only its own types.
+   */
   const types: readonly string[] =
-    kind === 'entity' ? ENTITY_TYPES : kind === 'connection' ? CONNECTION_TYPES : [];
+    kind === 'connection'
+      ? CONNECTION_TYPES
+      : [...ENTITY_TYPES, 'connection node', 'decision'];
 
   return (
     <div
@@ -62,7 +72,7 @@ export function ElementEditor({
           onClick={() => setPickingType((open) => !open)}
         >
           {elementType === 'connection node' || elementType === 'decision' ? null : (
-            <ElementIcon elementType={elementType} />
+            <ElementIcon elementType={elementType as EntityType | ConnectionType} />
           )}
           <span>{elementType}</span>
         </button>
@@ -76,15 +86,39 @@ export function ElementEditor({
                   data-testid={`editor-type-${id}-${type}`}
                   className={type === elementType ? 'is-current' : undefined}
                   onClick={() => {
-                    store.dispatch({
-                      type: 'set-element-type',
-                      id,
-                      elementType: type as EntityType | ConnectionType,
-                    });
+                    const junction = type === 'connection node' || type === 'decision';
+                    const changesKind =
+                      junction !== (elementType === 'connection node' || elementType === 'decision');
+
+                    store.dispatch(
+                      changesKind
+                        ? {
+                            type: 'convert-element',
+                            id,
+                            to: junction
+                              ? type === 'decision'
+                                ? 'decision'
+                                : 'connection-node'
+                              : (type as EntityType),
+                          }
+                        : junction
+                          ? {
+                              type: 'set-node-shape',
+                              id,
+                              shape: type === 'decision' ? 'diamond' : 'circle',
+                            }
+                          : {
+                              type: 'set-element-type',
+                              id,
+                              elementType: type as EntityType | ConnectionType,
+                            },
+                    );
                     setPickingType(false);
                   }}
                 >
-                  <ElementIcon elementType={type as EntityType | ConnectionType} />
+                  {type === 'connection node' || type === 'decision' ? null : (
+                    <ElementIcon elementType={type as EntityType | ConnectionType} />
+                  )}
                   {type}
                 </button>
               </li>

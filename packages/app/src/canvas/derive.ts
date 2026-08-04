@@ -2,7 +2,7 @@ import {
   connectionAnchors,
   isConnection,
   isEntity,
-  isFork,
+  isConnectionNode,
   isGroup,
   isRendered,
   membersOf,
@@ -13,7 +13,7 @@ import {
   type Direction,
   type Element,
   type EntityType,
-  type ForkShape,
+  type NodeShape,
   type Id,
   type Point,
   type Side,
@@ -40,12 +40,12 @@ export interface EntityNodeData extends Record<string, unknown> {
   isContainer: boolean;
 }
 
-/** A fork is a junction, so it carries no type and no members. */
-export interface ForkNodeData extends Record<string, unknown> {
+/** A node is a junction, so it carries no type and no members. */
+export interface ConnectionNodeData extends Record<string, unknown> {
   id: Id;
   title: string;
   description: string;
-  shape: ForkShape;
+  shape: NodeShape;
   tags: Record<string, string[]>;
   dimmed: boolean;
   editing: boolean;
@@ -54,7 +54,7 @@ export interface ForkNodeData extends Record<string, unknown> {
   origin: Point;
 }
 
-export type BoardNodeData = EntityNodeData | ForkNodeData;
+export type BoardNodeData = EntityNodeData | ConnectionNodeData;
 
 export interface ConnectionEdgeData extends Record<string, unknown> {
   connectionId: Id;
@@ -69,6 +69,8 @@ export interface ConnectionEdgeData extends Record<string, unknown> {
   direction: Direction;
   /** Ids this edge stands in for, empty unless it is a roll-up. */
   rolledUp: Id[];
+  /** True when an end anchors at a point, which reads better as a straight line. */
+  straight: boolean;
   /** Offset from the direct route, so parallel connections stay apart. */
   spread?: number;
 }
@@ -92,7 +94,7 @@ const GROUP_PADDING = { top: 34, side: 20, bottom: 20 } as const;
 /** An empty container still needs somewhere to drop things. */
 export const MIN_GROUP_SIZE = { width: 260, height: 180 } as const;
 /** A connection point stays a point: small, and square so a diamond reads. */
-export const MIN_FORK_SIZE = { width: 40, height: 40 } as const;
+export const MIN_NODE_SIZE = { width: 40, height: 40 } as const;
 /** Small enough to be useful, large enough to still hold a title. */
 export const MIN_ENTITY_SIZE = { width: 120, height: 60 } as const;
 const FALLBACK_RECT: Rect = { x: 0, y: 0, width: 180, height: 72 };
@@ -169,30 +171,30 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Board
   const soleSelection = onlySelected(state, options);
   const rects = measure(state, expanded);
 
-  const forks: Node<BoardNodeData>[] = Object.values(elements)
-    .filter(isFork)
-    .filter((fork) => isRendered(elements, fork.id, expanded))
-    .map((fork) => {
-      const rect = rectOf(state, fork.id);
-      const parentRect = fork.groupId ? rects.get(fork.groupId) : undefined;
+  const connectionNodes: Node<BoardNodeData>[] = Object.values(elements)
+    .filter(isConnectionNode)
+    .filter((node) => isRendered(elements, node.id, expanded))
+    .map((node) => {
+      const rect = rectOf(state, node.id);
+      const parentRect = node.groupId ? rects.get(node.groupId) : undefined;
       const parentOrigin = parentRect ? { x: parentRect.x, y: parentRect.y } : { x: 0, y: 0 };
       return {
-        id: fork.id,
-        type: 'fork',
+        id: node.id,
+        type: 'connection-node',
         position: { x: rect.x - parentOrigin.x, y: rect.y - parentOrigin.y },
-        ...(fork.groupId && parentRect ? { parentId: fork.groupId } : {}),
+        ...(node.groupId && parentRect ? { parentId: node.groupId } : {}),
         style: { width: rect.width, height: rect.height },
-        selected: selected.has(fork.id),
-        ...(selected.has(fork.id) ? { zIndex: 1000 } : {}),
+        selected: selected.has(node.id),
+        ...(selected.has(node.id) ? { zIndex: 1000 } : {}),
         data: {
-          id: fork.id,
-          title: fork.title,
-          description: fork.description,
-          shape: fork.shape,
-          tags: fork.tags,
-          dimmed: !visible.has(fork.id),
-          editing: options.editingId === fork.id,
-          soleSelection: soleSelection === fork.id,
+          id: node.id,
+          title: node.title,
+          description: node.description,
+          shape: node.shape,
+          tags: node.tags,
+          dimmed: !visible.has(node.id),
+          editing: options.editingId === node.id,
+          soleSelection: soleSelection === node.id,
           parentOrigin,
           origin: { x: rect.x, y: rect.y },
         },
@@ -240,8 +242,8 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Board
     };
   });
 
-  // Containers first, then forks, so React Flow sees a parent before a child.
-  return [...entities, ...forks];
+  // Containers first, then connection nodes, so a parent precedes its child.
+  return [...entities, ...connectionNodes];
 }
 
 /**
@@ -351,8 +353,8 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
         source: first.from,
         target: first.to,
         ...sidesBetween(rects, first.from, first.to, {}, {
-          from: isRound(elements, first.from),
-          to: isRound(elements, first.to),
+          from: isCentred(elements, first.from),
+          to: isCentred(elements, first.to),
         }),
         data: {
           connectionId: ids[0] ?? first.from,
@@ -368,6 +370,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           waypoints: [],
           direction,
           rolledUp: ids,
+          straight: isCentred(elements, first.from) || isCentred(elements, first.to),
         },
       });
       continue;
@@ -388,8 +391,8 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
         source: from,
         target: to,
         ...sidesBetween(rects, from, to, layoutOf(state, element.id), {
-          from: isRound(elements, from),
-          to: isRound(elements, to),
+          from: isCentred(elements, from),
+          to: isCentred(elements, to),
         }),
         selected: selected.has(element.id),
         ...(selected.has(element.id) ? { zIndex: 1001 } : {}),
@@ -407,6 +410,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           direction: element.direction,
           spread: spread * PARALLEL_SPREAD,
           rolledUp: [],
+          straight: isCentred(elements, from) || isCentred(elements, to),
         },
       });
     });
@@ -461,10 +465,10 @@ function layoutOf(
   return entry && 'waypoints' in entry ? entry : { waypoints: [] };
 }
 
-/** A circle has no sides, so lines aim at its middle. */
-function isRound(elements: Record<Id, Element>, id: Id): boolean {
+/** A connection node has one contact point, at its middle. */
+function isCentred(elements: Record<Id, Element>, id: Id): boolean {
   const element = elements[id];
-  return element !== undefined && isFork(element) && element.shape === 'circle';
+  return element !== undefined && isConnectionNode(element);
 }
 
 /**
@@ -485,8 +489,11 @@ function sidesBetween(
   const auto = (source: string, target: string) => ({
     // A point the reader dragged the line onto wins. Recomputing it moved the
     // line off the handle they picked the moment either box shifted.
-    sourceHandle: round.from ? 'centre' : (chosen.sourceSide ?? source),
-    targetHandle: round.to ? 'centre' : (chosen.targetSide ?? target),
+    //
+    // A connection node always anchors at its centre, and picks the centred
+    // handle facing the way the line travels so the tangent turns with it.
+    sourceHandle: round.from ? `centre-${source}` : (chosen.sourceSide ?? source),
+    targetHandle: round.to ? `centre-${target}` : (chosen.targetSide ?? target),
   });
 
   if (!a || !b) return auto('right', 'left');

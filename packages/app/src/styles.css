@@ -695,40 +695,40 @@ select {
 
 /* Forks: junctions where connections fan in or out */
 
-.fork-node {
+.connection-node {
   position: relative;
   width: 100%;
   height: 100%;
 }
 
-.fork-node__face {
+.connection-node__face {
   width: 100%;
   height: 100%;
   border: 1.5px solid var(--muted);
   background: #232733;
 }
 
-.fork-node--circle .fork-node__face {
+.connection-node--circle .connection-node__face {
   border-radius: 50%;
 }
 
-.fork-node--diamond .fork-node__face {
+.connection-node--diamond .connection-node__face {
   border-radius: 6px;
   transform: rotate(45deg) scale(0.72);
 }
 
-.fork-node.is-selected .fork-node__face {
+.connection-node.is-selected .connection-node__face {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgb(91 141 239 / 30%);
 }
 
-.fork-node.is-dimmed {
+.connection-node.is-dimmed {
   opacity: 0.25;
 }
 
 /* Below the shape, which is too small to hold text and has handles on
    every side for connections to reach. */
-.fork-node__label {
+.connection-node__label {
   position: absolute;
   top: calc(100% + 4px);
   left: 50%;
@@ -739,15 +739,15 @@ select {
   pointer-events: none;
 }
 
-.fork-node__label .inline-title {
+.connection-node__label .inline-title {
   pointer-events: all;
 }
 
-.fork-node__label .inline-title {
+.connection-node__label .inline-title {
   width: 140px;
 }
 
-.fork-node__shape {
+.connection-node__shape {
   position: absolute;
   top: -10px;
   right: -12px;
@@ -757,7 +757,7 @@ select {
   line-height: 1.5;
 }
 
-.fork-node__editor {
+.connection-node__editor {
   position: absolute;
   top: calc(100% + 28px);
   left: 0;
@@ -765,7 +765,7 @@ select {
   cursor: default;
 }
 
-.fork-node__hover {
+.connection-node__hover {
   position: absolute;
   top: calc(100% + 28px);
   left: 0;
@@ -773,16 +773,84 @@ select {
   z-index: 10;
 }
 
-.fork-node:hover .fork-node__hover {
+.connection-node:hover .connection-node__hover {
   display: block;
 }
 
-/* A round node's lines meet it at the middle. This is where they are
-   anchored, never something to grab: the four side handles are for that. */
+/* A connection node has one contact point, at its middle. The four handles
+   stacked there differ only in the direction they face, so a line's tangent
+   turns with it. */
 .handle--centre {
-  left: 50%;
-  top: 50%;
+  left: 50% !important;
+  top: 50% !important;
+  right: auto;
+  bottom: auto;
   transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  background: var(--panel);
+  border: 1.5px solid var(--muted);
   opacity: 0;
+}
+
+.connection-node:hover .handle--centre,
+.connection-node.is-selected .handle--centre {
+  opacity: 1;
+}
+
+/* Placing a new element */
+
+.canvas.is-placing .react-flow__pane {
+  cursor: crosshair;
+}
+
+.placement-preview {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 1.5px dashed var(--accent);
+  border-radius: 8px;
+  background: rgb(91 141 239 / 8%);
   pointer-events: none;
+}
+
+.toolbar__add {
+  position: relative;
+}
+
+.toolbar__add .is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.toolbar__types {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #12141a;
+  min-width: 160px;
+}
+
+.toolbar__types button {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 5px 8px;
+  text-align: left;
+}
+
+.toolbar__types button:hover {
+  background: #232733;
+}
+
+.toolbar__hint {
+  color: var(--muted);
+  font-size: 12px;
 }

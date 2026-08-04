@@ -1,11 +1,11 @@
 import { Handle, NodeResizer, Position, type Node, type NodeProps } from '@xyflow/react';
-import type { ForkShape } from '@modl/core';
+import type { NodeShape } from '@modl/core';
 import { store } from '../store/store.js';
-import type { ForkNodeData } from './derive.js';
+import type { ConnectionNodeData } from './derive.js';
 import { ElementEditor } from './ElementEditor.js';
 import { ElementHover } from './ElementHover.js';
 import { InlineTitle } from './InlineTitle.js';
-import { MIN_FORK_SIZE } from './derive.js';
+import { MIN_NODE_SIZE } from './derive.js';
 import { stopEditing } from './editing.js';
 
 /**
@@ -18,23 +18,23 @@ import { stopEditing } from './editing.js';
  *
  * Handles sit on all four sides, because a junction has no natural direction.
  */
-export function ForkNode({ data, selected }: NodeProps<Node<ForkNodeData>>) {
-  const next: ForkShape = data.shape === 'circle' ? 'diamond' : 'circle';
+export function ConnectionNodeView({ data, selected }: NodeProps<Node<ConnectionNodeData>>) {
+  const next: NodeShape = data.shape === 'circle' ? 'diamond' : 'circle';
   // "connection point" read as the handles on a component, so: node.
-  const label = (shape: ForkShape) => (shape === 'diamond' ? 'decision' : 'connection node');
+  const label = (shape: NodeShape) => (shape === 'diamond' ? 'decision' : 'connection node');
 
   return (
     <div
-      className={`fork-node fork-node--${data.shape}${selected ? ' is-selected' : ''}${
+      className={`connection-node connection-node--${data.shape}${selected ? ' is-selected' : ''}${
         data.dimmed ? ' is-dimmed' : ''
       }`}
-      data-testid={`fork-${data.id}`}
+      data-testid={`node-${data.id}`}
       data-shape={data.shape}
     >
       <NodeResizer
         isVisible={!!selected}
-        minWidth={MIN_FORK_SIZE.width}
-        minHeight={MIN_FORK_SIZE.height}
+        minWidth={MIN_NODE_SIZE.width}
+        minHeight={MIN_NODE_SIZE.height}
         keepAspectRatio
         onResizeEnd={(_, params) =>
           store.dispatch({
@@ -46,26 +46,29 @@ export function ForkNode({ data, selected }: NodeProps<Node<ForkNodeData>>) {
         }
       />
 
-      {/* Handles on every side are what a reader drags a connection from, so
-          a round node keeps them. Lines still meet it at the middle: the
-          centre handle below is an anchor for routing and never a target. */}
-      <Handle type="source" position={Position.Left} id="left" />
-      <Handle type="source" position={Position.Right} id="right" />
-      <Handle type="source" position={Position.Top} id="top" />
-      <Handle type="source" position={Position.Bottom} id="bottom" />
-      {data.shape === 'circle' && (
-        <Handle
-          type="source"
-          position={Position.Left}
-          id="centre"
-          className="handle--centre"
-          isConnectable={false}
-        />
-      )}
+      {/*
+        One connection point, at the middle, in four copies.
+        
+        A line's tangent comes from its handle's `position`, so a single
+        centred handle made every connection leave in the same direction
+        whatever it was heading towards. These four sit on top of each other
+        at the centre and the renderer picks the one facing the way the line
+        travels, which keeps the anchor central and the tangent honest.
+      */}
+      {(
+        [
+          [Position.Left, 'centre-left'],
+          [Position.Right, 'centre-right'],
+          [Position.Top, 'centre-top'],
+          [Position.Bottom, 'centre-bottom'],
+        ] as const
+      ).map(([position, id]) => (
+        <Handle key={id} type="source" position={position} id={id} className="handle--centre" />
+      ))}
 
-      <div className="fork-node__face" />
+      <div className="connection-node__face" />
 
-      <div className="fork-node__label">
+      <div className="connection-node__label">
         {data.editing ? (
           <InlineTitle
             id={data.id}
@@ -81,28 +84,28 @@ export function ForkNode({ data, selected }: NodeProps<Node<ForkNodeData>>) {
       {selected && (
         <button
           type="button"
-          className="fork-node__shape nodrag"
-          data-testid={`fork-shape-${data.id}`}
+          className="connection-node__shape nodrag"
+          data-testid={`node-shape-${data.id}`}
           aria-label={`Make this a ${label(next)}`}
           title={`Make this a ${label(next)}`}
-          onClick={() => store.dispatch({ type: 'set-fork-shape', id: data.id, shape: next })}
+          onClick={() => store.dispatch({ type: 'set-node-shape', id: data.id, shape: next })}
         >
           {next === 'diamond' ? '◇' : '○'}
         </button>
       )}
 
       {data.soleSelection ? (
-        <div className="fork-node__editor">
+        <div className="connection-node__editor">
           <ElementEditor
             id={data.id}
-            kind="fork"
+            kind="node"
             elementType={label(data.shape)}
             description={data.description}
             tags={data.tags}
           />
         </div>
       ) : (
-        <div className="fork-node__hover">
+        <div className="connection-node__hover">
           <ElementHover
             elementType={label(data.shape)}
             description={data.description}
