@@ -1058,3 +1058,67 @@ select {
   align-items: center;
   gap: 7px;
 }
+
+/* Gravity-wave animations.
+   Visual language and timing: docs/decisions/010-gravity-wave-art-direction.md */
+
+.gravity-grid {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Durations here match WARP_MS in animations.ts: the ripple timer waits for
+   the CSS warp to finish. */
+.react-flow__node.is-warping-in > div {
+  animation: warp-in 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.15) backwards;
+}
+
+@keyframes warp-in {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+    filter: blur(3px);
+  }
+
+  60% {
+    filter: blur(0);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Echoes .entity-node, since it stands where one just stood. */
+.warp-ghost {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #232733;
+  pointer-events: none;
+  animation: warp-out 0.3s cubic-bezier(0.6, 0, 0.8, 0.5) forwards;
+}
+
+@keyframes warp-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(0.4);
+    filter: blur(3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__node.is-warping-in > div,
+  .warp-ghost {
+    animation: none;
+  }
+}

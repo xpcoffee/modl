@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   applyNodeChanges,
-  Background,
   Controls,
   ConnectionMode,
   ReactFlow,
@@ -45,6 +44,9 @@ import { SelectionActions } from './SelectionActions.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
 import { useHighlightId } from './highlight.js';
 import { lastConnectionStyle, lastEntityStyle } from './styleMemory.js';
+import { pressRipple, useWarpingIds } from './animations.js';
+import { GravityGrid } from './GravityGrid.js';
+import { WarpGhosts } from './WarpGhosts.js';
 
 const NODE_TYPES = { entity: EntityNode, group: GroupNode, 'connection-node': ConnectionNodeView };
 const EDGE_TYPES = { connection: ConnectionEdge };
@@ -66,12 +68,19 @@ export function Canvas() {
   // A selection box in flight keeps element editors shut.
   const [boxSelecting, setBoxSelecting] = useState(false);
   const pending = usePending();
+  const warping = useWarpingIds();
   const [draft, setDraft] = useState<{ from: Point; to: Point | null } | null>(null);
   const options = useMemo(
     () => ({ editingId, boxSelecting, highlightId }),
     [editingId, boxSelecting, highlightId],
   );
-  const derived = useMemo(() => deriveNodes(state, options), [state, options]);
+  const derived = useMemo(
+    () =>
+      deriveNodes(state, options).map((node) =>
+        warping.has(node.id) ? { ...node, className: 'is-warping-in' } : node,
+      ),
+    [state, options, warping],
+  );
   const edges = useMemo(() => deriveEdges(state, options), [state, options]);
 
   /**
@@ -391,6 +400,18 @@ export function Canvas() {
     [routeChanges],
   );
 
+  /**
+   * A lone click on empty canvas answers with a small wave: the spot is live,
+   * and a second click here creates an element.
+   */
+  const onPaneClick = useCallback(
+    (event: React.MouseEvent) => {
+      stopEditing();
+      pressRipple(screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+    },
+    [screenToFlowPosition],
+  );
+
   return (
     <div
       className={`canvas${pending ? ' is-placing' : ''}`}
@@ -448,7 +469,7 @@ export function Canvas() {
         // pointer identical from start to finish, and every drag measured zero.
         panOnDrag={!pending}
         onDoubleClick={onDoubleClick}
-        onPaneClick={stopEditing}
+        onPaneClick={onPaneClick}
         onSelectionStart={() => setBoxSelecting(true)}
         onSelectionEnd={() => setBoxSelecting(false)}
         // Double-click creates an element, so it must not also zoom.
@@ -466,7 +487,8 @@ export function Canvas() {
         defaultViewport={{ x: 0, y: 0, zoom: 1 }}
         proOptions={{ hideAttribution: true }}
       >
-        <Background />
+        <GravityGrid />
+        <WarpGhosts />
         <Controls />
         <SelectionActions nodes={nodes} />
         <PanRelations nodes={nodes} />
