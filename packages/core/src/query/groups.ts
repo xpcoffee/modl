@@ -122,6 +122,11 @@ export function descendantsOf(elements: Record<Id, Element>, groupId: Id): Id[] 
   return found;
 }
 
+/** Descendants of a group that are themselves groups, shallowest first. */
+export function descendantGroupsOf(elements: Record<Id, Element>, groupId: Id): Id[] {
+  return descendantsOf(elements, groupId).filter((id) => isGroup(elements, id));
+}
+
 /**
  * A connection is drawn when its anchors differ. A connection whose ends both
  * collapse into the same group has nothing to say at that zoom level.

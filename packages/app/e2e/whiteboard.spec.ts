@@ -2412,6 +2412,155 @@ test.describe('pan to relation', () => {
   });
 });
 
+test.describe('expansion tooling', () => {
+  const OUTER = 'g-outer';
+  const INNER_A = 'g-inner-a';
+  const INNER_B = 'g-inner-b';
+  const DEEP = 'g-deep';
+  const LEAF_A = 'leaf-a';
+  const LEAF_B = 'leaf-b';
+
+  /** outer > inner-a > deep > leaf-a, and outer > inner-b > leaf-b. */
+  function nestedDomain(): import('@modl/core').Command[] {
+    return [
+      { type: 'create-entity', id: LEAF_A, entityType: 'component', title: 'Leaf A', position: { x: 40, y: 40 } },
+      { type: 'create-entity', id: LEAF_B, entityType: 'component', title: 'Leaf B', position: { x: 360, y: 40 } },
+      { type: 'group-elements', id: DEEP, title: 'Deep', memberIds: [LEAF_A], position: { x: 20, y: 20 } },
+      { type: 'group-elements', id: INNER_A, title: 'Inner A', memberIds: [DEEP], position: { x: 0, y: 0 } },
+      { type: 'group-elements', id: INNER_B, title: 'Inner B', memberIds: [LEAF_B], position: { x: 340, y: 0 } },
+      { type: 'group-elements', id: OUTER, title: 'Outer', memberIds: [INNER_A, INNER_B], position: { x: 0, y: 0 } },
+    ];
+  }
+
+  test('a collapsed group defaults to expand, with expand all behind it', async ({ page }) => {
+    await dispatch(page, [...nestedDomain(), { type: 'set-selection', ids: [OUTER] }]);
+    await fit(page);
+
+    await page.getByTestId('expansion-menu-toggle').click();
+
+    await expect(page.getByTestId('expansion-expand')).toHaveClass(/is-active/);
+    await expect(page.getByTestId('expansion-expand-all')).toBeVisible();
+    // Collapsing a collapsed group would change nothing, so no such option.
+    await expect(page.getByTestId('expansion-collapse')).toHaveCount(0);
+
+    await page.getByTestId('expansion-expand').click();
+    await expect(page.getByTestId(`group-${OUTER}`)).toBeVisible();
+    await expect(page.getByTestId(`entity-${INNER_A}`)).toBeVisible();
+  });
+
+  test('an open group with collapsed items defaults to collapse and hides the no-ops', async ({ page }) => {
+    await dispatch(page, [
+      ...nestedDomain(),
+      { type: 'set-expanded', id: OUTER, expanded: true },
+      { type: 'set-selection', ids: [OUTER] },
+    ]);
+    await fit(page);
+
+    await page.getByTestId('expansion-menu-toggle').click();
+
+    await expect(page.getByTestId('expansion-collapse')).toHaveClass(/is-active/);
+    await expect(page.getByTestId('expansion-expand-next')).toBeVisible();
+    await expect(page.getByTestId('expansion-expand-all')).toBeVisible();
+    // Nothing below the group is expanded, so the two collapse sweeps hide.
+    await expect(page.getByTestId('expansion-collapse-next')).toHaveCount(0);
+    await expect(page.getByTestId('expansion-collapse-all')).toHaveCount(0);
+  });
+
+  test('expand next level opens one more level everywhere, and no further', async ({ page }) => {
+    await dispatch(page, [
+      ...nestedDomain(),
+      { type: 'set-expanded', id: OUTER, expanded: true },
+      { type: 'set-selection', ids: [OUTER] },
+    ]);
+    await fit(page);
+
+    await page.getByTestId('expansion-menu-toggle').click();
+    // The first click turns the roller to the option, the second acts.
+    await page.getByTestId('expansion-expand-next').click();
+    await page.getByTestId('expansion-expand-next').click();
+
+    await expect(page.getByTestId(`group-${INNER_A}`)).toBeVisible();
+    await expect(page.getByTestId(`group-${INNER_B}`)).toBeVisible();
+    await expect(page.getByTestId(`entity-${LEAF_B}`)).toBeVisible();
+    // Deep sits one level further down and stays collapsed.
+    await expect(page.getByTestId(`entity-${DEEP}`)).toBeVisible();
+    await expect(page.getByTestId(`entity-${LEAF_A}`)).toHaveCount(0);
+  });
+
+  test('collapse all sweeps root items first and leaves the group itself open', async ({ page }) => {
+    await dispatch(page, [
+      ...nestedDomain(),
+      { type: 'set-expanded', id: OUTER, expanded: true },
+      { type: 'set-expanded', id: INNER_A, expanded: true },
+      { type: 'set-expanded', id: INNER_B, expanded: true },
+      { type: 'set-expanded', id: DEEP, expanded: true },
+      { type: 'set-selection', ids: [OUTER] },
+    ]);
+    await fit(page);
+
+    await page.getByTestId('expansion-menu-toggle').click();
+    // Everything is already expanded, so the expand sweeps hide as no-ops.
+    await expect(page.getByTestId('expansion-expand-next')).toHaveCount(0);
+    await page.getByTestId('expansion-collapse-all').click();
+    await page.getByTestId('expansion-collapse-all').click();
+
+    // The group itself stays open; everything inside it is put away.
+    await expect(page.getByTestId(`group-${OUTER}`)).toBeVisible();
+    await expect(page.getByTestId(`entity-${INNER_A}`)).toBeVisible();
+    await expect(page.getByTestId(`entity-${LEAF_A}`)).toHaveCount(0);
+
+    // The trace carries one command per group, root items before what they
+    // contain.
+    const trace = await getTrace(page);
+    const swept = trace.flatMap((entry) =>
+      entry.command.type === 'set-expanded' && entry.command.expanded === false
+        ? [entry.command.id]
+        : [],
+    );
+    expect(swept).toEqual([INNER_A, INNER_B, DEEP]);
+  });
+
+  test('a multi-selection expands as one group', async ({ page }) => {
+    await dispatch(page, [
+      ...nestedDomain(),
+      { type: 'set-expanded', id: OUTER, expanded: true },
+      { type: 'set-selection', ids: [INNER_A, INNER_B] },
+    ]);
+    await fit(page);
+
+    await page.getByTestId('expansion-menu-toggle').click();
+    // Collapsed items in the selection make expand next level the default,
+    // and there is no "collapse this item": the selection is not an element.
+    await expect(page.getByTestId('expansion-expand-next')).toHaveClass(/is-active/);
+    await expect(page.getByTestId('expansion-collapse')).toHaveCount(0);
+
+    await page.getByTestId('expansion-expand-next').click();
+
+    await expect(page.getByTestId(`group-${INNER_A}`)).toBeVisible();
+    await expect(page.getByTestId(`group-${INNER_B}`)).toBeVisible();
+    await expect(page.getByTestId(`entity-${DEEP}`)).toBeVisible();
+  });
+
+  test('the expansion roller and pan-to-relation stand apart on one group', async ({ page }) => {
+    await dispatch(page, [
+      ...nestedDomain(),
+      { type: 'create-entity', id: 'client', entityType: 'component', title: 'Client', position: { x: -320, y: 0 } },
+      { type: 'create-connection', id: 'calls', connectionType: 'interaction', from: ['client'], to: [OUTER], title: 'calls' },
+      { type: 'set-selection', ids: [OUTER] },
+    ]);
+    await fit(page);
+
+    const expansion = (await page.getByTestId('expansion-menu-toggle').boundingBox())!;
+    const pan = (await page.getByTestId('pan-relations-toggle').boundingBox())!;
+    const node = (await page.getByTestId(`entity-${OUTER}`).boundingBox())!;
+
+    // Expansion holds the left corner and pan-to-relation the right, with
+    // the selected group between them.
+    expect(expansion.x + expansion.width).toBeLessThanOrEqual(node.x);
+    expect(pan.x).toBeGreaterThanOrEqual(node.x + node.width);
+  });
+});
+
 test.describe('styles', () => {
   test('a fill colour lands in the document and draws mostly transparent', async ({ page }) => {
     await dispatch(page, sampleDomain());

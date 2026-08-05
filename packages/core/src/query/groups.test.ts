@@ -3,6 +3,7 @@ import {
   ancestorsOf,
   connectionAnchors,
   cyclicGroupIds,
+  descendantGroupsOf,
   descendantsOf,
   groupIds,
   isGroup,
@@ -59,6 +60,10 @@ describe('membership', () => {
 
   it('lists descendants at every depth', () => {
     expect(descendantsOf(NESTED, OUTER).sort()).toEqual([INNER, LEAF].sort());
+  });
+
+  it('lists only the descendants that are groups', () => {
+    expect(descendantGroupsOf(NESTED, OUTER)).toEqual([INNER]);
   });
 
   it('identifies groups', () => {

@@ -852,6 +852,19 @@ select {
   pointer-events: all;
 }
 
+/* Expansion tooling: a roller menu of expand and collapse sweeps, left of
+   the selected group(s) while pan-to-relation holds the right. */
+
+.expansion-menu {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  /* Same stacking as .pan-relations: above a selected node's 2000. */
+  z-index: 2500;
+  pointer-events: all;
+}
+
 /* Roller menu: entrance pill, options rolling through the middle slot. */
 
 .roller-menu {
