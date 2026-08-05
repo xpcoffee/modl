@@ -66,6 +66,10 @@ export function PanRelations({ nodes }: { nodes: Node<BoardNodeData>[] }) {
         },
         zoom,
       });
+      // The reader's focus moved with the camera, so selection follows: the
+      // highlight lands on the destination, and its own roller takes over
+      // (closed, since the options changed under the menu).
+      store.dispatch({ type: 'set-selection', ids: [relation.peerId] });
     },
     [getViewport, paneWidth, paneHeight],
   );

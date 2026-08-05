@@ -829,7 +829,10 @@ select {
   top: 0;
   left: 0;
   transform-origin: top left;
-  z-index: 1500;
+  /* Above the selected node: React Flow's elevateNodesOnSelect adds 1000 to
+     the 1000 the app sets, so anything under 2000 slides behind the very
+     element the roller belongs to. */
+  z-index: 2500;
   pointer-events: all;
 }
 

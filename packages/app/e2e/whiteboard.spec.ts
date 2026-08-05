@@ -2257,6 +2257,46 @@ test.describe('pan to relation', () => {
     await expect(page.getByTestId('pan-relations')).toHaveCount(0);
   });
 
+  test('the roller draws in front of the selected and neighbouring components', async ({ page }) => {
+    // The gateway sits right where the UI's roller expands, so the option
+    // pill overlaps both the selected UI and its neighbour.
+    await dispatch(page, sampleDomain());
+    await dispatch(page, [{ type: 'move-element', id: IDS.gateway, position: { x: 230, y: 0 } }]);
+
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+    await page.getByTestId('pan-relations-toggle').click();
+
+    const option = (await page.getByTestId(`pan-to-${IDS.gateway}`).boundingBox())!;
+    const y = option.y + option.height / 2;
+    const rollerWins = ([atX, atY]: (number | undefined)[]) =>
+      document.elementFromPoint(atX!, atY!)?.closest('.roller-menu__option') !== null;
+
+    // Over the neighbour, and over the selected element itself: React Flow
+    // lifts a selected node by another 1000, which used to bury the roller.
+    for (const testId of [`entity-${IDS.gateway}`, `entity-${IDS.ui}`]) {
+      const behind = (await page.getByTestId(testId).boundingBox())!;
+      const x = Math.max(option.x, behind.x) + 4;
+      expect(x).toBeLessThan(Math.min(option.x + option.width, behind.x + behind.width));
+      expect(await page.evaluate(rollerWins, [x, y]), `roller behind ${testId}`).toBe(true);
+    }
+  });
+
+  test('choosing a relation selects the component it pans to', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+
+    await page.getByTestId('pan-relations-toggle').click();
+    await page.getByTestId(`pan-to-${IDS.gateway}`).click();
+
+    // Focus moved with the camera: the destination is selected, the highlight
+    // follows it, and its own roller stands ready, closed.
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([IDS.gateway]);
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).toHaveClass(/is-selected/);
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId('pan-relations-toggle')).toContainText('2');
+    await expect(page.getByTestId('pan-relations-list')).toHaveCount(0);
+  });
+
   test('choosing a relation pans the camera to the peer', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`entity-${IDS.ui}`).click();
