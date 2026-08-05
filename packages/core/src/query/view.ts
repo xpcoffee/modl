@@ -1,7 +1,7 @@
 import { isConnection, type Element, type Id } from '../model/types.js';
 import type { AppState } from '../commands/types.js';
 import { selectIds } from './filter.js';
-import { ancestorsOf, visibleAnchor } from './groups.js';
+import { ancestorsOf, descendantsOf, visibleAnchor } from './groups.js';
 
 /**
  * Viewing tools: three ways a reader focuses a crowded board, and one place
@@ -9,8 +9,8 @@ import { ancestorsOf, visibleAnchor } from './groups.js';
  *
  * - Hiding an element mutes it and removes its connections from the board.
  * - Selecting elements highlights them with their direct connections and
- *   peers, and mutes the rest. A preference (`selectionHighlight`) turns
- *   this off.
+ *   peers, and mutes the rest. A selected group counts its members, at every
+ *   depth, as selected. A preference (`selectionHighlight`) turns this off.
  * - The tag filter mutes elements that do not match.
  *
  * Precedence: hiding beats highlighting beats filtering, except that a
@@ -77,8 +77,13 @@ export function boardEmphasis(state: AppState): BoardEmphasis {
 
   if (selection.length > 0 && state.selectionHighlight) {
     // The selection and everything one drawn connection away stays readable.
+    // A selected group speaks for its members at every depth, so they join
+    // the selection here and their connections highlight by the same rule.
     const chosen = new Set(selection);
-    const near = new Set<Id>(selection);
+    for (const id of selection) {
+      for (const member of descendantsOf(elements, id)) chosen.add(member);
+    }
+    const near = new Set<Id>(chosen);
     for (const id of selection) {
       const element = elements[id];
       if (element && isConnection(element) && !suppressed.has(id)) {

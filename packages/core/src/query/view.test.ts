@@ -11,6 +11,8 @@ const LEDGER = '33333333-3333-4333-8333-333333333333';
 const AUTHORISE = '44444444-4444-4444-8444-444444444444';
 const POST = '55555555-5555-4555-8555-555555555555';
 const GROUP = '66666666-6666-4666-8666-666666666666';
+const INNER = '77777777-7777-4777-8777-777777777777';
+const REPORT = '88888888-8888-4888-8888-888888888888';
 
 function entity(id: string, title: string, x = 0): Command {
   return { type: 'create-entity', id, entityType: 'component', title, position: { x, y: 0 } };
@@ -175,6 +177,82 @@ describe('boardEmphasis: selection highlight', () => {
     expect(muted.has(UI)).toBe(true);
     expect(muted.has(LEDGER)).toBe(true);
     expect(muted.has(GATEWAY)).toBe(false);
+    expect(suppressed.has(POST)).toBe(true);
+  });
+});
+
+describe('boardEmphasis: selecting a group', () => {
+  /** The payments side (gateway, ledger) in a group, plus an unconnected report. */
+  function withPaymentsGroup(...commands: Command[]): AppState {
+    return must(
+      base,
+      entity(REPORT, 'Report', 840),
+      {
+        type: 'group-elements',
+        id: GROUP,
+        title: 'Payments',
+        memberIds: [GATEWAY, LEDGER],
+        position: { x: 280, y: 0 },
+      },
+      ...commands,
+    );
+  }
+
+  it('collapsed: the re-pointed external connection and its peer stay readable', () => {
+    const state = withPaymentsGroup({ type: 'set-selection', ids: [GROUP] });
+    const { muted } = boardEmphasis(state);
+    // The members are not drawn, but authorise re-points at the group and
+    // stays lit along with the UI at its other end. Only the report fades.
+    expect(muted).toEqual(new Set([REPORT]));
+  });
+
+  it('expanded: members, their intra-group connection, and their external connections stay readable', () => {
+    const state = withPaymentsGroup(
+      { type: 'set-expanded', id: GROUP, expanded: true },
+      { type: 'set-selection', ids: [GROUP] },
+    );
+    const { muted } = boardEmphasis(state);
+    // Gateway and ledger are members, post runs between them, authorise
+    // leaves the group for the UI. Only the report fades.
+    expect(muted).toEqual(new Set([REPORT]));
+  });
+
+  it('reaches members of a nested group', () => {
+    const state = must(
+      base,
+      entity(REPORT, 'Report', 840),
+      {
+        type: 'group-elements',
+        id: INNER,
+        title: 'Books',
+        memberIds: [LEDGER],
+        position: { x: 560, y: 0 },
+      },
+      {
+        type: 'group-elements',
+        id: GROUP,
+        title: 'Payments',
+        memberIds: [GATEWAY, INNER],
+        position: { x: 280, y: 0 },
+      },
+      { type: 'set-expanded', id: GROUP, expanded: true },
+      { type: 'set-expanded', id: INNER, expanded: true },
+      { type: 'set-selection', ids: [GROUP] },
+    );
+    const { muted } = boardEmphasis(state);
+    expect(muted.has(LEDGER)).toBe(false);
+    expect(muted.has(POST)).toBe(false);
+    expect(muted.has(REPORT)).toBe(true);
+  });
+
+  it('hiding still beats the group highlight for a member', () => {
+    const state = withPaymentsGroup(
+      { type: 'set-expanded', id: GROUP, expanded: true },
+      { type: 'set-hidden', id: LEDGER, hidden: true },
+      { type: 'set-selection', ids: [GROUP] },
+    );
+    const { muted, suppressed } = boardEmphasis(state);
+    expect(muted.has(LEDGER)).toBe(true);
     expect(suppressed.has(POST)).toBe(true);
   });
 });

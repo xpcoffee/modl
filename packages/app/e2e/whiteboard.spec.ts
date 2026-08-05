@@ -2224,6 +2224,34 @@ test.describe('selection highlight', () => {
       ),
     ).toBe(true);
   });
+
+  test('selecting an expanded group keeps its members readable', async ({ page }) => {
+    const GROUP = '77777777-7777-4777-8777-777777777777';
+    const REPORT = '88888888-8888-4888-8888-888888888888';
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'create-entity', id: REPORT, entityType: 'component', title: 'Reporting', position: { x: 840, y: 0 } },
+      {
+        type: 'group-elements',
+        id: GROUP,
+        title: 'Payments',
+        memberIds: [IDS.gateway, IDS.ledger],
+        position: { x: 280, y: 0 },
+      },
+      { type: 'set-expanded', id: GROUP, expanded: true },
+    ]);
+    await fit(page);
+
+    // Select by the group header, away from the collapse button and members.
+    const header = await page.getByTestId(`group-${GROUP}`).boundingBox();
+    await page.mouse.click(header!.x + header!.width - 30, header!.y + 12);
+
+    // The members and their connection light up with the group; the
+    // unconnected report is the one that fades.
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`connection-${IDS.post}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${REPORT}`)).toHaveClass(/is-dimmed/);
+  });
 });
 
 test.describe('pan to relation', () => {

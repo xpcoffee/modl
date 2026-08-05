@@ -1,6 +1,6 @@
 # 009: Viewing tools are session state, composed by one emphasis rule
 
-**Status**: accepted · **Date**: 2026-08-04 · **Revised**: 2026-08-05 after review on PR #16
+**Status**: accepted · **Date**: 2026-08-04 · **Revised**: 2026-08-05 after review on PR #16, and again for issue #18 (group selection highlights members)
 
 ## Context
 
@@ -19,7 +19,7 @@ A board with many connections stops reading (issue #6). Three tools address that
 **One function decides emphasis.** `boardEmphasis` in `packages/core/src/query/view.ts` takes the whole session state and returns two sets: `muted` (drawn faded) and `suppressed` (connections not drawn). Three muting sources compose by precedence rather than by union:
 
 1. **Hidden** beats everything: a hidden element is muted even inside a highlighted neighbourhood, and its connections stay off the board. Hiding is the reader's most explicit act.
-2. **Selection highlight** beats the filter: while anything is selected, the selection, its drawn connections, and the elements at their other ends render normal, and everything else is muted. The issue asks for the neighbourhood "as normal", so a filter mute inside it is lifted; a filter that still applied would make the highlight unreadable exactly when both tools are in use. Not every reader wants this, so a checkbox in the filter bar turns it off. The preference travels through the bus as `set-selection-highlight` and, unlike the rest of the session, survives a document load: it is a preference about reading, not a view of one document.
+2. **Selection highlight** beats the filter: while anything is selected, the selection, its drawn connections, and the elements at their other ends render normal, and everything else is muted. A selected group counts its members, at every depth, as selected (issue #18): expanding it therefore lights the members, their connections among themselves, and their connections outward; collapsed, the members are not drawn and the connections re-pointed at the group light up as before. A hidden member still mutes, per rule 1. The issue asks for the neighbourhood "as normal", so a filter mute inside it is lifted; a filter that still applied would make the highlight unreadable exactly when both tools are in use. Not every reader wants this, so a checkbox in the filter bar turns it off. The preference travels through the bus as `set-selection-highlight` and, unlike the rest of the session, survives a document load: it is a preference about reading, not a view of one document.
 3. **The tag filter** applies only when nothing is selected, muting non-matches as before.
 
 One exception: a directly selected element is never muted, even hidden, because the reader is pointing at it and the editor attached to it is how a hidden element is shown again.
