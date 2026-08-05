@@ -20,6 +20,16 @@ type EntityType     = 'state' | 'component' | 'step';
 type ConnectionType = 'transition' | 'relation' | 'interaction';
 type ForkShape      = 'circle' | 'diamond';
 
+type StrokeStyle = 'solid' | 'dashed' | 'dotted';
+type Arrowhead   = 'triangle' | 'open' | 'diamond';
+
+interface ElementStyle {
+  fill?: string;                     // '#rrggbb', entities and nodes only
+  stroke?: string;                   // '#rrggbb'
+  strokeStyle?: StrokeStyle;
+  arrowhead?: Arrowhead;             // connections only
+}
+
 interface ElementBase {
   id: Id;
   title: string;                     // human label, may be empty
@@ -27,6 +37,7 @@ interface ElementBase {
   tags: Record<string, string[]>;    // filterable labels, several per key
   sources: SourceRef[];              // where the claim came from
   groupId: Id | null;                // id of the entity this collapses into
+  style?: ElementStyle;              // absent means the theme default
 }
 
 interface Entity extends ElementBase {
@@ -76,15 +87,29 @@ A key holds a list of values, because an element often belongs to more than one 
 "sources": [{ "ref": "src/checkout.ts:42", "note": "calls authorise" }]
 ```
 
+### Styles
+
+`style` carries the author's colours and line treatment. Every field is optional, and an absent field means the theme default, so a producer that says nothing about looks gets a legible drawing.
+
+- `fill` tints the body of an entity or a connection node. The renderer draws it mostly transparent (16% alpha today), so the document stores the pure colour and the canvas stays readable. A connection has no fill, and both the schema and the reducer refuse one.
+- `stroke` colours the border of a box or the line of a connection, and the arrowheads with it.
+- `strokeStyle` is `solid`, `dashed`, or `dotted`.
+- `arrowhead` picks the glyph on a connection: `triangle` (the default), `open`, or `diamond`. Which ends carry heads is `direction`'s job and stays semantic; the glyph is presentation. Only a connection carries one.
+
+Colours are lowercase `#rrggbb`, one spelling so documents diff cleanly. Style sits on the element rather than in `layout` for the same reason a node's `shape` does: it is the author's choice about the element, it must survive a re-layout, and it should travel into a tool that ignores geometry. See [decision 007](decisions/007-element-styles.md).
+
+The whiteboard remembers the last style the reader chose and applies it to the next element they create. That memory is session state: the create command carries the style explicitly, so a trace replays without it.
+
 ### Versions
 
-`formatVersion` is 4. Older documents still load, and saving writes the current version, so a file upgrades the first time it is written.
+`formatVersion` is 5. Older documents still load, and saving writes the current version, so a file upgrades the first time it is written.
 
 | Change | What the reader does |
 |---|---|
 | 1 → 2 | Single tag values become lists, and elements gain empty `sources` |
 | 2 → 3 | Connections gain `direction`, and arrowheads leave `layout`. A line drawn with a head at each end becomes `both`; anything else becomes `forward`, since `from` and `to` already said which way it ran |
 | 3 → 4 | A `fork` becomes a `connection-node`, matching the word a reader sees |
+| 4 → 5 | Elements may carry `style`. Nothing is rewritten; the bump stops a version 4 build from stripping colours on save |
 
 ## Paradigms
 
@@ -252,4 +277,4 @@ Deleting a group lifts its members to whatever contained the group. Nothing is l
 
 ## Coverage
 
-Implemented: `Entity` across all four types, `Connection`, `ConnectionNode`, groups with collapse and expand, the full document format, readable names, validation.
+Implemented: `Entity` across all four types, `Connection`, `ConnectionNode`, element styles, groups with collapse and expand, the full document format, readable names, validation.

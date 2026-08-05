@@ -44,6 +44,7 @@ import { PanRelations } from './PanRelations.js';
 import { SelectionActions } from './SelectionActions.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
 import { useHighlightId } from './highlight.js';
+import { lastConnectionStyle, lastEntityStyle } from './styleMemory.js';
 
 const NODE_TYPES = { entity: EntityNode, group: GroupNode, 'connection-node': ConnectionNodeView };
 const EDGE_TYPES = { connection: ConnectionEdge };
@@ -193,6 +194,7 @@ export function Canvas() {
       'interaction';
 
     const id = crypto.randomUUID();
+    const style = lastConnectionStyle();
     store.dispatch({
       type: 'create-connection',
       id,
@@ -200,6 +202,7 @@ export function Canvas() {
       from: [connection.source],
       to: [connection.target],
       title: '',
+      ...(style === undefined ? {} : { style }),
     });
 
     // The handles the reader actually dragged between. Layout, not structure:
@@ -277,6 +280,8 @@ export function Canvas() {
       const type = getPending();
       if (!type) return;
       const id = crypto.randomUUID();
+      // The style the reader chose last follows onto whatever they place next.
+      const style = lastEntityStyle();
 
       if (type === 'connection-node' || type === 'decision') {
         store.dispatch({
@@ -285,6 +290,7 @@ export function Canvas() {
           shape: type === 'decision' ? 'diamond' : 'circle',
           title: '',
           position: { x: rect.x, y: rect.y },
+          ...(style === undefined ? {} : { style }),
         });
       } else {
         store.dispatch({
@@ -293,6 +299,7 @@ export function Canvas() {
           entityType: type,
           title: `New ${type}`,
           position: { x: rect.x, y: rect.y },
+          ...(style === undefined ? {} : { style }),
         });
       }
 
@@ -323,6 +330,7 @@ export function Canvas() {
 
       // Centred on the pointer, since that is where the user aimed.
       const at = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      const style = lastEntityStyle();
       store.dispatch({
         type: 'create-entity',
         id: crypto.randomUUID(),
@@ -332,6 +340,7 @@ export function Canvas() {
           x: at.x - DEFAULT_ENTITY_SIZE.width / 2,
           y: at.y - DEFAULT_ENTITY_SIZE.height / 2,
         },
+        ...(style === undefined ? {} : { style }),
       });
     },
     [screenToFlowPosition],

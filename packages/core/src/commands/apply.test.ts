@@ -1061,3 +1061,188 @@ describe('artifacts', () => {
     expect(state.document.model.elements[LINK]).toMatchObject({ type: 'transition' });
   });
 });
+
+describe('set-style', () => {
+  it('sets fill, stroke, and stroke style on an entity', () => {
+    const state = must(base, {
+      type: 'set-style',
+      id: A,
+      style: { fill: '#5b8def', stroke: '#46a758', strokeStyle: 'dashed' },
+    });
+    expect(state.document.model.elements[A]?.style).toEqual({
+      fill: '#5b8def',
+      stroke: '#46a758',
+      strokeStyle: 'dashed',
+    });
+  });
+
+  it('sets stroke and arrowhead on a connection', () => {
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      { type: 'set-style', id: LINK, style: { stroke: '#e5484d', arrowhead: 'open' } },
+    );
+    expect(state.document.model.elements[LINK]?.style).toEqual({
+      stroke: '#e5484d',
+      arrowhead: 'open',
+    });
+  });
+
+  it('patches one field and leaves the rest alone', () => {
+    const state = must(
+      base,
+      { type: 'set-style', id: A, style: { fill: '#5b8def', strokeStyle: 'dotted' } },
+      { type: 'set-style', id: A, style: { fill: '#46a758' } },
+    );
+    expect(state.document.model.elements[A]?.style).toEqual({
+      fill: '#46a758',
+      strokeStyle: 'dotted',
+    });
+  });
+
+  it('null clears a field, and clearing the last one drops the style', () => {
+    const state = must(
+      base,
+      { type: 'set-style', id: A, style: { fill: '#5b8def' } },
+      { type: 'set-style', id: A, style: { fill: null } },
+    );
+    expect(state.document.model.elements[A]).not.toHaveProperty('style');
+  });
+
+  it('emits element-updated', () => {
+    const result = apply(base, { type: 'set-style', id: A, style: { fill: '#5b8def' } });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.events).toEqual([{ type: 'element-updated', id: A }]);
+  });
+
+  it('styles a connection node like an entity', () => {
+    const state = must(
+      base,
+      { type: 'create-connection-node', id: C, shape: 'diamond', title: '', position: { x: 0, y: 0 } },
+      { type: 'set-style', id: C, style: { fill: '#8e4ec6', stroke: '#8e4ec6' } },
+    );
+    expect(state.document.model.elements[C]?.style).toEqual({
+      fill: '#8e4ec6',
+      stroke: '#8e4ec6',
+    });
+  });
+
+  it('wrong-kind: a connection has no fill', () => {
+    const state = must(base, link(LINK, [A], [B]));
+    const result = apply(state, { type: 'set-style', id: LINK, style: { fill: '#5b8def' } });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('wrong-kind');
+  });
+
+  it('wrong-kind: only a connection carries an arrowhead', () => {
+    const result = apply(base, { type: 'set-style', id: A, style: { arrowhead: 'open' } });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('wrong-kind');
+  });
+
+  it('schema-invalid: refuses a colour that is not #rrggbb', () => {
+    const result = apply(base, { type: 'set-style', id: A, style: { fill: 'red' } });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('schema-invalid');
+  });
+
+  it('schema-invalid: refuses a stroke style it does not know', () => {
+    const result = apply(base, {
+      type: 'set-style',
+      id: A,
+      style: { strokeStyle: 'wavy' as never },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('schema-invalid');
+  });
+
+  it('unknown-element: refuses an id not in the document', () => {
+    const result = apply(base, { type: 'set-style', id: MISSING, style: { fill: '#5b8def' } });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('unknown-element');
+  });
+});
+
+describe('creation with a style', () => {
+  it('create-entity carries the style into the document', () => {
+    const state = must(base, {
+      type: 'create-entity',
+      id: C,
+      entityType: 'component',
+      title: 'Ledger',
+      position: { x: 0, y: 0 },
+      style: { fill: '#5b8def', strokeStyle: 'dashed' },
+    });
+    expect(state.document.model.elements[C]?.style).toEqual({
+      fill: '#5b8def',
+      strokeStyle: 'dashed',
+    });
+  });
+
+  it('create-connection carries the style into the document', () => {
+    const state = must(base, {
+      type: 'create-connection',
+      id: LINK,
+      connectionType: 'interaction',
+      from: [A],
+      to: [B],
+      title: '',
+      style: { stroke: '#46a758', arrowhead: 'diamond' },
+    });
+    expect(state.document.model.elements[LINK]?.style).toEqual({
+      stroke: '#46a758',
+      arrowhead: 'diamond',
+    });
+  });
+
+  it('wrong-kind: create-connection refuses a fill', () => {
+    const result = apply(base, {
+      type: 'create-connection',
+      id: LINK,
+      connectionType: 'interaction',
+      from: [A],
+      to: [B],
+      title: '',
+      style: { fill: '#5b8def' },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('wrong-kind');
+  });
+
+  it('an empty style is not stored', () => {
+    const state = must(base, {
+      type: 'create-entity',
+      id: C,
+      entityType: 'component',
+      title: 'Ledger',
+      position: { x: 0, y: 0 },
+      style: {},
+    });
+    expect(state.document.model.elements[C]).not.toHaveProperty('style');
+  });
+
+  it('a styled document round trips through the serializer', () => {
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      { type: 'set-style', id: A, style: { fill: '#5b8def', stroke: '#5b8def' } },
+      { type: 'set-style', id: LINK, style: { stroke: '#e5484d', arrowhead: 'open' } },
+    );
+    const text = serializeDocument(state.document);
+    const parsed = parseDocument(text);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(serializeDocument(parsed.document)).toBe(text);
+    expect(parsed.document.model.elements[LINK]?.style).toEqual({
+      stroke: '#e5484d',
+      arrowhead: 'open',
+    });
+  });
+});

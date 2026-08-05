@@ -1,12 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Overridable because `reuseExistingServer` trusts whatever answers on the
- * port: a dev server left running in another worktree serves that worktree's
- * code, and the suite then tests the wrong build. A parallel run sets its own
- * port and stays isolated.
+ * Overridable so two worktrees can run the suite at the same time. With the
+ * port fixed at 5173 and `reuseExistingServer` on, a second run silently
+ * drove the first worktree's dev server and tested the wrong code.
  */
-const port = Number(process.env['MODL_E2E_PORT'] ?? 5173);
+const port = Number(process.env['MODL_PORT'] ?? 5173);
 
 export default defineConfig({
   testDir: './e2e',
@@ -23,6 +22,8 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
+    // `--strictPort` fails loudly when the port is taken, rather than letting
+    // vite drift to the next port while the tests stay on this one.
     command: `npm run dev -- --port ${port} --strictPort`,
     url: `http://localhost:${port}`,
     reuseExistingServer: !process.env['CI'],

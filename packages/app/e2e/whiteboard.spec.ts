@@ -2343,3 +2343,186 @@ test.describe('pan to relation', () => {
     }).toPass();
   });
 });
+
+test.describe('styles', () => {
+  test('a fill colour lands in the document and draws mostly transparent', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+
+    await page.getByTestId('style-fill-blue').click();
+
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.ui]).toMatchObject({ style: { fill: '#5b8def' } });
+    // Mostly transparent: the chosen hue at a low alpha, not a solid coat.
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveCSS(
+      'background-color',
+      'rgba(91, 141, 239, 0.16)',
+    );
+  });
+
+  test('stroke colour and a dashed line on a connection', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`connection-${IDS.authorise}`).click();
+
+    await page.getByTestId('style-stroke-green').click();
+    await page.getByTestId('style-line-dashed').click();
+
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.authorise]).toMatchObject({
+      style: { stroke: '#46a758', strokeStyle: 'dashed' },
+    });
+
+    const path = page.locator(
+      `.react-flow__edge[data-id^="${IDS.authorise}"] .react-flow__edge-path`,
+    );
+    await expect(path).toHaveCSS('stroke', 'rgb(70, 167, 88)');
+    await expect(path).toHaveCSS('stroke-dasharray', '7px, 5px');
+  });
+
+  test('a connection has no fill control, an entity no arrowhead control', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.getByTestId(`connection-${IDS.authorise}`).click();
+    await expect(page.getByTestId('style-stroke')).toBeVisible();
+    await expect(page.getByTestId('style-fill')).toHaveCount(0);
+    await expect(page.getByTestId('style-arrowhead')).toBeVisible();
+
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+    await expect(page.getByTestId('style-fill')).toBeVisible();
+    await expect(page.getByTestId('style-arrowhead')).toHaveCount(0);
+  });
+
+  test('an arrowhead choice swaps the marker, and triangle is the default', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`connection-${IDS.authorise}`).click();
+
+    await page.getByTestId('style-arrowhead-open').click();
+
+    expect((await getDocument(page)).model.elements[IDS.authorise]).toMatchObject({
+      style: { arrowhead: 'open' },
+    });
+    const path = page.locator(
+      `.react-flow__edge[data-id^="${IDS.authorise}"] .react-flow__edge-path`,
+    );
+    await expect(path).toHaveAttribute('marker-end', 'url(#modl-arrow-open-default)');
+
+    // Back to the default: the style field goes, and the shared marker returns.
+    await page.getByTestId('style-arrowhead-triangle').click();
+    expect((await getDocument(page)).model.elements[IDS.authorise]).not.toHaveProperty('style');
+    await expect(path).toHaveAttribute('marker-end', 'url(#modl-arrow-end)');
+  });
+
+  test('the default swatch clears a colour', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+
+    await page.getByTestId('style-fill-red').click();
+    await page.getByTestId('style-fill-default').click();
+
+    expect((await getDocument(page)).model.elements[IDS.ui]).not.toHaveProperty('style');
+  });
+
+  test('the last chosen style follows onto the next element', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+    await page.getByTestId('style-fill-red').click();
+    await page.getByTestId('style-stroke-red').click();
+
+    const before = new Set(Object.keys((await getDocument(page)).model.elements));
+    await page.locator('.react-flow__pane').dblclick({ position: { x: 160, y: 420 } });
+
+    const document = await getDocument(page);
+    const created = Object.keys(document.model.elements).find((id) => !before.has(id))!;
+    expect(document.model.elements[created]).toMatchObject({
+      style: { fill: '#e5484d', stroke: '#e5484d' },
+    });
+    // Explicit on the create command, so a trace replays without the session.
+    const creates = (await getTrace(page)).filter(
+      (entry) => entry.command.type === 'create-entity' && entry.command.id === created,
+    );
+    expect(creates[0]?.command).toMatchObject({ style: { fill: '#e5484d', stroke: '#e5484d' } });
+  });
+
+  test('the last chosen stroke follows onto the next connection', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`connection-${IDS.authorise}`).click();
+    await page.getByTestId('style-stroke-purple').click();
+    await page.getByTestId('style-arrowhead-diamond').click();
+
+    // Draw ui -> ledger by dragging between their handles.
+    await page.locator('.react-flow__pane').click({ position: { x: 60, y: 500 } });
+    const before = new Set(Object.keys((await getDocument(page)).model.elements));
+    const from = (await page
+      .locator(`.react-flow__node[data-id="${IDS.ui}"] .react-flow__handle[data-handleid="bottom"]`)
+      .boundingBox())!;
+    const to = (await page
+      .locator(`.react-flow__node[data-id="${IDS.ledger}"] .react-flow__handle[data-handleid="bottom"]`)
+      .boundingBox())!;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 });
+    await page.mouse.up();
+
+    const document = await getDocument(page);
+    const created = Object.keys(document.model.elements).find((id) => !before.has(id))!;
+    expect(document.model.elements[created]).toMatchObject({
+      kind: 'connection',
+      style: { stroke: '#8e4ec6', arrowhead: 'diamond' },
+    });
+  });
+
+  test('a multi-selection edits what each element can wear', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+    await page.getByTestId(`entity-${IDS.gateway}`).click({ modifiers: ['ControlOrMeta'] });
+    await page
+      .getByTestId(`connection-${IDS.authorise}`)
+      .click({ modifiers: ['ControlOrMeta'] });
+
+    // Fill is offered because at least one component is selected, and the
+    // arrowhead because at least one connection is.
+    const panel = page.getByTestId('selection-actions');
+    await expect(panel.getByTestId('style-fill')).toBeVisible();
+    await expect(panel.getByTestId('style-arrowhead')).toBeVisible();
+
+    await panel.getByTestId('style-stroke-yellow').click();
+    await panel.getByTestId('style-fill-yellow').click();
+
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.ui]?.style).toEqual({
+      fill: '#e79d13',
+      stroke: '#e79d13',
+    });
+    expect(document.model.elements[IDS.gateway]?.style).toEqual({
+      fill: '#e79d13',
+      stroke: '#e79d13',
+    });
+    // The connection took the stroke, and the fill passed it by.
+    expect(document.model.elements[IDS.authorise]?.style).toEqual({ stroke: '#e79d13' });
+  });
+
+  test('styles survive save and load', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'set-style', id: IDS.ui, style: { fill: '#46a758', strokeStyle: 'dotted' } },
+      { type: 'set-style', id: IDS.authorise, style: { stroke: '#e5484d', arrowhead: 'open' } },
+    ]);
+
+    const saved = await serialize(page);
+    await page.evaluate(() => window.__modl.reset());
+    await page.evaluate(
+      (text) => window.__modl.dispatch({ type: 'load-document', document: JSON.parse(text) }),
+      saved,
+    );
+
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.ui]?.style).toEqual({
+      fill: '#46a758',
+      strokeStyle: 'dotted',
+    });
+    expect(document.model.elements[IDS.authorise]?.style).toEqual({
+      stroke: '#e5484d',
+      arrowhead: 'open',
+    });
+  });
+});

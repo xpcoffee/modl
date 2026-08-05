@@ -12,6 +12,7 @@ A decision earns a file when reversing it later would be expensive: it shapes th
 | [004](004-groups-as-entities.md) | A group is an entity other elements point at, sized by its own box |
 | [005](005-headless-core-tests.md) | Logic is tested headless, with a thin browser suite over it |
 | [006](006-pr-previews.md) | Each pull request publishes a preview to GitHub Pages |
+| [007](007-element-styles.md) | Style lives on the element, and the last choice follows the reader |
 | [009](009-viewing-tools.md) | Viewing tools (hide, highlight, pan-to-relation) are session state, composed by one emphasis rule |
 
 The build order these decisions were first applied in lives in [the bootstrap spec](../specs/001-bootstrap.md).

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { FORMAT_VERSION } from './types.js';
+import { ARROWHEADS, FORMAT_VERSION, STROKE_STYLES } from './types.js';
 
 /**
  * Any UUID version, lowercase. The app mints v4; a producer deriving ids from
@@ -32,6 +32,29 @@ export const sourceSchema = z.object({
   note: z.string().optional(),
 });
 
+/** One way to write a colour, so documents diff cleanly: lowercase #rrggbb. */
+export const COLOR_PATTERN = /^#[0-9a-f]{6}$/;
+
+export const colorSchema = z
+  .string()
+  .regex(COLOR_PATTERN, 'must be a lowercase #rrggbb colour');
+
+/**
+ * Style a box can carry. `fill` is meaningless on a line, so it is not here.
+ * Strict, so a fill on a connection is refused rather than silently dropped.
+ */
+export const entityStyleSchema = z.strictObject({
+  fill: colorSchema.optional(),
+  stroke: colorSchema.optional(),
+  strokeStyle: z.enum(STROKE_STYLES).optional(),
+});
+
+export const connectionStyleSchema = z.strictObject({
+  stroke: colorSchema.optional(),
+  strokeStyle: z.enum(STROKE_STYLES).optional(),
+  arrowhead: z.enum(ARROWHEADS).optional(),
+});
+
 const elementBaseShape = {
   id: idSchema,
   title: z.string(),
@@ -45,6 +68,7 @@ export const entitySchema = z.object({
   ...elementBaseShape,
   kind: z.literal('entity'),
   type: z.enum(['state', 'component', 'step', 'artifact']),
+  style: entityStyleSchema.optional(),
 });
 
 export const connectionSchema = z.object({
@@ -54,12 +78,14 @@ export const connectionSchema = z.object({
   from: z.array(idSchema),
   to: z.array(idSchema),
   direction: z.enum(['forward', 'both', 'none']).default('forward'),
+  style: connectionStyleSchema.optional(),
 });
 
 export const connectionNodeSchema = z.object({
   ...elementBaseShape,
   kind: z.literal('connection-node'),
   shape: z.enum(['circle', 'diamond']),
+  style: entityStyleSchema.optional(),
 });
 
 export const elementSchema = z.discriminatedUnion('kind', [

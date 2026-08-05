@@ -1,15 +1,30 @@
 import type {
+  Arrowhead,
   ConnectionType,
   Direction,
   Document,
+  ElementStyle,
   EntityType,
   NodeShape,
   Id,
   Point,
   Side,
   SourceRef,
+  StrokeStyle,
   View,
 } from '../model/types.js';
+
+/**
+ * A partial style change. `undefined` leaves a field alone and `null` clears
+ * it back to the theme default, so one command can change a colour without
+ * disturbing the rest.
+ */
+export interface StylePatch {
+  fill?: string | null;
+  stroke?: string | null;
+  strokeStyle?: StrokeStyle | null;
+  arrowhead?: Arrowhead | null;
+}
 
 /**
  * Session state. `document` is the saved structure; the rest lives only for
@@ -42,8 +57,22 @@ export interface AppState {
  * so the reducer stays pure and a trace replays without a random source.
  */
 export type Command =
-  | { type: 'create-entity'; id: Id; entityType: EntityType; title: string; position: Point }
-  | { type: 'create-connection-node'; id: Id; shape: NodeShape; title: string; position: Point }
+  | {
+      type: 'create-entity';
+      id: Id;
+      entityType: EntityType;
+      title: string;
+      position: Point;
+      style?: ElementStyle;
+    }
+  | {
+      type: 'create-connection-node';
+      id: Id;
+      shape: NodeShape;
+      title: string;
+      position: Point;
+      style?: ElementStyle;
+    }
   | { type: 'set-node-shape'; id: Id; shape: NodeShape }
   | {
       type: 'create-connection';
@@ -53,6 +82,7 @@ export type Command =
       to: Id[];
       title: string;
       direction?: Direction;
+      style?: ElementStyle;
     }
   | { type: 'move-element'; id: Id; position: Point }
   | { type: 'set-metadata'; id: Id; title?: string; description?: string }
@@ -62,6 +92,7 @@ export type Command =
   | { type: 'resize-element'; id: Id; width: number; height: number }
   | { type: 'set-waypoints'; id: Id; waypoints: Point[] }
   | { type: 'set-arrowheads'; id: Id; start: boolean; end: boolean }
+  | { type: 'set-style'; id: Id; style: StylePatch }
   | { type: 'set-connection-sides'; id: Id; source: Side | null; target: Side | null }
   | { type: 'set-element-type'; id: Id; elementType: EntityType | ConnectionType }
   | { type: 'convert-element'; id: Id; to: EntityType | 'connection-node' | 'decision' }

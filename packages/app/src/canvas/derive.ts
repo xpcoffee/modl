@@ -12,6 +12,7 @@ import {
   type Connection,
   type Direction,
   type Element,
+  type ElementStyle,
   type EntityType,
   type NodeShape,
   type Id,
@@ -40,6 +41,7 @@ export interface EntityNodeData extends Record<string, unknown> {
   /** Where this element was drawn, so a drag can work out how far it moved. */
   origin: Point;
   isContainer: boolean;
+  style?: ElementStyle;
 }
 
 /** A node is a junction, so it carries no type and no members. */
@@ -55,6 +57,7 @@ export interface ConnectionNodeData extends Record<string, unknown> {
   soleSelection: boolean;
   parentOrigin: Point;
   origin: Point;
+  style?: ElementStyle;
 }
 
 export type BoardNodeData = EntityNodeData | ConnectionNodeData;
@@ -79,6 +82,7 @@ export interface ConnectionEdgeData extends Record<string, unknown> {
   /** True when that end anchors at a point rather than a side. */
   centredSource: boolean;
   centredTarget: boolean;
+  style?: ElementStyle;
 }
 
 export interface DeriveOptions {
@@ -211,6 +215,7 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Board
           soleSelection: soleSelection === node.id,
           parentOrigin,
           origin: { x: rect.x, y: rect.y },
+          ...(node.style === undefined ? {} : { style: node.style }),
         },
       };
     });
@@ -253,6 +258,7 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Board
         parentOrigin,
         origin: { x: rect.x, y: rect.y },
         isContainer,
+        ...(entity.style === undefined ? {} : { style: entity.style }),
       },
     };
   });
@@ -457,6 +463,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           rolledUp: [],
           centredSource: isCentred(elements, from),
           centredTarget: isCentred(elements, to),
+          ...(element.style === undefined ? {} : { style: element.style }),
         },
       });
     });

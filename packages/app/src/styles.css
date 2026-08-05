@@ -715,10 +715,85 @@ select {
 }
 
 /* Centred under the multi-selection. */
-.selection-actions__row {
-  display: flex;
-  gap: 6px;
+.selection-actions__panel {
   transform: translateX(-50%);
+  width: 240px;
+  padding: 8px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+}
+
+/* Colours and line treatment for the selection */
+
+.style-editor__row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 6px;
+}
+
+.style-editor__label {
+  width: 40px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.style-swatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+}
+
+.style-swatch.is-on {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* A slash through nothing: the theme default, which is not a colour. */
+.style-swatch--default {
+  background:
+    linear-gradient(
+      135deg,
+      transparent 44%,
+      var(--muted) 44%,
+      var(--muted) 56%,
+      transparent 56%
+    )
+    #12141a;
+}
+
+.style-line,
+.style-arrowhead {
+  padding: 1px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.style-line.is-on,
+.style-arrowhead.is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.style-line span {
+  display: inline-block;
+  width: 18px;
+  border-top: 2px solid currentcolor;
+  vertical-align: middle;
+}
+
+.style-line--dashed span {
+  border-top-style: dashed;
+}
+
+.style-line--dotted span {
+  border-top-style: dotted;
 }
 
 .selection-actions__row button {

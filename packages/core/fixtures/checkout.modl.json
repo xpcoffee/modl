@@ -1,5 +1,5 @@
 {
-  "formatVersion": 4,
+  "formatVersion": 5,
   "id": "00000000-0000-4000-8000-000000000000",
   "title": "Checkout domain",
   "model": {
@@ -33,7 +33,12 @@
           ]
         },
         "sources": [],
-        "groupId": null
+        "groupId": null,
+        "style": {
+          "fill": "#5b8def",
+          "stroke": "#5b8def",
+          "strokeStyle": "dashed"
+        }
       },
       "33333333-3333-4333-8333-333333333333": {
         "id": "33333333-3333-4333-8333-333333333333",
@@ -68,7 +73,11 @@
           ]
         },
         "sources": [],
-        "groupId": null
+        "groupId": null,
+        "style": {
+          "stroke": "#46a758",
+          "arrowhead": "open"
+        }
       },
       "55555555-5555-4555-8555-555555555555": {
         "id": "55555555-5555-4555-8555-555555555555",

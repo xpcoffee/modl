@@ -86,10 +86,20 @@ function v3ToV4(document: Loose): Loose {
   return { ...document, formatVersion: 4, model: { ...model, elements: migrated } };
 }
 
+/**
+ * 4 -> 5: elements may carry `style`. Nothing to rewrite, since the field is
+ * new and optional; the bump exists so a version 4 build refuses a styled
+ * file rather than stripping its colours on the next save.
+ */
+function v4ToV5(document: Loose): Loose {
+  return { ...document, formatVersion: 5 };
+}
+
 const MIGRATIONS: Record<number, (document: Loose) => Loose> = {
   1: v1ToV2,
   2: v2ToV3,
   3: v3ToV4,
+  4: v4ToV5,
 };
 
 export function migrateDocument(raw: unknown): MigrationResult {

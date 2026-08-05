@@ -3,14 +3,16 @@ import { isConnection } from '@modl/core';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 import { DeleteButton } from './DeleteButton.js';
+import { StyleEditor } from './StyleEditor.js';
 import type { BoardNodeData } from './derive.js';
 
 /**
- * Hide, show, and delete for a multi-selection, under the box that holds it.
+ * Style, hide, show, and delete for a multi-selection, under the box that
+ * holds it.
  *
- * A single selection carries these inside the editor, which travels with the
- * element for free. This reads the live React Flow nodes rather than the
- * document, so it keeps up while a drag is in flight.
+ * A single selection carries its own editor, which travels with the element
+ * for free. This reads the live React Flow nodes rather than the document, so
+ * it keeps up while a drag is in flight.
  */
 export function SelectionActions({ nodes }: { nodes: Node<BoardNodeData>[] }) {
   const state = useAppState();
@@ -53,34 +55,40 @@ export function SelectionActions({ nodes }: { nodes: Node<BoardNodeData>[] }) {
         data-testid="selection-actions"
         style={{ transform: `translate(${(left + right) / 2}px, ${bottom}px)` }}
       >
-        <div className="selection-actions__row">
-          {hideable.length > 0 && (
-            <button
-              type="button"
-              data-testid="hide-selected"
-              onClick={() => {
-                for (const id of hideable) {
-                  store.dispatch({ type: 'set-hidden', id, hidden: true });
-                }
-              }}
-            >
-              Hide {hideable.length}
-            </button>
-          )}
-          {showable.length > 0 && (
-            <button
-              type="button"
-              data-testid="show-selected"
-              onClick={() => {
-                for (const id of showable) {
-                  store.dispatch({ type: 'set-hidden', id, hidden: false });
-                }
-              }}
-            >
-              Show {showable.length}
-            </button>
-          )}
-          <DeleteButton count={selection.length} />
+        {/* One panel for the whole selection: each row edits the elements it
+            can mean something to, so a mixed selection still edits its
+            components' fill. */}
+        <div className="selection-actions__panel">
+          <StyleEditor ids={selection} />
+          <footer className="element-editor__footer">
+            {hideable.length > 0 && (
+              <button
+                type="button"
+                data-testid="hide-selected"
+                onClick={() => {
+                  for (const id of hideable) {
+                    store.dispatch({ type: 'set-hidden', id, hidden: true });
+                  }
+                }}
+              >
+                Hide {hideable.length}
+              </button>
+            )}
+            {showable.length > 0 && (
+              <button
+                type="button"
+                data-testid="show-selected"
+                onClick={() => {
+                  for (const id of showable) {
+                    store.dispatch({ type: 'set-hidden', id, hidden: false });
+                  }
+                }}
+              >
+                Show {showable.length}
+              </button>
+            )}
+            <DeleteButton count={selection.length} />
+          </footer>
         </div>
       </div>
     </ViewportPortal>
