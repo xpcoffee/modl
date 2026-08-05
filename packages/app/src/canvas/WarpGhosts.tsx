@@ -1,5 +1,6 @@
 import { ViewportPortal } from '@xyflow/react';
 import { useGhosts } from './animations.js';
+import { boxCss } from './styling.js';
 
 /**
  * Deleted elements playing their warp-out. The model drops an element the
@@ -23,6 +24,9 @@ export function WarpGhosts() {
             top: ghost.rect.y,
             width: ghost.rect.width,
             height: ghost.rect.height,
+            // The element's own fill and stroke, so a styled element does not
+            // flash back to default colours for its exit.
+            ...boxCss(ghost.style),
           }}
         />
       ))}

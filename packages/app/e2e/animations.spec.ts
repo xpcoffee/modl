@@ -60,7 +60,10 @@ test.describe('gravity waves', () => {
 
   test('a deleted element leaves a warp-out ghost, then an inward wave', async ({ page }) => {
     const grid = page.getByTestId('gravity-grid');
-    await dispatch(page, sampleDomain());
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'set-style', id: IDS.ledger, style: { stroke: '#e05d5d' } },
+    ]);
     // Three entities arrived, so three waves; wait for the field to settle.
     await expect(grid).toHaveAttribute('data-ripples-started', '3');
     await expect(grid).toHaveAttribute('data-ripples', '0');
@@ -75,8 +78,12 @@ test.describe('gravity waves', () => {
       IDS.ledger,
     );
 
-    // The node leaves the tree at once; the ghost plays the exit in its place.
-    await ghostSeen;
+    // The node leaves the tree at once; the ghost plays the exit in its place,
+    // wearing the element's own stroke rather than the default border.
+    const ghost = await ghostSeen;
+    expect(await ghost.evaluate((el) => getComputedStyle(el).borderColor)).toBe(
+      'rgb(224, 93, 93)',
+    );
     await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveCount(0);
     await expect(page.getByTestId(`warp-ghost-${IDS.ledger}`)).toHaveCount(0);
     // One inward wave for the entity; its cascaded connection has no box.

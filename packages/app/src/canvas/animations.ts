@@ -1,5 +1,12 @@
 import { useSyncExternalStore } from 'react';
-import { isRendered, type AppState, type DomainEvent, type Id, type Point } from '@modl/core';
+import {
+  isRendered,
+  type AppState,
+  type DomainEvent,
+  type ElementStyle,
+  type Id,
+  type Point,
+} from '@modl/core';
 import { store } from '../store/store.js';
 
 /**
@@ -46,6 +53,8 @@ interface Rect {
 export interface Ghost {
   id: Id;
   rect: Rect;
+  /** The element's fill and stroke, so the exit keeps its colours. */
+  style?: ElementStyle;
 }
 
 let warping: ReadonlySet<Id> = new Set();
@@ -179,7 +188,8 @@ function warpOut(id: Id, before: AppState): void {
   const rect = rectOf(before, id);
   if (!rect) return;
 
-  ghosts = [...ghosts, { id, rect }];
+  const style = before.document.model.elements[id]?.style;
+  ghosts = [...ghosts, { id, rect, ...(style === undefined ? {} : { style }) }];
   emit();
 
   window.setTimeout(() => {
