@@ -61,6 +61,15 @@ export function EntityNode({ data, selected }: NodeProps<Node<EntityNodeData>>) 
               + {data.memberCount}
             </button>
           )}
+          {data.matchCount > 0 && (
+            <span
+              className="entity-node__matches"
+              data-testid={`match-count-${data.id}`}
+              aria-label={`${data.matchCount} filter ${data.matchCount === 1 ? 'match' : 'matches'} inside`}
+            >
+              {data.matchCount}
+            </span>
+          )}
           <ElementIcon elementType={data.elementType} className="entity-node__icon" />
         </div>
 
