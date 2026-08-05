@@ -19,6 +19,9 @@ export default defineConfig({
     baseURL: `http://localhost:${port}`,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    // Animations off by default, so timing never shifts what a spec measures.
+    // The animation specs opt back in per describe block.
+    contextOptions: { reducedMotion: 'reduce' },
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {

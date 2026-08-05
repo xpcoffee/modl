@@ -14,5 +14,6 @@ A decision earns a file when reversing it later would be expensive: it shapes th
 | [006](006-pr-previews.md) | Each pull request publishes a preview to GitHub Pages |
 | [007](007-element-styles.md) | Style lives on the element, and the last choice follows the reader |
 | [009](009-viewing-tools.md) | Viewing tools (hide, highlight, pan-to-relation) are session state, composed by one emphasis rule |
+| [010](010-gravity-wave-art-direction.md) | Motion speaks the language of gravity waves, app-side only |
 
 The build order these decisions were first applied in lives in [the bootstrap spec](../specs/001-bootstrap.md).

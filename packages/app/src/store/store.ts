@@ -9,8 +9,20 @@ import {
   type Command,
   type CommandResult,
   type Document,
+  type DomainEvent,
   type TraceEntry,
 } from '@modl/core';
+
+/**
+ * Sees the events of each accepted command, with the state either side of it.
+ * The before-state is how a listener reads an element that the command just
+ * deleted.
+ */
+export type DomainEventListener = (
+  events: DomainEvent[],
+  before: AppState,
+  after: AppState,
+) => void;
 
 /**
  * Holds session state and the trace. The UI dispatches commands and never
@@ -20,6 +32,7 @@ export class Store {
   private state: AppState;
   private recorder = new TraceRecorder();
   private listeners = new Set<() => void>();
+  private eventListeners = new Set<DomainEventListener>();
   /**
    * Bumped whenever a whole document arrives. The canvas frames the board on
    * a load, and only on a load: doing it whenever nodes appear moved the
@@ -38,12 +51,22 @@ export class Store {
     return () => this.listeners.delete(listener);
   };
 
+  /** Presentation-side effects (animations) hang off events, not off state. */
+  subscribeEvents = (listener: DomainEventListener): (() => void) => {
+    this.eventListeners.add(listener);
+    return () => this.eventListeners.delete(listener);
+  };
+
   dispatch = (command: Command): CommandResult => {
+    const before = this.state;
     const result = apply(this.state, command);
     this.recorder.record(command, result);
     if (result.ok) {
       this.state = result.state;
       if (result.events.some((event) => event.type === 'document-loaded')) this.loads += 1;
+      // Event listeners run first, so what they derive is in place before the
+      // state listeners trigger a render.
+      for (const listener of this.eventListeners) listener(result.events, before, result.state);
       this.emit();
     }
     return result;
