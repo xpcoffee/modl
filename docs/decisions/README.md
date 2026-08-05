@@ -17,5 +17,6 @@ A decision earns a file when reversing it later would be expensive: it shapes th
 | [009](009-viewing-tools.md) | Viewing tools (hide, highlight, pan-to-relation) are session state, composed by one emphasis rule |
 | [010](010-gravity-wave-art-direction.md) | Motion speaks the language of gravity waves, app-side only |
 | [011](011-expansion-tooling.md) | Expansion tooling batches set-expanded over a scope of items, read as one group |
+| [012](012-selection-gestures.md) | Selection gestures compute the next selection, then dispatch one set-selection |
 
 The build order these decisions were first applied in lives in [the bootstrap spec](../specs/001-bootstrap.md).
