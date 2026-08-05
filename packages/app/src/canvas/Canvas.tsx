@@ -39,6 +39,7 @@ import { ConnectionEdge } from './ConnectionEdge.js';
 import { ArrowMarkers } from './ArrowMarkers.js';
 import { PlacementPreview } from './PlacementPreview.js';
 import { arm, disarm, getPending, usePending } from './placement.js';
+import { HistoryControls } from './HistoryControls.js';
 import { PanRelations } from './PanRelations.js';
 import { SelectionActions } from './SelectionActions.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
@@ -489,7 +490,9 @@ export function Canvas() {
       >
         <GravityGrid />
         <WarpGhosts />
-        <Controls />
+        <Controls>
+          <HistoryControls />
+        </Controls>
         <SelectionActions nodes={nodes} />
         <PanRelations nodes={nodes} />
       </ReactFlow>

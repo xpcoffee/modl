@@ -2596,21 +2596,28 @@ test.describe('undo and redo', () => {
     expect(await serialize(page)).toBe(before);
   });
 
-  test('toolbar buttons follow the history and drive it', async ({ page }) => {
-    await expect(page.getByTestId('undo')).toBeDisabled();
-    await expect(page.getByTestId('redo')).toBeDisabled();
+  test('the board controls carry undo and redo buttons that follow the history', async ({ page }) => {
+    // They live in the control cluster with the zoom buttons.
+    const controls = page.locator('.react-flow__controls');
+    await expect(controls.getByTestId('board-undo')).toBeVisible();
+    await expect(controls.getByTestId('board-redo')).toBeVisible();
+
+    // An empty history disables both.
+    await expect(page.getByTestId('board-undo')).toBeDisabled();
+    await expect(page.getByTestId('board-redo')).toBeDisabled();
 
     await dispatch(page, sampleDomain());
-    await expect(page.getByTestId('undo')).toBeEnabled();
-    await expect(page.getByTestId('redo')).toBeDisabled();
+    await expect(page.getByTestId('board-undo')).toBeEnabled();
+    await expect(page.getByTestId('board-redo')).toBeDisabled();
 
-    await page.getByTestId('undo').click();
-    await expect(page.getByTestId('redo')).toBeEnabled();
+    await page.getByTestId('board-undo').click();
+    await expect(page.getByTestId('board-redo')).toBeEnabled();
     // sampleDomain ends with a set-tag on the ledger, so that came off first.
     expect((await getDocument(page)).model.elements[IDS.ledger]?.tags['team']).toBeUndefined();
 
-    await page.getByTestId('redo').click();
+    await page.getByTestId('board-redo').click();
     expect((await getDocument(page)).model.elements[IDS.ledger]?.tags['team']).toEqual(['payments']);
+    await expect(page.getByTestId('board-redo')).toBeDisabled();
   });
 
   test('selection does not enter the history, and does not kill redo', async ({ page }) => {
@@ -2619,7 +2626,7 @@ test.describe('undo and redo', () => {
     await page.keyboard.press('Control+z');
     await page.getByTestId(`entity-${IDS.ui}`).click();
 
-    await expect(page.getByTestId('redo')).toBeEnabled();
+    await expect(page.getByTestId('board-redo')).toBeEnabled();
     await page.keyboard.press('Control+y');
     expect((await getDocument(page)).model.elements[IDS.ledger]?.tags['team']).toEqual(['payments']);
   });

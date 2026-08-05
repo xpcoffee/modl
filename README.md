@@ -109,7 +109,7 @@ Use that path rather than `npx playwright install`, which fetches whatever versi
 - **Reroute** a line by selecting it and clicking a hollow handle to add a bend. Drag a bend to move it, double-click it to remove it. The editor toggles an arrowhead at either end
 - **Style** the selection from the same editor: a fill colour for components (drawn mostly transparent), a stroke colour and line style for anything, and the arrowhead glyph for connections. A multi-selection edits everything it can: fill applies to the selected components, arrowheads to the selected connections. The last choice follows onto whatever you create next
 - **Delete** removes the selection, on either Delete or Backspace, or with the trash button
-- **Undo** with Ctrl+Z, redo with Ctrl+Y or Ctrl+Shift+Z, or use the toolbar buttons. Every command is undoable, including loading a document; selection, filter, and camera changes are skipped. See [decision 008](docs/decisions/008-undo-redo.md)
+- **Undo** with Ctrl+Z, redo with Ctrl+Y or Ctrl+Shift+Z, or the arrow buttons in the zoom control cluster. Every command is undoable, including loading a document; selection, filter, and camera changes are skipped. See [decision 008](docs/decisions/008-undo-redo.md)
 - **Save** and **Load** a `.modl.json` file, and **Export trace** for the session's command log
 
 ### Producing a document from another tool
