@@ -1078,8 +1078,8 @@ select {
   pointer-events: none;
 }
 
-/* Durations here match WARP_MS in animations.ts: the ripple timer waits for
-   the CSS warp to finish. */
+/* Durations pair with WARP_IN_MS and WARP_OUT_MS in animations.ts: the
+   ripple timer waits for the CSS warp to finish. */
 /* Scoped to the visual box. On entities and groups the handles are siblings
    and must never scale, or React Flow caches their mid-animation positions
    for edge anchoring. A junction's handles stay inside: they sit at its
@@ -1105,18 +1105,20 @@ select {
   }
 }
 
-/* Echoes .entity-node, since it stands where one just stood. */
+/* Echoes .entity-node, since it stands where one just stood. The duration
+   pairs with WARP_OUT_MS in animations.ts; --ghost-opacity carries a muted
+   element's resting opacity so its exit does not flash to full. */
 .warp-ghost {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #232733;
   pointer-events: none;
-  animation: warp-out 0.3s cubic-bezier(0.6, 0, 0.8, 0.5) forwards;
+  animation: warp-out 0.2s cubic-bezier(0.6, 0, 0.8, 0.5) forwards;
 }
 
 @keyframes warp-out {
   from {
-    opacity: 1;
+    opacity: var(--ghost-opacity, 1);
     transform: scale(1);
   }
 

@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import {
+  boardEmphasis,
   isRendered,
   type AppState,
   type DomainEvent,
@@ -18,8 +19,13 @@ import { store } from '../store/store.js';
  * docs/decisions/010-gravity-wave-art-direction.md.
  */
 
-/** Warp in/out duration. */
-export const WARP_MS = 300;
+/**
+ * Warp durations. Each pairs with a keyframe of the same length in
+ * styles.css (warp-in, warp-out): these timers decide when the ripple starts
+ * and when a ghost leaves, the keyframes draw the warp itself.
+ */
+export const WARP_IN_MS = 300;
+export const WARP_OUT_MS = 200;
 /** Ripple duration. The wave still starts only once the warp has finished. */
 export const RIPPLE_MS = 300;
 
@@ -55,6 +61,8 @@ export interface Ghost {
   rect: Rect;
   /** The element's fill and stroke, so the exit keeps its colours. */
   style?: ElementStyle;
+  /** True when the element drew muted, so the exit keeps that opacity too. */
+  dimmed: boolean;
 }
 
 let warping: ReadonlySet<Id> = new Set();
@@ -174,7 +182,7 @@ function warpIn(id: Id, after: AppState): void {
       );
     }
     emit();
-  }, WARP_MS);
+  }, WARP_IN_MS);
 }
 
 function warpOut(id: Id, before: AppState): void {
@@ -189,7 +197,8 @@ function warpOut(id: Id, before: AppState): void {
   if (!rect) return;
 
   const style = before.document.model.elements[id]?.style;
-  ghosts = [...ghosts, { id, rect, ...(style === undefined ? {} : { style }) }];
+  const dimmed = boardEmphasis(before).muted.has(id);
+  ghosts = [...ghosts, { id, rect, dimmed, ...(style === undefined ? {} : { style }) }];
   emit();
 
   window.setTimeout(() => {
@@ -201,7 +210,7 @@ function warpOut(id: Id, before: AppState): void {
       deletionWave(rect),
     );
     emit();
-  }, WARP_MS);
+  }, WARP_OUT_MS);
 }
 
 function onDomainEvents(events: DomainEvent[], before: AppState, after: AppState): void {

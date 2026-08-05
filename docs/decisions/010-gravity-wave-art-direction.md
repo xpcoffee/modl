@@ -13,7 +13,7 @@ The canvas is a field, in the space-time sense: the dot grid is its visible medi
 **The vocabulary.**
 
 - A **ripple** is a radial wave through the dot grid, carried by displacement and light together: a narrow wavefront travels out from (or in toward) a point, each dot shifts along the radial line as the front passes and tints toward the accent blue (#5b8def) under a soft halo, and both effects share the same damping in time and distance. Displacement alone was too subtle to read on the dark background. It is still a distortion of the medium, not water rings: no drawn circles, no fading outlines, only the grid's own dots moving and lighting.
-- A **warp** is an element entering or leaving the field: scale and blur over 0.3s, as if condensing out of it or dissolving back in.
+- A **warp** is an element entering or leaving the field: scale and blur, as if condensing out of it or dissolving back in. The ghost that plays a deleted element's exit wears the element's own fill, stroke, and muted opacity, so nothing changes its look in the moment it leaves.
 
 **The grammar.**
 
@@ -24,7 +24,7 @@ The canvas is a field, in the space-time sense: the dot grid is its visible medi
 
 **The timing rules.**
 
-- Warp in/out: 0.3s.
+- Warp-in: 0.3s. Warp-out: 0.2s, revised down from 0.3s on PR #15 review; leaving reads faster than arriving.
 - Ripple: 0.3s. Issue #13 proposed ~0.5s ripples that outlive the warp; at 0.5s the wave lingered after the element had settled, so review on PR #15 revised it down.
 - Ripple follows warp, never overlaps it.
 
