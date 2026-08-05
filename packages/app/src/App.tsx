@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
+import { visibleElementIds } from '@modl/core';
 import { installAnimations } from './canvas/animations.js';
 import { Canvas } from './canvas/Canvas.js';
 import { FilterBar } from './panels/FilterBar.js';
@@ -29,12 +30,36 @@ function useUndoShortcuts(): void {
   }, []);
 }
 
+/**
+ * Ctrl+A selects everything drawn on the board: elements outside collapsed
+ * groups and not put away, plus the connections between them. See
+ * docs/decisions/012-selection-gestures.md.
+ */
+function useSelectAllShortcut(): void {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+      if (event.key.toLowerCase() !== 'a') return;
+
+      // A focused field keeps the browser's select-all over its own text.
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, [contenteditable]')) return;
+
+      event.preventDefault();
+      store.dispatch({ type: 'set-selection', ids: visibleElementIds(store.getState()) });
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+}
+
 export function App() {
   useEffect(() => {
     installAnimations();
     markReady();
   }, []);
   useUndoShortcuts();
+  useSelectAllShortcut();
 
   return (
     <ReactFlowProvider>
