@@ -60,11 +60,27 @@ describe('undo', () => {
     expect(result.error.code).toBe('nothing-to-undo');
   });
 
-  it('emits history-moved with the new cursor', () => {
+  it('emits history-moved plus the element diff, in command vocabulary', () => {
     const result = apply(base, { type: 'undo' });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.events).toEqual([{ type: 'history-moved', direction: 'undo', cursor: 1 }]);
+    // B left the board, said the same way delete-element would say it, so an
+    // event consumer reacts to undo like any other change.
+    expect(result.events).toEqual([
+      { type: 'history-moved', direction: 'undo', cursor: 1 },
+      { type: 'element-deleted', id: B },
+    ]);
+  });
+
+  it('redo announces the restored element as created', () => {
+    const undone = must(base, { type: 'undo' });
+    const result = apply(undone, { type: 'redo' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.events).toEqual([
+      { type: 'history-moved', direction: 'redo', cursor: 2 },
+      { type: 'element-created', id: B },
+    ]);
   });
 
   it('skips a rejected command: it never entered the history', () => {

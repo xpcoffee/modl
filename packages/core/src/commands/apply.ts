@@ -87,10 +87,21 @@ function moveCursor(state: AppState, cursor: number, commandType: 'undo' | 'redo
     if (result.ok) refolded = result.state;
   }
 
+  // Undo speaks the same event vocabulary as the commands it rewinds, so a
+  // consumer reading creations and deletions (the warp animations, say)
+  // reacts to a refold like any other change.
+  const events: DomainEvent[] = [{ type: 'history-moved', direction: commandType, cursor }];
+  const elements = refolded.document.model.elements;
+  for (const id of Object.keys(elements)) {
+    if (!state.document.model.elements[id]) events.push({ type: 'element-created', id });
+  }
+  for (const id of Object.keys(state.document.model.elements)) {
+    if (!elements[id]) events.push({ type: 'element-deleted', id });
+  }
+
   // The camera, filter, selection, and expansion are what the user is
   // looking at, not what they did: undoing a move must not also fling the
   // viewport back. They carry over, pruned to elements that still exist.
-  const elements = refolded.document.model.elements;
   return ok(
     {
       ...refolded,
@@ -101,7 +112,7 @@ function moveCursor(state: AppState, cursor: number, commandType: 'undo' | 'redo
       hidden: state.hidden.filter((id) => elements[id] !== undefined),
       selectionHighlight: state.selectionHighlight,
     },
-    [{ type: 'history-moved', direction: commandType, cursor }],
+    events,
   );
 }
 
