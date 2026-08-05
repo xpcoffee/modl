@@ -50,6 +50,21 @@ export interface AppState {
    * rather than a view of one document, so a document load keeps it.
    */
   selectionHighlight: boolean;
+  undo: UndoState;
+}
+
+/**
+ * The session's undo history. Undo refolds this log up to the cursor rather
+ * than inverting the last command, so every command the reducer accepts is
+ * undoable without inverse logic. See docs/decisions/008-undo-redo.md.
+ */
+export interface UndoState {
+  /** The empty document the session opened with. A refold starts here. */
+  base: { id: Id; title: string };
+  /** Applied commands that changed the document, in dispatch order. */
+  history: Command[];
+  /** How many history entries are in effect. Undo moves it back, redo forward. */
+  cursor: number;
 }
 
 /**
@@ -109,7 +124,9 @@ export type Command =
   | { type: 'set-view'; pan: Point; zoom: number }
   | { type: 'set-sources'; id: Id; sources: SourceRef[] }
   | { type: 'load-document'; document: Document }
-  | { type: 'merge-document'; document: Document };
+  | { type: 'merge-document'; document: Document }
+  | { type: 'undo' }
+  | { type: 'redo' };
 
 export type CommandType = Command['type'];
 
@@ -126,7 +143,9 @@ export type ErrorCode =
   | 'wrong-kind'
   | 'group-cycle'
   | 'not-a-group'
-  | 'unknown-command';
+  | 'unknown-command'
+  | 'nothing-to-undo'
+  | 'nothing-to-redo';
 
 export interface CommandError {
   code: ErrorCode;
@@ -147,7 +166,8 @@ export type DomainEvent =
   | { type: 'selection-changed'; ids: Id[] }
   | { type: 'filter-changed'; expression: string }
   | { type: 'view-changed'; view: View }
-  | { type: 'document-loaded'; id: Id };
+  | { type: 'document-loaded'; id: Id }
+  | { type: 'history-moved'; direction: 'undo' | 'redo'; cursor: number };
 
 export type CommandResult =
   | { ok: true; state: AppState; events: DomainEvent[] }

@@ -11,6 +11,8 @@ export interface DomainMapperApi {
   getTrace(): TraceEntry[];
   replay(entries: TraceEntry[]): { divergences: number };
   replayJson(text: string): ReturnType<typeof replayFromJson>;
+  undo(): CommandResult;
+  redo(): CommandResult;
   reset(): void;
   ready: boolean;
 }
@@ -36,6 +38,8 @@ export function installRuntimeApi(): void {
     getTrace: store.getTrace,
     replay: store.replayTrace,
     replayJson: replayFromJson,
+    undo: () => store.dispatch({ type: 'undo' }),
+    redo: () => store.dispatch({ type: 'redo' }),
     reset: () => {
       // The remembered style is session state too; a fresh session starts plain.
       forgetStyle();

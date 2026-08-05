@@ -13,6 +13,7 @@ A decision earns a file when reversing it later would be expensive: it shapes th
 | [005](005-headless-core-tests.md) | Logic is tested headless, with a thin browser suite over it |
 | [006](006-pr-previews.md) | Each pull request publishes a preview to GitHub Pages |
 | [007](007-element-styles.md) | Style lives on the element, and the last choice follows the reader |
+| [008](008-undo-redo.md) | Undo refolds the command log rather than inverting commands |
 | [009](009-viewing-tools.md) | Viewing tools (hide, highlight, pan-to-relation) are session state, composed by one emphasis rule |
 | [010](010-gravity-wave-art-direction.md) | Motion speaks the language of gravity waves, app-side only |
 

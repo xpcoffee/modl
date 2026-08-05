@@ -426,6 +426,15 @@ select {
   background: #2a2f3d;
 }
 
+/* React Flow puts pointer-events: none on a disabled control, which lets a
+   click fall through to the pane and create a component under the button.
+   A disabled control keeps its pixels: the browser drops events on a
+   disabled button, so the click dies here instead of reaching the pane. */
+.react-flow__controls .react-flow__controls-button:disabled {
+  pointer-events: auto;
+  cursor: default;
+}
+
 .react-flow__attribution {
   display: none;
 }
