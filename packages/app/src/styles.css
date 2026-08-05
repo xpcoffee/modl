@@ -130,6 +130,38 @@ select {
   font-size: 12px;
 }
 
+/* Whether selecting mutes the rest of the board. */
+.filter-bar__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* What the reader has hidden, and the way back for each entry. */
+.filter-bar__hidden {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.filter-bar__hidden span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.filter-bar__hidden button {
+  padding: 3px 8px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.filter-bar__hidden button:hover {
+  opacity: 1;
+}
+
 /* Canvas */
 
 .canvas {
@@ -340,6 +372,16 @@ select {
 
 .connection-edge.is-selected {
   stroke: var(--accent);
+}
+
+/* Pointed at by the pan-to-relation control. */
+.connection-edge.is-highlighted {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.edge-label.is-highlighted {
+  border-color: var(--accent);
 }
 
 /* React Flow ships light-theme defaults, so the dark surface needs these. */
@@ -754,13 +796,92 @@ select {
   border-top-style: dotted;
 }
 
+.selection-actions__row button {
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+
 /* Last row of the editor, so delete sits below the panel it belongs to. */
 .element-editor__footer {
   display: flex;
   justify-content: flex-end;
+  gap: 6px;
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
+}
+
+.element-editor__hide {
+  padding: 4px 8px;
+  border-radius: 8px;
+  color: var(--muted);
+}
+
+.element-editor__hide[aria-pressed='true'] {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* Pan to relation: a roller menu of connected elements. */
+
+.pan-relations {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  /* Above the selected node: React Flow's elevateNodesOnSelect adds 1000 to
+     the 1000 the app sets, so anything under 2000 slides behind the very
+     element the roller belongs to. */
+  z-index: 2500;
+  pointer-events: all;
+}
+
+/* Roller menu: entrance pill, options rolling through the middle slot. */
+
+.roller-menu {
+  position: relative;
+}
+
+.roller-menu__entrance {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.roller-menu__entrance:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* Anchored on the entrance's middle, so the active option takes its place. */
+.roller-menu__viewport {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+}
+
+.roller-menu__option {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 3px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: var(--panel);
+  white-space: nowrap;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* The roll: each option slides and fades to its new slot. */
+  transition: transform 0.15s ease-out, opacity 0.15s ease-out;
+}
+
+.roller-menu__option.is-active {
+  border-color: var(--accent);
+  background: rgb(91 141 239 / 15%);
+  color: var(--text);
 }
 
 /* A stack of connections collapsing onto one pair of anchors */

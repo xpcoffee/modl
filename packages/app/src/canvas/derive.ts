@@ -1,4 +1,5 @@
 import {
+  boardEmphasis,
   connectionAnchors,
   isConnection,
   isEntity,
@@ -6,7 +7,6 @@ import {
   isGroup,
   isRendered,
   membersOf,
-  selectIds,
   type AppState,
   type ConnectionType,
   type Connection,
@@ -28,6 +28,8 @@ export interface EntityNodeData extends Record<string, unknown> {
   elementType: EntityType;
   tags: Record<string, string[]>;
   dimmed: boolean;
+  /** True when the reader has put this element away. Drives the editor's toggle. */
+  hidden: boolean;
   editing: boolean;
   /** True only when this is the single selected element, which opens the editor. */
   soleSelection: boolean;
@@ -50,6 +52,7 @@ export interface ConnectionNodeData extends Record<string, unknown> {
   shape: NodeShape;
   tags: Record<string, string[]>;
   dimmed: boolean;
+  hidden: boolean;
   editing: boolean;
   soleSelection: boolean;
   parentOrigin: Point;
@@ -66,6 +69,8 @@ export interface ConnectionEdgeData extends Record<string, unknown> {
   elementType: ConnectionType;
   tags: Record<string, string[]>;
   dimmed: boolean;
+  /** True while the pan-to-relation control points at this connection. */
+  highlighted: boolean;
   editing: boolean;
   soleSelection: boolean;
   waypoints: Point[];
@@ -85,6 +90,8 @@ export interface DeriveOptions {
   editingId: Id | null;
   /** A selection box is being dragged, so element editors stay shut. */
   boxSelecting: boolean;
+  /** Connection the pan-to-relation control is pointing at, drawn emphasised. */
+  highlightId: Id | null;
 }
 
 interface Rect {
@@ -175,7 +182,8 @@ function depthOf(elements: Record<Id, Element>, id: Id): number {
 export function deriveNodes(state: AppState, options: DeriveOptions): Node<BoardNodeData>[] {
   const elements = state.document.model.elements;
   const expanded = new Set(state.expanded);
-  const visible = selectIds(elements, state.filter);
+  const { muted } = boardEmphasis(state);
+  const hiddenSet = new Set(state.hidden);
   const selected = new Set(state.selection);
   const soleSelection = onlySelected(state, options);
   const rects = measure(state, expanded);
@@ -201,7 +209,8 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Board
           description: node.description,
           shape: node.shape,
           tags: node.tags,
-          dimmed: !visible.has(node.id),
+          dimmed: muted.has(node.id),
+          hidden: hiddenSet.has(node.id),
           editing: options.editingId === node.id,
           soleSelection: soleSelection === node.id,
           parentOrigin,
@@ -240,7 +249,8 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Board
         description: entity.description,
         elementType: entity.type,
         tags: entity.tags,
-        dimmed: !visible.has(entity.id),
+        dimmed: muted.has(entity.id),
+        hidden: hiddenSet.has(entity.id),
         editing: options.editingId === entity.id,
         soleSelection: soleSelection === entity.id,
         memberCount: membersOf(elements, entity.id).length,
@@ -305,7 +315,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
   const elements = state.document.model.elements;
   const expanded = new Set(state.expanded);
   const rects = measure(state, expanded);
-  const visible = selectIds(elements, state.filter);
+  const { muted, suppressed } = boardEmphasis(state);
   const selected = new Set(state.selection);
   const soleSelection = onlySelected(state, options);
 
@@ -319,6 +329,9 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
 
   for (const element of Object.values(elements)) {
     if (!isConnection(element)) continue;
+    // A suppressed connection touches something hidden, and hiding means the
+    // line goes away rather than fading.
+    if (suppressed.has(element.id)) continue;
 
     const anchors = connectionAnchors(elements, element.id, expanded);
     if (!anchors) continue;
@@ -375,7 +388,8 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           description: connections.map((c) => describeConnection(elements, c)).join('\n'),
           elementType: connections[0]!.type,
           tags: {},
-          dimmed: !connections.some((c) => visible.has(c.id)),
+          dimmed: connections.every((c) => muted.has(c.id)),
+          highlighted: connections.some((c) => c.id === options.highlightId),
           editing: false,
           soleSelection: false,
           waypoints: [],
@@ -438,7 +452,8 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           description: element.description,
           elementType: element.type,
           tags: element.tags,
-          dimmed: !visible.has(element.id),
+          dimmed: muted.has(element.id),
+          highlighted: options.highlightId === element.id,
           editing: options.editingId === element.id,
           soleSelection: soleSelection === element.id,
           waypoints: layoutOf(state, element.id).waypoints,

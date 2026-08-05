@@ -78,6 +78,7 @@ export function GroupNode({ data, selected }: NodeProps<Node<EntityNodeData>>) {
             <ElementEditor
               id={data.id}
               kind="entity"
+              hidden={data.hidden}
               elementType={data.elementType}
               description={data.description}
               tags={data.tags}

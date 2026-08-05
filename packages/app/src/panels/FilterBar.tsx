@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { parseFilter, tagKeys, tagValues } from '@modl/core';
+import { parseFilter, readableName, tagKeys, tagValues } from '@modl/core';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 
 /**
- * Filters the board by tag.
+ * Filters the board by tag, and lists what the reader has hidden.
  *
  * The text box keeps its own state so a half-typed expression stays on screen.
  * Only a parseable expression reaches the command bus, which keeps the trace
@@ -74,6 +74,21 @@ export function FilterBar() {
         </span>
       )}
 
+      {/* Selecting mutes the rest of the board by default; not every reader
+          wants that, so the preference sits with the other focusing tools. */}
+      <label className="filter-bar__toggle">
+        <input
+          type="checkbox"
+          data-testid="highlight-toggle"
+          checked={state.selectionHighlight}
+          onChange={(event) =>
+            store.dispatch({ type: 'set-selection-highlight', enabled: event.target.checked })
+          }
+        />
+        <span>Highlight selection</span>
+      </label>
+
+
       {keys.length > 0 && (
         <div className="filter-bar__keys">
           {keys.map((key) => (
@@ -83,6 +98,36 @@ export function FilterBar() {
           ))}
           <button type="button" data-testid="filter-clear" onClick={() => change('')}>
             clear
+          </button>
+        </div>
+      )}
+
+      {/* Hidden elements are muted on the board too; this list is the faster
+          way back when several are put away. */}
+      {state.hidden.length > 0 && (
+        <div className="filter-bar__hidden" data-testid="hidden-list">
+          <span>Hidden</span>
+          {state.hidden.map((id) => (
+            <button
+              key={id}
+              type="button"
+              data-testid={`unhide-${id}`}
+              aria-label={`Show ${elements[id]?.title || readableName(id)}`}
+              onClick={() => store.dispatch({ type: 'set-hidden', id, hidden: false })}
+            >
+              {elements[id]?.title || readableName(id)} ×
+            </button>
+          ))}
+          <button
+            type="button"
+            data-testid="unhide-all"
+            onClick={() => {
+              for (const id of state.hidden) {
+                store.dispatch({ type: 'set-hidden', id, hidden: false });
+              }
+            }}
+          >
+            show all
           </button>
         </div>
       )}

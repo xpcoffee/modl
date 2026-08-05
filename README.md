@@ -103,6 +103,9 @@ Use that path rather than `npx playwright install`, which fetches whatever versi
 - **Hover** an element for its description and tags. A type icon is always visible: a cube for a component, a ring for a state, a footprint for a step
 - **Group** any selection, or none, to start a container. Drag elements in and out of it, resize it by its corners, and collapse or expand to move between levels of detail. Connections into a collapsed group re-point at the group
 - **Filter** with expressions like `team=payments`, `-deprecated`, or `team=payments tier=1`. Non-matching elements dim rather than disappear, and the input suggests recorded values
+- **Hide** an element from its editor, or several at once from the selection actions, which also offer Show for the hidden part of a mixed selection. Hiding deselects, the element dims, its connections leave the board, and the filter bar lists what is hidden. Connections cannot be hidden directly: they leave only with an endpoint
+- **Select** anything to highlight its neighbourhood: the selection, its connections, and the elements at their other ends stay readable while the rest of the board dims. A checkbox in the filter bar turns this off
+- **Pan to a relation** with the roller beside a selected element, a pill naming its connection count. Hover opens it into a vertical list rolling through the middle; arrow keys or the mouse wheel turn it, the middle option's connection is emphasised on the board, and clicking the middle option pans the camera to that element
 - **Reroute** a line by selecting it and clicking a hollow handle to add a bend. Drag a bend to move it, double-click it to remove it. The editor toggles an arrowhead at either end
 - **Style** the selection from the same editor: a fill colour for components (drawn mostly transparent), a stroke colour and line style for anything, and the arrowhead glyph for connections. A multi-selection edits everything it can: fill applies to the selected components, arrowheads to the selected connections. The last choice follows onto whatever you create next
 - **Delete** removes the selection, on either Delete or Backspace, or with the trash button
@@ -143,7 +146,7 @@ node packages/app/e2e/screenshot.mjs /tmp/board.png "team=payments"
 
 ## Status
 
-Runnable: model, commands, trace and replay, all three paradigms, groups with collapse and expand, filtering, colours and styles, the canvas, the inspector, and save/load. 242 unit tests and 128 browser tests.
+Runnable: model, commands, trace and replay, all three paradigms, groups with collapse and expand, filtering, colours and styles, hiding, selection highlight, pan-to-relation, the canvas, the inspector, and save/load. 275 unit tests and 151 browser tests.
 
 Undo is still open. See [the vision](docs/vision.md).
 

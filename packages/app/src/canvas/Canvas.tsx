@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   applyNodeChanges,
   Background,
@@ -40,8 +40,10 @@ import { ConnectionEdge } from './ConnectionEdge.js';
 import { ArrowMarkers } from './ArrowMarkers.js';
 import { PlacementPreview } from './PlacementPreview.js';
 import { arm, disarm, getPending, usePending } from './placement.js';
+import { PanRelations } from './PanRelations.js';
 import { SelectionActions } from './SelectionActions.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
+import { useHighlightId } from './highlight.js';
 import { lastConnectionStyle, lastEntityStyle } from './styleMemory.js';
 
 const NODE_TYPES = { entity: EntityNode, group: GroupNode, 'connection-node': ConnectionNodeView };
@@ -57,14 +59,18 @@ interface CanvasChange {
 export function Canvas() {
   const state = useAppState();
   const editingId = useEditingId();
+  const highlightId = useHighlightId();
   const loadCount = useLoadCount();
-  const { screenToFlowPosition, fitView } = useReactFlow();
+  const { screenToFlowPosition, fitView, setViewport } = useReactFlow();
 
   // A selection box in flight keeps element editors shut.
   const [boxSelecting, setBoxSelecting] = useState(false);
   const pending = usePending();
   const [draft, setDraft] = useState<{ from: Point; to: Point | null } | null>(null);
-  const options = useMemo(() => ({ editingId, boxSelecting }), [editingId, boxSelecting]);
+  const options = useMemo(
+    () => ({ editingId, boxSelecting, highlightId }),
+    [editingId, boxSelecting, highlightId],
+  );
   const derived = useMemo(() => deriveNodes(state, options), [state, options]);
   const edges = useMemo(() => deriveEdges(state, options), [state, options]);
 
@@ -99,6 +105,23 @@ export function Canvas() {
     const timer = window.setTimeout(() => void fitView({ padding: 0.15 }), 0);
     return () => window.clearTimeout(timer);
   }, [loadCount, fitView]);
+
+  /**
+   * The camera follows set-view commands, so a pan issued through the bus (the
+   * pan-to-relation control, an agent, a replay) actually moves the board.
+   * Hand-panning never dispatches set-view, so nothing fights the pointer, and
+   * a document load is left to the fitView above.
+   */
+  const seenView = useRef({ view: state.document.view, loads: loadCount });
+  useEffect(() => {
+    const prior = seenView.current;
+    seenView.current = { view: state.document.view, loads: loadCount };
+    if (state.document.view === prior.view || loadCount !== prior.loads) return;
+    void setViewport(
+      { x: state.document.view.pan.x, y: state.document.view.pan.y, zoom: state.document.view.zoom },
+      { duration: 300 },
+    );
+  }, [state.document.view, loadCount, setViewport]);
 
   const onNodeDragStop = useCallback(
     (_: unknown, __: Node, dragged: Node<BoardNodeData>[]) => {
@@ -446,6 +469,7 @@ export function Canvas() {
         <Background />
         <Controls />
         <SelectionActions nodes={nodes} />
+        <PanRelations nodes={nodes} />
       </ReactFlow>
     </div>
   );

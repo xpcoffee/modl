@@ -19,6 +19,7 @@ import { COLOR_PATTERN } from '../model/schema.js';
 import { isConnectionType, isEntityType } from '../model/paradigm.js';
 import { parseFilter } from '../query/filter.js';
 import { membersOf, wouldCycle } from '../query/groups.js';
+import { hiddenElementIds, suppressedConnectionIds } from '../query/view.js';
 import { loadDocument } from '../serialize/serialize.js';
 import type {
   AppState,
@@ -497,6 +498,7 @@ export function apply(state: AppState, command: Command): CommandResult {
           document: { ...state.document, model: { elements }, layout },
           selection: state.selection.filter((id) => !removed.has(id)),
           expanded: state.expanded.filter((id) => !removed.has(id)),
+          hidden: state.hidden.filter((id) => !removed.has(id)),
         },
         events,
       );
@@ -618,6 +620,52 @@ export function apply(state: AppState, command: Command): CommandResult {
       ]);
     }
 
+    case 'set-hidden': {
+      const element = state.document.model.elements[command.id];
+      if (!element) return unknown(command.type, command.id);
+      // A hidden connection leaves no visible remnant to bring it back from.
+      // Connections leave the board only when an endpoint hides.
+      if (isConnection(element)) {
+        return fail(
+          command.type,
+          'wrong-kind',
+          `element ${command.id} is a connection, which hides with its endpoints`,
+        );
+      }
+
+      const hidden = new Set(state.hidden);
+      if (command.hidden) hidden.add(command.id);
+      else hidden.delete(command.id);
+      const hiddenList = [...hidden].sort();
+
+      const events: DomainEvent[] = [
+        { type: 'visibility-changed', id: command.id, hidden: command.hidden },
+      ];
+
+      // Hiding deselects what it takes off the board: the element, anything
+      // hidden with it inside a group, and the connections that leave with
+      // them. A selection surviving its own hide kept the highlight muting
+      // everything except invisible lines.
+      let selection = state.selection;
+      if (command.hidden) {
+        const elements = state.document.model.elements;
+        const closed = hiddenElementIds(elements, hiddenList);
+        const suppressed = suppressedConnectionIds(elements, new Set(state.expanded), closed);
+        selection = state.selection.filter((id) => !closed.has(id) && !suppressed.has(id));
+        if (selection.length !== state.selection.length) {
+          events.push({ type: 'selection-changed', ids: [...selection] });
+        }
+      }
+
+      return ok({ ...state, hidden: hiddenList, selection }, events);
+    }
+
+    case 'set-selection-highlight': {
+      return ok({ ...state, selectionHighlight: command.enabled }, [
+        { type: 'selection-highlight-changed', enabled: command.enabled },
+      ]);
+    }
+
     case 'set-selection': {
       for (const id of command.ids) {
         if (!state.document.model.elements[id]) return unknown(command.type, id);
@@ -659,9 +707,19 @@ export function apply(state: AppState, command: Command): CommandResult {
               : 'schema-invalid';
         return fail(command.type, code, result.errors.map((e) => e.message).join('; '));
       }
-      return ok({ document: result.document, filter: '', selection: [], expanded: [] }, [
-        { type: 'document-loaded', id: result.document.id },
-      ]);
+      // Highlighting is a preference rather than a view of one document, so
+      // it is the only session field a load keeps.
+      return ok(
+        {
+          document: result.document,
+          filter: '',
+          selection: [],
+          expanded: [],
+          hidden: [],
+          selectionHighlight: state.selectionHighlight,
+        },
+        [{ type: 'document-loaded', id: result.document.id }],
+      );
     }
 
     case 'merge-document': {

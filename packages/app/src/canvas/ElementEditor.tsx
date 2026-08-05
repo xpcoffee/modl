@@ -22,6 +22,7 @@ import { StyleEditor } from './StyleEditor.js';
 export function ElementEditor({
   id,
   kind,
+  hidden,
   elementType,
   description,
   tags,
@@ -29,6 +30,8 @@ export function ElementEditor({
 }: {
   id: Id;
   kind: 'entity' | 'connection' | 'node';
+  /** True when the reader has put this element away. */
+  hidden: boolean;
   /**
    * A connection point has no type to choose, so its chip is a label rather
    * than a menu, and it carries the reader's word for the shape.
@@ -254,6 +257,21 @@ export function ElementEditor({
       </ul>
 
       <footer className="element-editor__footer">
+        {/* Hiding mutes the element and takes its connections off the board;
+            the element stays selectable so this same button brings it back.
+            A connection has no toggle: hidden it would leave no remnant to
+            find it by, so it only leaves the board with its endpoints. */}
+        {kind !== 'connection' && (
+          <button
+            type="button"
+            className="element-editor__hide"
+            data-testid={`editor-hide-${id}`}
+            aria-pressed={hidden}
+            onClick={() => store.dispatch({ type: 'set-hidden', id, hidden: !hidden })}
+          >
+            {hidden ? 'Show' : 'Hide'}
+          </button>
+        )}
         <DeleteButton count={1} />
       </footer>
     </div>

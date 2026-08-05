@@ -100,6 +100,7 @@ export function ConnectionNodeView({ data, selected }: NodeProps<Node<Connection
           <ElementEditor
             id={data.id}
             kind="node"
+            hidden={data.hidden}
             elementType={label(data.shape)}
             description={data.description}
             tags={data.tags}

@@ -37,6 +37,19 @@ export interface AppState {
   selection: Id[];
   /** Groups currently showing their members. Collapsed is the default. */
   expanded: Id[];
+  /**
+   * Elements the reader has put away: drawn muted, with their connections not
+   * drawn at all. Never holds a connection id: a hidden connection would have
+   * no visible remnant to bring it back from, so connections only leave the
+   * board when an endpoint hides. Like `expanded`, this is one reader's view
+   * of the domain and never reaches the saved file.
+   */
+  hidden: Id[];
+  /**
+   * Whether an active selection mutes the rest of the board. A preference
+   * rather than a view of one document, so a document load keeps it.
+   */
+  selectionHighlight: boolean;
 }
 
 /**
@@ -89,6 +102,8 @@ export type Command =
   | { type: 'group-elements'; id: Id; title: string; memberIds: Id[]; position: Point }
   | { type: 'ungroup'; id: Id }
   | { type: 'set-expanded'; id: Id; expanded: boolean }
+  | { type: 'set-hidden'; id: Id; hidden: boolean }
+  | { type: 'set-selection-highlight'; enabled: boolean }
   | { type: 'set-selection'; ids: Id[] }
   | { type: 'set-filter'; expression: string }
   | { type: 'set-view'; pan: Point; zoom: number }
@@ -127,6 +142,8 @@ export type DomainEvent =
   | { type: 'element-deleted'; id: Id }
   | { type: 'group-changed'; id: Id; groupId: Id | null }
   | { type: 'expansion-changed'; id: Id; expanded: boolean }
+  | { type: 'visibility-changed'; id: Id; hidden: boolean }
+  | { type: 'selection-highlight-changed'; enabled: boolean }
   | { type: 'selection-changed'; ids: Id[] }
   | { type: 'filter-changed'; expression: string }
   | { type: 'view-changed'; view: View }

@@ -706,6 +706,133 @@ describe('set-selection', () => {
   });
 });
 
+describe('set-hidden', () => {
+  it('adds and removes an id, kept sorted', () => {
+    let state = must(
+      base,
+      { type: 'set-hidden', id: B, hidden: true },
+      { type: 'set-hidden', id: A, hidden: true },
+    );
+    expect(state.hidden).toEqual([A, B]);
+
+    state = must(state, { type: 'set-hidden', id: B, hidden: false });
+    expect(state.hidden).toEqual([A]);
+  });
+
+  it('emits visibility-changed', () => {
+    const result = apply(base, { type: 'set-hidden', id: A, hidden: true });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.events).toEqual([{ type: 'visibility-changed', id: A, hidden: true }]);
+  });
+
+  it('hiding the same element twice holds it once', () => {
+    const state = must(
+      base,
+      { type: 'set-hidden', id: A, hidden: true },
+      { type: 'set-hidden', id: A, hidden: true },
+    );
+    expect(state.hidden).toEqual([A]);
+  });
+
+  it('unknown-element: rejects a missing id', () => {
+    const result = apply(base, { type: 'set-hidden', id: MISSING, hidden: true });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('unknown-element');
+  });
+
+  it('never reaches the saved document', () => {
+    const state = must(base, { type: 'set-hidden', id: A, hidden: true });
+    expect(serializeDocument(state.document)).toBe(serializeDocument(base.document));
+  });
+
+  it('deleting an element drops it from the hidden set', () => {
+    const state = must(
+      base,
+      { type: 'set-hidden', id: A, hidden: true },
+      { type: 'delete-element', id: A },
+    );
+    expect(state.hidden).toEqual([]);
+  });
+
+  it('loading a document clears the hidden set', () => {
+    const other = must(initialState('55555555-5555-4555-8555-555555555555'), entity(C, 'Solo'));
+    const state = must(
+      must(base, { type: 'set-hidden', id: A, hidden: true }),
+      { type: 'load-document', document: other.document },
+    );
+    expect(state.hidden).toEqual([]);
+  });
+
+  it('wrong-kind: refuses to hide a connection', () => {
+    const state = must(base, link(LINK, [A], [B]));
+    const result = apply(state, { type: 'set-hidden', id: LINK, hidden: true });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('wrong-kind');
+  });
+
+  it('hiding deselects the element it hides', () => {
+    const state = must(
+      base,
+      { type: 'set-selection', ids: [A, B] },
+      { type: 'set-hidden', id: A, hidden: true },
+    );
+    expect(state.selection).toEqual([B]);
+  });
+
+  it('hiding deselects the connections it takes off the board', () => {
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      { type: 'set-selection', ids: [B, LINK] },
+      { type: 'set-hidden', id: A, hidden: true },
+    );
+    expect(state.selection).toEqual([B]);
+  });
+
+  it('hiding a group deselects its selected members', () => {
+    const state = must(
+      base,
+      { type: 'set-group', id: A, groupId: B },
+      { type: 'set-expanded', id: B, expanded: true },
+      { type: 'set-selection', ids: [A] },
+      { type: 'set-hidden', id: B, hidden: true },
+    );
+    expect(state.selection).toEqual([]);
+  });
+
+  it('emits selection-changed only when the selection moved', () => {
+    const result = apply(
+      must(base, { type: 'set-selection', ids: [B] }),
+      { type: 'set-hidden', id: A, hidden: true },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.events).toEqual([{ type: 'visibility-changed', id: A, hidden: true }]);
+  });
+});
+
+describe('set-selection-highlight', () => {
+  it('turns the preference off and on', () => {
+    let state = must(base, { type: 'set-selection-highlight', enabled: false });
+    expect(state.selectionHighlight).toBe(false);
+
+    state = must(state, { type: 'set-selection-highlight', enabled: true });
+    expect(state.selectionHighlight).toBe(true);
+  });
+
+  it('survives a document load, unlike the rest of the session', () => {
+    const other = must(initialState('55555555-5555-4555-8555-555555555555'), entity(C, 'Solo'));
+    const state = must(
+      must(base, { type: 'set-selection-highlight', enabled: false }),
+      { type: 'load-document', document: other.document },
+    );
+    expect(state.selectionHighlight).toBe(false);
+  });
+});
+
 describe('load-document', () => {
   it('replaces the document and clears session state', () => {
     const other = must(initialState('55555555-5555-4555-8555-555555555555'), entity(C, 'Solo'));

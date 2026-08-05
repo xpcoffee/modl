@@ -252,6 +252,7 @@ export function ConnectionEdge({
   const rolledUp = (data?.rolledUp ?? []).length > 0;
 
   const dimmed = data?.dimmed ?? false;
+  const highlighted = data?.highlighted ?? false;
 
   /** Drags a bend, committing one command on release. */
   const dragWaypoint = useCallback(
@@ -279,7 +280,7 @@ export function ConnectionEdge({
       <BaseEdge
         id={id}
         path={path}
-        className={`connection-edge${selected ? ' is-selected' : ''}${dimmed ? ' is-dimmed' : ''}`}
+        className={`connection-edge${selected ? ' is-selected' : ''}${dimmed ? ' is-dimmed' : ''}${highlighted ? ' is-highlighted' : ''}`}
         style={lineCss(data?.style)}
         {...(data?.direction === 'both' ? { markerStart: markerRefs(data?.style).start } : {})}
         {...(data?.direction === 'forward' || data?.direction === 'both'
@@ -331,7 +332,7 @@ export function ConnectionEdge({
         )}
 
         <div
-          className={`edge-label${dimmed ? ' is-dimmed' : ''}${selected ? ' is-selected' : ''}`}
+          className={`edge-label${dimmed ? ' is-dimmed' : ''}${selected ? ' is-selected' : ''}${highlighted ? ' is-highlighted' : ''}`}
           style={{ transform: `translate(-50%, -50%) translate(${labelPoint.x}px, ${labelPoint.y}px)` }}
           // A roll-up stands in for several connections, so it does not answer
           // to any one of their ids.
@@ -366,6 +367,7 @@ export function ConnectionEdge({
               <ElementEditor
                 id={connectionId}
                 kind="connection"
+                hidden={false}
                 elementType={data.elementType}
                 description={data.description}
                 tags={data.tags}
