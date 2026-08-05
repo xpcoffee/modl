@@ -493,9 +493,65 @@ test.describe('in-situ editor', () => {
 
     await page.getByTestId(`editor-add-tag-${IDS.ui}`).click();
     await page.getByTestId(`editor-new-tag-${IDS.ui}`).fill('tier');
+    await page.getByTestId(`editor-new-tag-${IDS.ui}`).press('Enter');
 
     const document = await getDocument(page);
     expect(document.model.elements[IDS.ui]?.tags).toMatchObject({ tier: [] });
+  });
+
+  test('typing a new tag keeps focus through the key, the tab, and the value', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+    await page.getByTestId(`editor-add-tag-${IDS.ui}`).click();
+
+    const key = page.getByTestId(`editor-new-tag-${IDS.ui}`);
+    await key.pressSequentially('tier');
+    await expect(key).toBeFocused();
+
+    await key.press('Tab');
+    const value = page.getByTestId(`editor-new-tag-value-${IDS.ui}`);
+    await expect(value).toBeFocused();
+    await value.pressSequentially('gold, silver');
+    await expect(value).toBeFocused();
+    await value.press('Enter');
+
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.ui]?.tags['tier']).toEqual(['gold', 'silver']);
+  });
+
+  test('renaming a key and tabbing into the value keeps focus in the row', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+
+    const key = page.getByLabel('Tag key team');
+    await key.fill('squad');
+    await key.press('Tab');
+
+    const value = page.getByLabel('Tag value for team');
+    await expect(value).toBeFocused();
+    await value.press('End');
+    await value.pressSequentially(', platform');
+    await expect(value).toBeFocused();
+    // The rename holds until the reader finishes with the whole chip.
+    await page.getByTestId(`editor-description-${IDS.ui}`).click();
+
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.ui]?.tags).toEqual({ squad: ['web', 'platform'] });
+  });
+
+  test('typing a comma-separated value into an existing tag is not interrupted', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+
+    const value = page.getByLabel('Tag value for team');
+    await value.click();
+    await value.press('End');
+    await value.pressSequentially(', platform');
+
+    await expect(value).toBeFocused();
+    await expect(value).toHaveValue('web, platform');
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.ui]?.tags['team']).toEqual(['web', 'platform']);
   });
 
   test('edits a tag value in place', async ({ page }) => {

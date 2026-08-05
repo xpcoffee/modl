@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   CONNECTION_TYPES,
   ENTITY_TYPES,
@@ -184,65 +184,12 @@ export function ElementEditor({
 
       <ul className="element-editor__tags" data-testid={`editor-tags-${id}`}>
         {Object.entries(tags).map(([key, values]) => (
-          <li key={key} className="tag-chip">
-            <input
-              className="tag-chip__key"
-              aria-label={`Tag key ${key}`}
-              defaultValue={key}
-              size={Math.max(key.length, 3)}
-              onBlur={(event) => {
-                const next = event.target.value.trim();
-                if (next === key) return;
-                const result = store.dispatch({ type: 'rename-tag', id, from: key, to: next });
-                // A refused rename leaves the tag alone, so put the box back.
-                if (!result.ok) event.target.value = key;
-              }}
-            />
-            <span className="tag-chip__equals">=</span>
-            <input
-              className="tag-chip__value"
-              aria-label={`Tag value for ${key}`}
-              // Several values, comma separated: an element often belongs to
-              // more than one flow or team at once.
-              value={values.join(', ')}
-              size={Math.max(values.join(', ').length, 3)}
-              onChange={(event) =>
-                store.dispatch({
-                  type: 'set-tag',
-                  id,
-                  key,
-                  values: event.target.value
-                    .split(',')
-                    .map((entry) => entry.trim())
-                    .filter((entry) => entry !== ''),
-                })
-              }
-            />
-            <button
-              type="button"
-              aria-label={`Remove tag ${key}`}
-              onClick={() => store.dispatch({ type: 'remove-tag', id, key })}
-            >
-              ×
-            </button>
-          </li>
+          <TagChip key={key} id={id} tagKey={key} values={values} />
         ))}
 
         <li>
           {addingTag ? (
-            <input
-              className="tag-chip__key"
-              data-testid={`editor-new-tag-${id}`}
-              placeholder="key"
-              autoFocus
-              onBlur={() => setAddingTag(false)}
-              onChange={(event) => {
-                const key = event.target.value.trim();
-                if (key === '') return;
-                store.dispatch({ type: 'set-tag', id, key, values: [] });
-                setAddingTag(false);
-              }}
-            />
+            <NewTagChip id={id} onDone={() => setAddingTag(false)} />
           ) : (
             <button
               type="button"
@@ -275,5 +222,133 @@ export function ElementEditor({
         <DeleteButton count={1} />
       </footer>
     </div>
+  );
+}
+
+/** Several values, comma separated: an element often belongs to more than one
+ * flow or team at once. */
+function parseValues(text: string): string[] {
+  return text
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== '');
+}
+
+/**
+ * One existing tag.
+ *
+ * The chip's React key is the tag key, so committing a rename remounts the
+ * whole row. Renaming on the key input's own blur destroyed the value input
+ * the reader had just tabbed into (issue #25); the rename now waits until
+ * focus leaves the chip entirely.
+ */
+function TagChip({ id, tagKey, values }: { id: Id; tagKey: string; values: string[] }) {
+  const keyInput = useRef<HTMLInputElement>(null);
+  /**
+   * The value text as typed. Parsing on every keystroke and rendering the
+   * parsed values back would eat the comma or space the reader just typed,
+   * so the raw text holds while the input has focus.
+   */
+  const [valueText, setValueText] = useState<string | null>(null);
+
+  return (
+    <li
+      className="tag-chip"
+      onBlur={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget)) return;
+        setValueText(null);
+        const input = keyInput.current;
+        if (!input) return;
+        const next = input.value.trim();
+        if (next === tagKey) return;
+        const result = store.dispatch({ type: 'rename-tag', id, from: tagKey, to: next });
+        // A refused rename leaves the tag alone, so put the box back.
+        if (!result.ok) input.value = tagKey;
+      }}
+    >
+      <input
+        ref={keyInput}
+        className="tag-chip__key"
+        aria-label={`Tag key ${tagKey}`}
+        defaultValue={tagKey}
+        size={Math.max(tagKey.length, 3)}
+      />
+      <span className="tag-chip__equals">=</span>
+      <input
+        className="tag-chip__value"
+        aria-label={`Tag value for ${tagKey}`}
+        value={valueText ?? values.join(', ')}
+        size={Math.max((valueText ?? values.join(', ')).length, 3)}
+        onChange={(event) => {
+          setValueText(event.target.value);
+          store.dispatch({ type: 'set-tag', id, key: tagKey, values: parseValues(event.target.value) });
+        }}
+      />
+      <button
+        type="button"
+        aria-label={`Remove tag ${tagKey}`}
+        onClick={() => store.dispatch({ type: 'remove-tag', id, key: tagKey })}
+      >
+        ×
+      </button>
+    </li>
+  );
+}
+
+/**
+ * The row a new tag is typed into.
+ *
+ * Both fields stay local until the reader finishes: dispatching on the first
+ * keystroke re-rendered the row and threw focus out mid-word (issue #25).
+ * Enter or leaving the row commits; Escape or an empty key abandons it.
+ */
+function NewTagChip({ id, onDone }: { id: Id; onDone: () => void }) {
+  const [draftKey, setDraftKey] = useState('');
+  const [draftValue, setDraftValue] = useState('');
+  const done = useRef(false);
+
+  const finish = (commit: boolean) => {
+    if (done.current) return;
+    done.current = true;
+    const key = draftKey.trim();
+    if (commit && key !== '') {
+      store.dispatch({ type: 'set-tag', id, key, values: parseValues(draftValue) });
+    }
+    onDone();
+  };
+
+  return (
+    <span
+      className="tag-chip"
+      onBlur={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget)) return;
+        finish(true);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') finish(true);
+        if (event.key === 'Escape') finish(false);
+      }}
+    >
+      <input
+        className="tag-chip__key"
+        data-testid={`editor-new-tag-${id}`}
+        aria-label="New tag key"
+        placeholder="key"
+        autoFocus
+        value={draftKey}
+        size={Math.max(draftKey.length, 3)}
+        onChange={(event) => setDraftKey(event.target.value)}
+      />
+      <span className="tag-chip__equals">=</span>
+      <input
+        className="tag-chip__value"
+        data-testid={`editor-new-tag-value-${id}`}
+        aria-label="New tag value"
+        placeholder="value"
+        value={draftValue}
+        size={Math.max(draftValue.length, 5)}
+        onChange={(event) => setDraftValue(event.target.value)}
+      />
+    </span>
   );
 }
