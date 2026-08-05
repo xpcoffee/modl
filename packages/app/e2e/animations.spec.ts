@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { dispatch, IDS, open, sampleDomain } from './support.js';
+import { dispatch, getDocument, IDS, open, sampleDomain } from './support.js';
 
 /**
  * Gravity-wave animations: warp in/out on the element, ripples through the
@@ -29,6 +29,40 @@ test.describe('gravity waves', () => {
     await expect(grid).toHaveAttribute('data-ripples-started', '1');
     // Damped: the wave ends rather than looping.
     await expect(grid).toHaveAttribute('data-ripples', '0');
+  });
+
+  test('edges still anchor on element edges when nodes warp in', async ({ page }) => {
+    // Regression: React Flow caches handle positions from the DOM at mount.
+    // When the warp-in scale covered the handles, a warping node's handles
+    // were cached scaled toward its centre, and every connection to it then
+    // anchored inside the element instead of on its border.
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'create-connection-node', id: 'fork', shape: 'diamond', title: 'q', position: { x: 100, y: 300 } },
+      { type: 'create-connection', id: 'to-fork', connectionType: 'relation', from: [IDS.ui], to: ['fork'], title: '' },
+    ]);
+    await expect(page.locator('.react-flow__node.is-warping-in')).toHaveCount(0);
+
+    const doc = await getDocument(page);
+    const ui = doc.layout[IDS.ui] as { x: number; y: number; width: number; height: number };
+    const fork = doc.layout['fork'] as { x: number; y: number; width: number; height: number };
+
+    // authorise leaves the UI's right edge for the gateway.
+    const authorise = (await page
+      .locator(`.react-flow__edge[data-id^="${IDS.authorise}"] .react-flow__edge-path`)
+      .getAttribute('d'))!;
+    const [startX, startY] = authorise.replace('M', '').trim().split(/[ ,]+/).map(Number);
+    expect(Math.abs(startX! - (ui.x + ui.width))).toBeLessThanOrEqual(8);
+    expect(Math.abs(startY! - (ui.y + ui.height / 2))).toBeLessThanOrEqual(8);
+
+    // A junction anchors lines at its centre.
+    const toFork = (await page
+      .locator(`.react-flow__edge[data-id^="to-fork"] .react-flow__edge-path`)
+      .getAttribute('d'))!;
+    const coords = toFork.replace(/[MC]/g, ' ').trim().split(/[ ,]+/).map(Number);
+    const [endX, endY] = coords.slice(-2);
+    expect(Math.abs(endX! - (fork.x + fork.width / 2))).toBeLessThanOrEqual(8);
+    expect(Math.abs(endY! - (fork.y + fork.height / 2))).toBeLessThanOrEqual(8);
   });
 
   test('a new element warps in, and its wave follows', async ({ page }) => {

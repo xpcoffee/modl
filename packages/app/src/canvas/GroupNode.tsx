@@ -18,12 +18,9 @@ import { boxCss } from './styling.js';
  */
 export function GroupNode({ data, selected }: NodeProps<Node<EntityNodeData>>) {
   return (
-    <div
-      className={`group-node${selected ? ' is-selected' : ''}${data.dimmed ? ' is-dimmed' : ''}`}
-      style={boxCss(data.style)}
-      data-testid={`group-${data.id}`}
-      data-expanded="true"
-    >
+    <>
+      {/* Outside the visual box: the warp-in scale must not move what React
+          Flow measures for edge anchoring. The entity node says why in full. */}
       <NodeResizer
         isVisible={selected}
         minWidth={MIN_GROUP_SIZE.width}
@@ -43,6 +40,12 @@ export function GroupNode({ data, selected }: NodeProps<Node<EntityNodeData>>) {
       <Handle type="source" position={Position.Top} id="top" />
       <Handle type="source" position={Position.Bottom} id="bottom" />
 
+      <div
+        className={`group-node${selected ? ' is-selected' : ''}${data.dimmed ? ' is-dimmed' : ''}`}
+        style={boxCss(data.style)}
+        data-testid={`group-${data.id}`}
+        data-expanded="true"
+      >
       <header className="group-node__header">
         <button
           type="button"
@@ -94,6 +97,7 @@ export function GroupNode({ data, selected }: NodeProps<Node<EntityNodeData>>) {
           </div>
         )}
 
-    </div>
+      </div>
+    </>
   );
 }

@@ -409,6 +409,13 @@ select {
   border: 1px solid var(--muted);
 }
 
+/* The handles sit beside the visual box, earlier in the DOM (see the node
+   components); lifted back above it so pressing one starts a connection
+   rather than dragging the node. */
+.react-flow__node > .react-flow__handle {
+  z-index: 1;
+}
+
 .react-flow__controls-button {
   background: var(--panel);
   border-bottom: 1px solid var(--border);
@@ -1073,7 +1080,11 @@ select {
 
 /* Durations here match WARP_MS in animations.ts: the ripple timer waits for
    the CSS warp to finish. */
-.react-flow__node.is-warping-in > div {
+/* Scoped to the visual box. On entities and groups the handles are siblings
+   and must never scale, or React Flow caches their mid-animation positions
+   for edge anchoring. A junction's handles stay inside: they sit at its
+   centre, which a scale about the centre does not move. */
+.react-flow__node.is-warping-in > :is(.entity-node, .group-node, .connection-node) {
   animation: warp-in 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.15) backwards;
 }
 
@@ -1117,7 +1128,7 @@ select {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .react-flow__node.is-warping-in > div,
+  .react-flow__node.is-warping-in > :is(.entity-node, .group-node, .connection-node),
   .warp-ghost {
     animation: none;
   }

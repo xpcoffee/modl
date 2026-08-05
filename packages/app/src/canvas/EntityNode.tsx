@@ -12,15 +12,16 @@ import { boxCss } from './styling.js';
 /**
  * A domain entity. The title and a type icon show always, the description and
  * tags on hover, and the editor when it is the only thing selected.
+ *
+ * Handles and the resizer sit beside the visual box, not inside it. The
+ * warp-in animation scales the box, and React Flow measures handle positions
+ * from the DOM when the node mounts: a handle inside a mid-scale box gets
+ * cached closer to the centre than it rests, and every connection then
+ * anchors inside the element.
  */
 export function EntityNode({ data, selected }: NodeProps<Node<EntityNodeData>>) {
   return (
-    <div
-      className={`entity-node${selected ? ' is-selected' : ''}${data.dimmed ? ' is-dimmed' : ''}`}
-      style={boxCss(data.style)}
-      data-testid={`entity-${data.id}`}
-      data-type={data.elementType}
-    >
+    <>
       <NodeResizer
         isVisible={!!selected}
         minWidth={MIN_ENTITY_SIZE.width}
@@ -40,55 +41,62 @@ export function EntityNode({ data, selected }: NodeProps<Node<EntityNodeData>>) 
       <Handle type="source" position={Position.Top} id="top" />
       <Handle type="source" position={Position.Bottom} id="bottom" />
 
-      {/* Expand sits where collapse sits on an open container, so the control
-          for a group is in one place whichever way it is showing. */}
-      <div className="entity-node__corner">
-        {data.memberCount > 0 && (
-          <button
-            type="button"
-            className="entity-node__expand nodrag"
-            data-testid={`expand-${data.id}`}
-            aria-label={`Expand ${data.title}`}
-            onClick={() => store.dispatch({ type: 'set-expanded', id: data.id, expanded: true })}
-          >
-            + {data.memberCount}
-          </button>
-        )}
-        <ElementIcon elementType={data.elementType} className="entity-node__icon" />
-      </div>
+      <div
+        className={`entity-node${selected ? ' is-selected' : ''}${data.dimmed ? ' is-dimmed' : ''}`}
+        style={boxCss(data.style)}
+        data-testid={`entity-${data.id}`}
+        data-type={data.elementType}
+      >
+        {/* Expand sits where collapse sits on an open container, so the control
+            for a group is in one place whichever way it is showing. */}
+        <div className="entity-node__corner">
+          {data.memberCount > 0 && (
+            <button
+              type="button"
+              className="entity-node__expand nodrag"
+              data-testid={`expand-${data.id}`}
+              aria-label={`Expand ${data.title}`}
+              onClick={() => store.dispatch({ type: 'set-expanded', id: data.id, expanded: true })}
+            >
+              + {data.memberCount}
+            </button>
+          )}
+          <ElementIcon elementType={data.elementType} className="entity-node__icon" />
+        </div>
 
-      {data.editing ? (
-        <InlineTitle
-          id={data.id}
-          title={data.title}
-          onDone={stopEditing}
-          testId={`rename-${data.id}`}
-        />
-      ) : (
-        <div className="entity-node__title">{data.title || <em>untitled</em>}</div>
-      )}
-
-      {data.soleSelection ? (
-        <div className="entity-node__editor">
-          <ElementEditor
+        {data.editing ? (
+          <InlineTitle
             id={data.id}
-            kind="entity"
-            hidden={data.hidden}
-            elementType={data.elementType}
-            description={data.description}
-            tags={data.tags}
+            title={data.title}
+            onDone={stopEditing}
+            testId={`rename-${data.id}`}
           />
-        </div>
-      ) : (
-        <div className="entity-node__hover">
-          <ElementHover
-            elementType={data.elementType}
-            description={data.description}
-            tags={data.tags}
-          />
-        </div>
-      )}
+        ) : (
+          <div className="entity-node__title">{data.title || <em>untitled</em>}</div>
+        )}
 
-    </div>
+        {data.soleSelection ? (
+          <div className="entity-node__editor">
+            <ElementEditor
+              id={data.id}
+              kind="entity"
+              hidden={data.hidden}
+              elementType={data.elementType}
+              description={data.description}
+              tags={data.tags}
+            />
+          </div>
+        ) : (
+          <div className="entity-node__hover">
+            <ElementHover
+              elementType={data.elementType}
+              description={data.description}
+              tags={data.tags}
+            />
+          </div>
+        )}
+
+      </div>
+    </>
   );
 }
