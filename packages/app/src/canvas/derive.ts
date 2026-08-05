@@ -35,6 +35,8 @@ export interface EntityNodeData extends Record<string, unknown> {
   soleSelection: boolean;
   /** Members this collapses, 0 when it is an ordinary entity. */
   memberCount: number;
+  /** Filter matches this hides, 0 when expanded or no filter runs. */
+  matchCount: number;
   expanded: boolean;
   /** Absolute origin of the containing group, for converting drag positions. */
   parentOrigin: Point;
@@ -182,7 +184,7 @@ function depthOf(elements: Record<Id, Element>, id: Id): number {
 export function deriveNodes(state: AppState, options: DeriveOptions): Node<BoardNodeData>[] {
   const elements = state.document.model.elements;
   const expanded = new Set(state.expanded);
-  const { muted } = boardEmphasis(state);
+  const { muted, descendantMatches } = boardEmphasis(state);
   const hiddenSet = new Set(state.hidden);
   const selected = new Set(state.selection);
   const soleSelection = onlySelected(state, options);
@@ -254,6 +256,8 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Board
         editing: options.editingId === entity.id,
         soleSelection: soleSelection === entity.id,
         memberCount: membersOf(elements, entity.id).length,
+        // An expanded group shows its matches directly, so no badge.
+        matchCount: isContainer ? 0 : (descendantMatches.get(entity.id) ?? 0),
         expanded: expanded.has(entity.id),
         parentOrigin,
         origin: { x: rect.x, y: rect.y },

@@ -266,6 +266,101 @@ describe('boardEmphasis: tag filter', () => {
   });
 });
 
+describe('boardEmphasis: filter matches inside groups', () => {
+  const OUTER = '99999999-9999-4999-8999-999999999999';
+
+  /** Ledger sits inside GROUP, and GROUP inside OUTER; both stay collapsed. */
+  function nested(): AppState {
+    return must(
+      base,
+      entity(GROUP, 'Backoffice'),
+      entity(OUTER, 'Platform'),
+      { type: 'set-group', id: LEDGER, groupId: GROUP },
+      { type: 'set-group', id: GROUP, groupId: OUTER },
+    );
+  }
+
+  it('leaves a group readable when a member inside matches', () => {
+    const state = must(
+      base,
+      entity(GROUP, 'Backoffice'),
+      { type: 'set-group', id: LEDGER, groupId: GROUP },
+      { type: 'set-filter', expression: 'team=payments' },
+    );
+    const { muted, descendantMatches } = boardEmphasis(state);
+    expect(muted.has(GROUP)).toBe(false);
+    expect(muted.has(UI)).toBe(true);
+    expect(descendantMatches.get(GROUP)).toBe(1);
+  });
+
+  it('a match two levels down keeps every ancestor group readable', () => {
+    const state = must(nested(), { type: 'set-filter', expression: 'team=payments' });
+    const { muted, descendantMatches } = boardEmphasis(state);
+    expect(muted.has(GROUP)).toBe(false);
+    expect(muted.has(OUTER)).toBe(false);
+    expect(descendantMatches.get(GROUP)).toBe(1);
+    expect(descendantMatches.get(OUTER)).toBe(1);
+  });
+
+  it('mutes a group with no matching descendant', () => {
+    const state = must(nested(), { type: 'set-filter', expression: 'team=web' });
+    const { muted, descendantMatches } = boardEmphasis(state);
+    expect(muted.has(GROUP)).toBe(true);
+    expect(muted.has(OUTER)).toBe(true);
+    expect(descendantMatches.size).toBe(0);
+  });
+
+  it('a hidden matching member does not unmute the group', () => {
+    // Hiding beats filtering: a match the reader put away stays silent.
+    const state = must(
+      base,
+      entity(GROUP, 'Backoffice'),
+      { type: 'set-group', id: LEDGER, groupId: GROUP },
+      { type: 'set-hidden', id: LEDGER, hidden: true },
+      { type: 'set-filter', expression: 'team=payments' },
+    );
+    const { muted, descendantMatches } = boardEmphasis(state);
+    expect(muted.has(GROUP)).toBe(true);
+    expect(descendantMatches.has(GROUP)).toBe(false);
+  });
+
+  it('selecting a group with a filter active: members light, the rest stays muted', () => {
+    // Rule 2 beats rule 3: the selected group speaks for its member (issue
+    // #18), and the filter neither lifts a mute outside the neighbourhood
+    // nor badges any group while the highlight decides emphasis.
+    const state = must(
+      base,
+      entity(GROUP, 'Backoffice'),
+      { type: 'set-group', id: LEDGER, groupId: GROUP },
+      { type: 'set-filter', expression: 'team=web' },
+      { type: 'set-selection', ids: [GROUP] },
+    );
+    const { muted, descendantMatches } = boardEmphasis(state);
+    expect(muted.has(GROUP)).toBe(false);
+    expect(muted.has(LEDGER)).toBe(false);
+    // The UI matches team=web but sits outside the highlighted neighbourhood.
+    expect(muted.has(UI)).toBe(true);
+    expect(descendantMatches.size).toBe(0);
+  });
+
+  it('an active selection leaves no descendant matches to badge', () => {
+    // The filter only decides emphasis when nothing is selected.
+    const state = must(
+      base,
+      entity(GROUP, 'Backoffice'),
+      { type: 'set-group', id: LEDGER, groupId: GROUP },
+      { type: 'set-filter', expression: 'team=payments' },
+      { type: 'set-selection', ids: [UI] },
+    );
+    expect(boardEmphasis(state).descendantMatches.size).toBe(0);
+  });
+
+  it('an inactive filter guides towards nothing', () => {
+    const { descendantMatches } = boardEmphasis(nested());
+    expect(descendantMatches.size).toBe(0);
+  });
+});
+
 describe('relationsOf', () => {
   it('lists every drawn connection with the element at the other end', () => {
     expect(relationsOf(base, GATEWAY)).toEqual([

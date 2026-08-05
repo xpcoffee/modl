@@ -277,6 +277,17 @@ select {
   line-height: 1.4;
 }
 
+/* Counts the filter matches a collapsed group is standing in front of. */
+.entity-node__matches {
+  padding: 0 6px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  background: var(--accent);
+  color: var(--bg);
+}
+
 /* Groups */
 
 /* React Flow gives its built-in group type a border and background of its

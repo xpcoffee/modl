@@ -574,6 +574,39 @@ test.describe('filtering', () => {
 
     await expect(page.getByTestId('element-count')).toContainText('5 elements');
   });
+
+  test('a collapsed group holding a match stays readable and counts it', async ({ page }) => {
+    const GROUP = '88888888-8888-4888-8888-888888888888';
+    // Built with set-group rather than group-elements, which selects the new
+    // group and would hand emphasis to the selection highlight.
+    await dispatch(page, [
+      ...sampleDomain(),
+      {
+        type: 'create-entity',
+        id: GROUP,
+        entityType: 'component',
+        title: 'Backoffice',
+        position: { x: 560, y: 220 },
+      },
+      { type: 'set-group', id: IDS.ledger, groupId: GROUP },
+    ]);
+
+    await page.getByTestId('filter-input').fill('team=payments');
+
+    // The ledger matches inside the collapsed group: the group stays readable
+    // and shows the count, while the unrelated UI mutes.
+    await expect(page.getByTestId(`entity-${GROUP}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`match-count-${GROUP}`)).toHaveText('1');
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveClass(/is-dimmed/);
+
+    await page.getByTestId(`expand-${GROUP}`).click();
+    // The click also selected the group; drop the selection so the filter
+    // keeps deciding emphasis.
+    await dispatch(page, [{ type: 'set-selection', ids: [] }]);
+
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`match-count-${GROUP}`)).toHaveCount(0);
+  });
 });
 
 test.describe('save and load', () => {

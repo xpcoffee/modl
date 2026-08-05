@@ -1,6 +1,6 @@
 import { isConnection, type Element, type Id } from '../model/types.js';
 import type { AppState } from '../commands/types.js';
-import { selectIds } from './filter.js';
+import { parseFilter, selectIds } from './filter.js';
 import { ancestorsOf, descendantsOf, visibleAnchor } from './groups.js';
 
 /**
@@ -11,7 +11,9 @@ import { ancestorsOf, descendantsOf, visibleAnchor } from './groups.js';
  * - Selecting elements highlights them with their direct connections and
  *   peers, and mutes the rest. A selected group counts its members, at every
  *   depth, as selected. A preference (`selectionHighlight`) turns this off.
- * - The tag filter mutes elements that do not match.
+ * - The tag filter mutes elements that do not match. A group above a match
+ *   counts as matching, so a match inside a collapsed group still guides the
+ *   reader to the group holding it.
  *
  * Precedence: hiding beats highlighting beats filtering, except that a
  * directly selected element is never muted, since the reader is pointing at
@@ -63,6 +65,40 @@ export interface BoardEmphasis {
   muted: Set<Id>;
   /** Connections not drawn at all. */
   suppressed: Set<Id>;
+  /**
+   * Matching descendants per group while the filter decides emphasis. A
+   * collapsed group draws this as a badge, so the reader knows expanding it
+   * finds the matches.
+   */
+  descendantMatches: Map<Id, number>;
+}
+
+/**
+ * What the tag filter emphasises: every match, plus each group above one, so
+ * a match inside a collapsed group guides the reader to the group holding it.
+ * Hidden matches stay silent: hiding beats filtering, so a match the reader
+ * put away neither unmutes nor counts towards the groups above it.
+ */
+export function filterGuidance(
+  elements: Record<Id, Element>,
+  expression: string,
+  hidden: ReadonlySet<Id>,
+): { emphasised: Set<Id>; descendantMatches: Map<Id, number> } {
+  const emphasised = selectIds(elements, expression);
+  const descendantMatches = new Map<Id, number>();
+
+  const parsed = parseFilter(expression);
+  if (!parsed.ok || parsed.terms.length === 0) return { emphasised, descendantMatches };
+
+  // One walk up each match's group chain covers every group on the board.
+  for (const id of [...emphasised]) {
+    if (hidden.has(id)) continue;
+    for (const group of ancestorsOf(elements, id)) {
+      emphasised.add(group);
+      descendantMatches.set(group, (descendantMatches.get(group) ?? 0) + 1);
+    }
+  }
+  return { emphasised, descendantMatches };
 }
 
 /** What every element on the board renders as, given the whole session. */
@@ -73,6 +109,7 @@ export function boardEmphasis(state: AppState): BoardEmphasis {
   const suppressed = suppressedConnectionIds(elements, expanded, hidden);
 
   const muted = new Set<Id>();
+  let descendantMatches = new Map<Id, number>();
   const selection = state.selection.filter((id) => elements[id]);
 
   if (selection.length > 0 && state.selectionHighlight) {
@@ -105,9 +142,10 @@ export function boardEmphasis(state: AppState): BoardEmphasis {
       if (!near.has(id)) muted.add(id);
     }
   } else {
-    const matching = selectIds(elements, state.filter);
+    const guidance = filterGuidance(elements, state.filter, hidden);
+    descendantMatches = guidance.descendantMatches;
     for (const id of Object.keys(elements)) {
-      if (!matching.has(id)) muted.add(id);
+      if (!guidance.emphasised.has(id)) muted.add(id);
     }
   }
 
@@ -116,7 +154,7 @@ export function boardEmphasis(state: AppState): BoardEmphasis {
   // when hidden: that is how it gets shown again.
   for (const id of selection) muted.delete(id);
 
-  return { muted, suppressed };
+  return { muted, suppressed, descendantMatches };
 }
 
 export interface Relation {
