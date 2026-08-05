@@ -10,6 +10,7 @@ export * from './commands/types.js';
 export * from './commands/apply.js';
 export * from './commands/undo.js';
 export * from './query/filter.js';
+export * from './query/expansion.js';
 export * from './query/groups.js';
 export * from './query/layout-report.js';
 export * from './query/view.js';

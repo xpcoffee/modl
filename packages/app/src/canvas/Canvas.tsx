@@ -40,6 +40,7 @@ import { ArrowMarkers } from './ArrowMarkers.js';
 import { PlacementPreview } from './PlacementPreview.js';
 import { arm, disarm, getPending, usePending } from './placement.js';
 import { HistoryControls } from './HistoryControls.js';
+import { ExpansionMenu } from './ExpansionMenu.js';
 import { PanRelations } from './PanRelations.js';
 import { SelectionActions } from './SelectionActions.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
@@ -524,6 +525,7 @@ export function Canvas() {
         </Controls>
         <SelectionActions nodes={nodes} />
         <PanRelations nodes={nodes} />
+        <ExpansionMenu nodes={nodes} />
       </ReactFlow>
     </div>
   );
