@@ -52,6 +52,28 @@ import { WarpGhosts } from './WarpGhosts.js';
 const NODE_TYPES = { entity: EntityNode, group: GroupNode, 'connection-node': ConnectionNodeView };
 const EDGE_TYPES = { connection: ConnectionEdge };
 
+/** How far past the control cluster the click guard reaches, in pixels. */
+const CONTROLS_GUARD_MARGIN = 16;
+
+/**
+ * Whether a point sits on or near the board control cluster (zoom, fit,
+ * undo, redo). Clicks aimed at a control miss by a few pixels when someone
+ * clicks fast, and a miss that reaches the pane creates a component under
+ * the buttons, so creation is refused in this zone rather than only on the
+ * buttons themselves.
+ */
+function nearBoardControls(clientX: number, clientY: number): boolean {
+  const controls = document.querySelector('.react-flow__controls');
+  if (!controls) return false;
+  const rect = controls.getBoundingClientRect();
+  return (
+    clientX >= rect.left - CONTROLS_GUARD_MARGIN &&
+    clientX <= rect.right + CONTROLS_GUARD_MARGIN &&
+    clientY >= rect.top - CONTROLS_GUARD_MARGIN &&
+    clientY <= rect.bottom + CONTROLS_GUARD_MARGIN
+  );
+}
+
 /** The subset of a React Flow change this app acts on. */
 interface CanvasChange {
   type: string;
@@ -324,6 +346,11 @@ export function Canvas() {
 
   const onDoubleClick = useCallback(
     (event: React.MouseEvent) => {
+      // A double-click on or beside the controls is a mis-aimed button press,
+      // not a request for a component. Enabled buttons bubble their clicks up
+      // to here, so without this a zoom spam-click drops components too.
+      if (nearBoardControls(event.clientX, event.clientY)) return;
+
       const hit = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
 
       const node = hit?.closest<HTMLElement>('.react-flow__node');
@@ -422,6 +449,8 @@ export function Canvas() {
         if (!pending) return;
         const target = event.target as HTMLElement;
         if (!target.classList.contains('react-flow__pane')) return;
+        // An armed placement near the controls is the same mis-aimed click.
+        if (nearBoardControls(event.clientX, event.clientY)) return;
         event.stopPropagation();
         setDraft({ from: screenToFlowPosition({ x: event.clientX, y: event.clientY }), to: null });
       }}

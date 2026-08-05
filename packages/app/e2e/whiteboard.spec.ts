@@ -2696,3 +2696,67 @@ test.describe('undo and redo', () => {
     await expect(page.locator('.react-flow__node')).toHaveCount(3);
   });
 });
+
+test.describe('control cluster click guard', () => {
+  test('spam-clicking a disabled undo button neither creates nor clears redo', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    // Walk the whole history back so undo disables under the pointer.
+    await page.evaluate(() => {
+      while (window.__modl.getState().undo.cursor > 0) window.__modl.undo();
+    });
+    await expect(page.getByTestId('board-undo')).toBeDisabled();
+
+    const box = (await page.getByTestId('board-undo').boundingBox())!;
+    for (let i = 0; i < 3; i++) {
+      await page.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
+    }
+
+    // Nothing appeared under the button.
+    expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(0);
+
+    // And the redo stack survived the spam.
+    await expect(page.getByTestId('board-redo')).toBeEnabled();
+    await page.evaluate(() => {
+      const undo = window.__modl.getState().undo;
+      for (let i = undo.cursor; i < undo.history.length; i++) window.__modl.redo();
+    });
+    expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(5);
+  });
+
+  test('a double-click beside the controls, inside the guard margin, creates nothing', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    const before = Object.keys((await getDocument(page)).model.elements).length;
+    const rect = (await page.locator('.react-flow__controls').boundingBox())!;
+
+    // A few pixels off the cluster: inside the guard, outside the buttons.
+    await page.mouse.dblclick(rect.x + rect.width + 8, rect.y - 8);
+    expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(before);
+
+    // Well clear of the guard the double-click still creates.
+    await page.mouse.dblclick(rect.x + rect.width + 300, rect.y + rect.height / 2);
+    expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(before + 1);
+  });
+
+  test('double-clicking an enabled zoom button creates nothing', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    const before = Object.keys((await getDocument(page)).model.elements).length;
+
+    // The click bubbles up to the create handler; the guard turns it away.
+    const box = (await page.locator('.react-flow__controls-zoomin').boundingBox())!;
+    await page.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
+
+    expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(before);
+  });
+
+  test('an armed placement click near the controls places nothing', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    const before = Object.keys((await getDocument(page)).model.elements).length;
+    await page.getByTestId('add-element').click();
+    await page.getByTestId('add-type-component').click();
+
+    const rect = (await page.locator('.react-flow__controls').boundingBox())!;
+    await page.mouse.click(rect.x + rect.width + 8, rect.y - 8);
+
+    expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(before);
+  });
+});
