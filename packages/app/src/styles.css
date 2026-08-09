@@ -1180,11 +1180,111 @@ select {
   animation: none;
 }
 
-/* The motion control draws its wave as a stroke; the other control icons are
-   filled paths, so it opts out of the cluster's fill. */
-.react-flow__controls-button.motion-control svg {
-  fill: none;
-  stroke: var(--text);
-  stroke-width: 2;
-  stroke-linecap: round;
+/* Preferences: the reader's own settings, behind the gear at the end of the
+   toolbar. A native <dialog> brings the backdrop, Escape, and the focus
+   trap; what is styled here is the panel drawn inside it. */
+
+.toolbar__gear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  line-height: 0;
+}
+
+.toolbar__gear svg {
+  width: 16px;
+  height: 16px;
+  fill: var(--muted);
+}
+
+.toolbar__gear:hover svg {
+  fill: var(--text);
+}
+
+.preferences {
+  margin: auto;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.preferences::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+
+.preferences__panel {
+  width: min(420px, calc(100vw - 32px));
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 55%);
+}
+
+.preferences__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.preferences__header h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.preferences__header button {
+  padding: 0 8px;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.preferences__group {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.preferences__group legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.preferences__note {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.preferences__choice {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 5px 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* Text fields on this board are full-width boxes; a radio is neither, so it
+   opts out of that shared rule rather than stretching across the row. */
+.preferences__choice input[type='radio'] {
+  flex: none;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  accent-color: var(--accent);
+}
+
+.preferences__choice em {
+  color: var(--muted);
+  font-style: normal;
 }

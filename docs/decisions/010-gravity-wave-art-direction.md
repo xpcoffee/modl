@@ -34,7 +34,9 @@ The canvas is a field, in the space-time sense: the dot grid is its visible medi
 
 **A wave holds its size on screen.** Wave geometry is measured in flow pixels, which pins a wave to the board: an element's wave stays element-sized however the camera moves. Zoomed out, that made the wave shrink along with everything else until there was nothing left to read — at 25% a press wave spanned about 30 pixels and moved a dot by one (issue #30). Below 100% the whole shape — reach, wavefront width, and displacement together — is spread by the inverse of the zoom, so the wave keeps its size on screen while it keeps its proportions. At or above 100% nothing changes: the wave stays pinned to the board, which is where the element-relative reaches above are meant to be read.
 
-**Accessibility.** `prefers-reduced-motion: reduce` disables warps, ghosts, and ripples, in JavaScript (no triggers fire) and in CSS (no keyframes run). It is the default answer and not the final one: it is a single whole-OS switch, so a reader who turned Windows' animation effects off for unrelated reasons lost the entire visual language with nothing on screen to say so. A control in the board's cluster overrides it either way and starts wherever the system points, which also makes the language discoverable when the OS has switched it off. The override is presentation, so it never reaches the document or the trace; it does reach `localStorage`, because a preference someone had to hunt for is not worth re-hunting on every reload. One attribute on the document root (`data-motion`) carries the answer, so the CSS keyframes and the JavaScript triggers read the same source rather than the media query twice.
+**Accessibility.** `prefers-reduced-motion: reduce` disables warps, ghosts, and ripples, in JavaScript (no triggers fire) and in CSS (no keyframes run). It is the default answer and not the final one: it is a single whole-OS switch, so a reader who turned Windows' animation effects off for unrelated reasons lost the entire visual language with nothing on screen to say so. Three choices — follow the system, always, never — override it, and the panel says which way the system is currently pointing.
+
+This is the reader's preference, not the board's. It says nothing about the domain being drawn, it follows the person across every document they open, and it must not enter the model or the trace. So it lives with the reader: a preferences panel behind the gear at the end of the toolbar, held in `localStorage` rather than in the command bus, and read through `packages/app/src/preferences/`. Board and view state stays where board state belongs — the filter bar and the control cluster. One attribute on the document root (`data-motion`) carries the answer, so the CSS keyframes and the JavaScript triggers read the same source rather than the media query twice.
 
 **Tests.** The Playwright suite runs with reduced motion by default so animation timing cannot shift what a spec measures; the animation specs opt back in.
 
@@ -55,6 +57,10 @@ The grid exposes `data-ripples` and `data-ripples-started` so specs assert on co
 **Waves measured in screen pixels throughout.** Would hold every wave the same size at every zoom, and cost the grammar its element-relative reaches: a creation wave is supposed to reach about one element-width past the element's edge. Spreading only below 100% keeps that reading where the board is legible and rescues it where it is not.
 
 **Taking the reader's override from the system preference alone**, with no control. Honest about the OS setting, and it leaves a reader who wants motion back with no way to ask, and no hint that the board has a visual language at all.
+
+**The motion control in the board's cluster**, beside undo and redo. Where the eye already is on PR #32 review, and the wrong shelf: that cluster acts on the board in front of you, and this preference belongs to the person, outliving the board and every other board they open. It moved to the preferences panel, which is also the shelf the next reader preference will want.
+
+**Motion as a command on the bus**, like `set-selection-highlight`. Consistent, and it would write the reader's accessibility setting into the document and replay it onto whoever opened that file next.
 
 ## What would reverse this
 

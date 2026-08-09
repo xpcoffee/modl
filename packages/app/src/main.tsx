@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.js';
-import { installMotion } from './canvas/motion.js';
+import { installMotion } from './preferences/motion.js';
 import { installRuntimeApi } from './runtime/api.js';
 import './styles.css';
 

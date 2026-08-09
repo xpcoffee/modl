@@ -50,7 +50,6 @@ import { useHighlightId } from './highlight.js';
 import { lastConnectionStyle, lastEntityStyle } from './styleMemory.js';
 import { pressRipple, useWarpingIds } from './animations.js';
 import { GravityGrid } from './GravityGrid.js';
-import { MotionControl } from './MotionControl.js';
 import { WarpGhosts } from './WarpGhosts.js';
 
 const NODE_TYPES = { entity: EntityNode, group: GroupNode, 'connection-node': ConnectionNodeView };
@@ -680,7 +679,6 @@ export function Canvas() {
         <WarpGhosts />
         <Controls>
           <HistoryControls />
-          <MotionControl />
         </Controls>
         <MiniMap
           pannable

@@ -266,14 +266,15 @@ test.describe('reduced motion', () => {
     await expect(grid).toHaveAttribute('data-ripples-started', '0');
   });
 
-  test('the motion control overrides the system, and the override survives a reload', async ({
-    page,
-  }) => {
+  test('the motion preference overrides the system, and survives a reload', async ({ page }) => {
     const grid = page.getByTestId('gravity-grid');
-    const toggle = page.getByTestId('motion-toggle');
-    await expect(toggle).toHaveAttribute('data-motion', 'reduced');
 
-    await toggle.click();
+    await page.getByTestId('open-preferences').click();
+    await expect(page.getByTestId('motion-system')).toBeChecked();
+    await expect(page.getByTestId('motion-system-state')).toContainText('asking for no motion');
+
+    await page.getByTestId('motion-full').check();
+    await page.getByTestId('close-preferences').click();
 
     await expect(grid).toHaveAttribute('data-motion', 'full');
     await page.locator('.react-flow__pane').click({ position: { x: 240, y: 240 } });
@@ -299,6 +300,8 @@ test.describe('reduced motion', () => {
     await page.reload();
     await page.waitForFunction(() => window.__modl?.ready === true);
     await expect(page.getByTestId('gravity-grid')).toHaveAttribute('data-motion', 'full');
+    await page.getByTestId('open-preferences').click();
+    await expect(page.getByTestId('motion-full')).toBeChecked();
   });
 });
 
@@ -313,13 +316,41 @@ test.describe('turning motion off', () => {
     await page.locator('.react-flow__pane').click({ position: { x: 240, y: 240 } });
     await expect(grid).toHaveAttribute('data-ripples-started', '1');
 
-    await page.getByTestId('motion-toggle').click();
+    await page.getByTestId('open-preferences').click();
+    await page.getByTestId('motion-reduced').check();
 
     await expect(grid).toHaveAttribute('data-motion', 'reduced');
     await expect(grid).toHaveAttribute('data-ripples', '0');
+    // Escape closes the panel, the dialog's own behaviour.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('preferences')).toBeHidden();
+
     await page.locator('.react-flow__pane').click({ position: { x: 400, y: 400 } });
-    // Still one: the click after the toggle started no wave.
+    // Still one: the click after the preference started no wave.
     await page.waitForTimeout(400);
     expect(await grid.getAttribute('data-ripples-started')).toBe('1');
+  });
+
+  test('the panel is the reader\'s, and going back to the system hands it back', async ({
+    page,
+  }) => {
+    await open(page);
+    const grid = page.getByTestId('gravity-grid');
+
+    await page.getByTestId('open-preferences').click();
+    await expect(page.getByTestId('motion-system-state')).toContainText('allowing motion');
+    await page.getByTestId('motion-reduced').check();
+    await expect(grid).toHaveAttribute('data-motion', 'reduced');
+
+    await page.getByTestId('motion-system').check();
+
+    // The system says motion is fine, so handing the answer back restores it.
+    await expect(grid).toHaveAttribute('data-motion', 'full');
+
+    // Nothing the reader chose here belongs to the document.
+    expect(await page.evaluate(() => window.__modl.getTrace().length)).toBe(0);
+    expect(await page.evaluate(() => JSON.stringify(window.__modl.getDocument()))).not.toContain(
+      'motion',
+    );
   });
 });

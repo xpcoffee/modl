@@ -10,10 +10,13 @@ import { useSyncExternalStore } from 'react';
  * screen saying so (issue #30). The board therefore takes an override, in
  * either direction, and says which way it is running.
  *
- * Presentation only, so it never reaches the document or the trace. It does
- * reach localStorage: a preference someone had to hunt for is not worth
- * re-hunting on every reload, and it describes the reader rather than the
- * domain they are drawing.
+ * This belongs to the reader, not to the board: it says nothing about the
+ * domain being drawn, it follows the person across every document they open,
+ * and it never reaches the document or the trace. That is why it lives here
+ * rather than in the command bus, why the control for it is in the
+ * preferences panel rather than the board's cluster, and why it persists in
+ * localStorage — a preference someone had to hunt for is not worth
+ * re-hunting on every reload.
  */
 export type MotionPreference = 'system' | 'full' | 'reduced';
 
@@ -22,7 +25,8 @@ const STORAGE_KEY = 'modl.motion';
 let preference: MotionPreference = 'system';
 const listeners = new Set<() => void>();
 
-function systemReducesMotion(): boolean {
+/** What the operating system asks for, which 'system' defers to. */
+export function systemReducesMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
@@ -45,6 +49,15 @@ export function subscribeMotion(listener: () => void): () => void {
 
 export function useMotionReduced(): boolean {
   return useSyncExternalStore(subscribeMotion, motionReduced, motionReduced);
+}
+
+export function useMotionPreference(): MotionPreference {
+  return useSyncExternalStore(subscribeMotion, motionPreference, motionPreference);
+}
+
+/** For the panel, which says what 'system' currently means. */
+export function useSystemReducesMotion(): boolean {
+  return useSyncExternalStore(subscribeMotion, systemReducesMotion, systemReducesMotion);
 }
 
 /**
@@ -73,11 +86,6 @@ export function setMotionPreference(next: MotionPreference): void {
   announce();
 }
 
-/** Flips to the opposite of what the board is doing now, override either way. */
-export function toggleMotion(): void {
-  setMotionPreference(motionReduced() ? 'full' : 'reduced');
-}
-
 /**
  * Reads the stored preference and stamps the document, before the first
  * render so a node created in the first frame warps the right way.
@@ -92,11 +100,9 @@ export function installMotion(): void {
   preference = stored === 'full' || stored === 'reduced' ? stored : 'system';
 
   // Following the system means following it as it changes, not only at load.
-  window
-    .matchMedia('(prefers-reduced-motion: reduce)')
-    .addEventListener('change', () => {
-      if (preference === 'system') announce();
-    });
+  // Announced whatever the preference is: an override leaves the effective
+  // answer alone, and the panel still has to say what 'system' now means.
+  window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', announce);
 
   stamp();
 }

@@ -7,7 +7,7 @@ import {
   RIPPLE_MS,
   type Ripple,
 } from './animations.js';
-import { useMotionReduced } from './motion.js';
+import { useMotionReduced } from '../preferences/motion.js';
 
 /** Flow pixels between dots, matching the React Flow grid this replaces. */
 const GAP = 20;

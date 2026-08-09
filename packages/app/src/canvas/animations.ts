@@ -8,7 +8,7 @@ import {
   type Id,
   type Point,
 } from '@modl/core';
-import { motionReduced, subscribeMotion } from './motion.js';
+import { motionReduced, subscribeMotion } from '../preferences/motion.js';
 import { store } from '../store/store.js';
 
 /**
