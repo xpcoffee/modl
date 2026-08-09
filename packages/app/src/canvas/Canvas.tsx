@@ -3,6 +3,7 @@ import {
   applyNodeChanges,
   Controls,
   ConnectionMode,
+  MiniMap,
   ReactFlow,
   useReactFlow,
   type Connection,
@@ -18,6 +19,7 @@ import {
   descendantsOf,
   isConnection,
   isEntity,
+  selectionSpanOf,
   type Id,
   type Point,
   type Side,
@@ -82,15 +84,36 @@ interface CanvasChange {
   selected?: boolean;
 }
 
+/**
+ * A selection box in flight. React Flow's box always replaces the selection
+ * and reports it change by change, so the gesture is settled here instead:
+ * dispatches pause while the box is open, and on release the boxed elements
+ * are computed from geometry and joined with (shift) or removed from
+ * (ctrl+shift) the selection the gesture started with, in one dispatch.
+ */
+interface BoxGesture {
+  /** The selection when the box opened. */
+  prior: ReadonlySet<Id>;
+  /** True for ctrl+shift: the boxed elements leave the selection. */
+  subtract: boolean;
+  /** Where the box opened, in flow coordinates. Converted at press time so
+      auto-panning mid-drag cannot shift it. */
+  start: Point;
+}
+
 export function Canvas() {
   const state = useAppState();
   const editingId = useEditingId();
   const highlightId = useHighlightId();
   const loadCount = useLoadCount();
-  const { screenToFlowPosition, fitView, setViewport } = useReactFlow();
+  const { screenToFlowPosition, fitView, setViewport, setCenter, getViewport } = useReactFlow();
 
   // A selection box in flight keeps element editors shut.
   const [boxSelecting, setBoxSelecting] = useState(false);
+  const boxGesture = useRef<BoxGesture | null>(null);
+  // Whether the last press held ctrl or cmd, read when React Flow reports the
+  // resulting selection change: a toggle also speaks for a group's members.
+  const pressToggles = useRef(false);
   const pending = usePending();
   const warping = useWarpingIds();
   const [draft, setDraft] = useState<{ from: Point; to: Point | null } | null>(null);
@@ -354,6 +377,9 @@ export function Canvas() {
 
       const hit = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
 
+      // A double-click on the minimap is aimed at the camera, not the board.
+      if (hit?.closest('.react-flow__minimap')) return;
+
       const node = hit?.closest<HTMLElement>('.react-flow__node');
       if (node?.dataset['id']) {
         startEditing(node.dataset['id']);
@@ -390,7 +416,8 @@ export function Canvas() {
    */
   const routeChanges = useCallback(
     (changes: readonly CanvasChange[], toElementId: (id: string) => string) => {
-      const selection = new Set(store.getState().selection);
+      const state = store.getState();
+      const selection = new Set(state.selection);
       let selectionMoved = false;
 
       for (const change of changes) {
@@ -401,10 +428,24 @@ export function Canvas() {
           store.dispatch({ type: 'delete-element', id: elementId });
           selection.delete(elementId);
           selectionMoved = true;
-        } else if (change.type === 'select') {
+        } else if (change.type === 'select' && boxGesture.current === null) {
+          // A box in flight settles as one dispatch on release, so its
+          // change-by-change reports are left alone here.
           selectionMoved = true;
-          if (change.selected) selection.add(elementId);
-          else selection.delete(elementId);
+          // Ctrl+click toggles the element, and on a group its visible
+          // members with it (docs/decisions/012-selection-gestures.md).
+          const affected = pressToggles.current
+            ? selectionSpanOf(
+                state.document.model.elements,
+                new Set(state.expanded),
+                state.hidden,
+                elementId,
+              )
+            : [elementId];
+          for (const id of affected) {
+            if (change.selected) selection.add(id);
+            else selection.delete(id);
+          }
         }
       }
 
@@ -417,8 +458,19 @@ export function Canvas() {
 
   const onNodesChange = useCallback(
     (changes: NodeChange<Node<BoardNodeData>>[]) => {
+      // While a box is open, React Flow deselects the prior selection, which
+      // this gesture keeps (it adds or subtracts on release). Those elements
+      // stay drawn as selected so the board never shows a selection the
+      // release would contradict.
+      const gesture = boxGesture.current;
+      const visual = gesture
+        ? changes.filter(
+            (change) =>
+              !(change.type === 'select' && !change.selected && gesture.prior.has(change.id)),
+          )
+        : changes;
       // Position and dimension changes stay local until the drag ends.
-      setNodes((current) => applyNodeChanges(changes, current));
+      setNodes((current) => applyNodeChanges(visual, current));
       routeChanges(changes, (id) => id);
     },
     [routeChanges],
@@ -441,14 +493,110 @@ export function Canvas() {
     [screenToFlowPosition],
   );
 
+  /**
+   * Settles a box gesture on release: the nodes drawn fully inside the box
+   * (the ones React Flow highlighted during the drag) and the connections
+   * touching them, joined with the selection the gesture opened over, or
+   * removed from it for ctrl+shift. One dispatch per gesture, and none when
+   * the selection would not change.
+   */
+  const endBoxSelection = useCallback(
+    (event: React.PointerEvent) => {
+      const gesture = boxGesture.current;
+      if (!gesture) return;
+      boxGesture.current = null;
+
+      const end = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      const rect = {
+        x: Math.min(gesture.start.x, end.x),
+        y: Math.min(gesture.start.y, end.y),
+        width: Math.abs(end.x - gesture.start.x),
+        height: Math.abs(end.y - gesture.start.y),
+      };
+
+      const boxedNodes = new Set<Id>();
+      for (const node of nodes) {
+        const origin = node.data.origin;
+        const width = node.measured?.width ?? Number(node.style?.width ?? 0);
+        const height = node.measured?.height ?? Number(node.style?.height ?? 0);
+        if (
+          origin.x >= rect.x &&
+          origin.y >= rect.y &&
+          origin.x + width <= rect.x + rect.width &&
+          origin.y + height <= rect.y + rect.height
+        ) {
+          boxedNodes.add(node.id);
+        }
+      }
+
+      const boxed = new Set<Id>(boxedNodes);
+      for (const edge of edges) {
+        // A roll-up stands in for lines hidden inside a collapsed group; the
+        // reader has not pointed at any one of them.
+        if (edge.id.startsWith('rollup:')) continue;
+        if (boxedNodes.has(edge.source) || boxedNodes.has(edge.target)) {
+          boxed.add(connectionIdFromEdge(edge.id));
+        }
+      }
+
+      const state = store.getState();
+      const next = gesture.subtract
+        ? [...gesture.prior].filter((id) => !boxed.has(id))
+        : [...new Set([...gesture.prior, ...boxed])];
+      const ids = next.filter((id) => state.document.model.elements[id]);
+
+      const current = new Set(state.selection);
+      if (ids.length !== current.size || ids.some((id) => !current.has(id))) {
+        store.dispatch({ type: 'set-selection', ids });
+        return;
+      }
+      // Nothing moved, but React Flow deselected mid-drag; put the drawn
+      // selection back where the session says it is.
+      setNodes((drawn) =>
+        drawn.map((node) =>
+          node.selected === current.has(node.id)
+            ? node
+            : { ...node, selected: current.has(node.id) },
+        ),
+      );
+    },
+    [nodes, edges, screenToFlowPosition],
+  );
+
+  /** A press on the minimap recentres the board there, at the zoom it holds. */
+  const onMiniMapClick = useCallback(
+    (_: unknown, position: { x: number; y: number }) => {
+      void setCenter(position.x, position.y, { zoom: getViewport().zoom, duration: 200 });
+    },
+    [setCenter, getViewport],
+  );
+
+  /** Muted elements stay muted in the minimap, so it mirrors the board. */
+  const miniMapNodeColor = useCallback(
+    (node: Node) => (node.data['dimmed'] === true ? '#242938' : '#3c4354'),
+    [],
+  );
+
   return (
     <div
       className={`canvas${pending ? ' is-placing' : ''}`}
       data-testid="canvas"
       data-placing={pending ?? undefined}
       onPointerDownCapture={(event) => {
-        if (!pending) return;
+        pressToggles.current = event.ctrlKey || event.metaKey;
         const target = event.target as HTMLElement;
+        if (!pending) {
+          // Shift opens React Flow's selection box wherever the press lands
+          // on the board, so the gesture is noted before any change arrives.
+          if (event.shiftKey && event.button === 0 && target.closest('.react-flow__pane')) {
+            boxGesture.current = {
+              prior: new Set(store.getState().selection),
+              subtract: event.ctrlKey || event.metaKey,
+              start: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+            };
+          }
+          return;
+        }
         if (!target.classList.contains('react-flow__pane')) return;
         // An armed placement near the controls is the same mis-aimed click.
         if (nearBoardControls(event.clientX, event.clientY)) return;
@@ -459,7 +607,12 @@ export function Canvas() {
         if (!draft) return;
         setDraft({ ...draft, to: screenToFlowPosition({ x: event.clientX, y: event.clientY }) });
       }}
+      // A cancelled pointer never settles its box; the next gesture starts clean.
+      onPointerCancel={() => {
+        boxGesture.current = null;
+      }}
       onPointerUp={(event) => {
+        endBoxSelection(event);
         if (!draft) return;
         const end = screenToFlowPosition({ x: event.clientX, y: event.clientY });
         const width = Math.abs(end.x - draft.from.x);
@@ -507,6 +660,10 @@ export function Canvas() {
         zoomOnDoubleClick={false}
         // Both keys delete, matching what either keyboard leads you to expect.
         deleteKeyCode={['Delete', 'Backspace']}
+        // React Flow matches key combinations exactly, so plain 'Shift' stops
+        // matching the moment ctrl joins it and ctrl+shift+drag would pan.
+        // Naming the combinations keeps the box open for subtraction.
+        selectionKeyCode={['Shift', 'Control+Shift', 'Meta+Shift']}
         // Pinned so the gesture is the same on every platform.
         multiSelectionKeyCode={['Control', 'Meta']}
         // Any handle can be either end, so a line attaches to whichever side
@@ -523,6 +680,16 @@ export function Canvas() {
         <Controls>
           <HistoryControls />
         </Controls>
+        <MiniMap
+          pannable
+          zoomable
+          position="bottom-right"
+          bgColor="#171a21"
+          maskColor="rgb(18 20 26 / 65%)"
+          nodeColor={miniMapNodeColor}
+          nodeStrokeColor="transparent"
+          onClick={onMiniMapClick}
+        />
         <SelectionActions nodes={nodes} />
         <PanRelations nodes={nodes} />
         <ExpansionMenu nodes={nodes} />

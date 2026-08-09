@@ -3026,3 +3026,176 @@ test.describe('control cluster click guard', () => {
     expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(before);
   });
 });
+
+test.describe('selection gestures', () => {
+  const GROUP = 'pay-group';
+  const SHADOW = 'shadow-1';
+
+  /** Count of selection commands, so a test can pin one dispatch per gesture. */
+  async function selectionDispatches(page: import('@playwright/test').Page): Promise<number> {
+    const trace = await getTrace(page);
+    return trace.filter((entry) => entry.command.type === 'set-selection').length;
+  }
+
+  async function selection(page: import('@playwright/test').Page): Promise<string[]> {
+    return page.evaluate(() => [...window.__modl.getState().selection].sort());
+  }
+
+  /** Drags a selection box between two screen points with modifiers held. */
+  async function boxDrag(
+    page: import('@playwright/test').Page,
+    keys: string[],
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+  ): Promise<void> {
+    for (const key of keys) await page.keyboard.down(key);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 8 });
+    await page.mouse.up();
+    for (const key of [...keys].reverse()) await page.keyboard.up(key);
+  }
+
+  test('shift+drag adds a boxed region to the selection, in one dispatch', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await fit(page);
+
+    await page.locator(`.react-flow__node[data-id="${IDS.ui}"]`).click();
+    await expect.poll(() => selection(page)).toEqual([IDS.ui]);
+    const before = await selectionDispatches(page);
+
+    const gateway = (await page.getByTestId(`entity-${IDS.gateway}`).boundingBox())!;
+    const ledger = (await page.getByTestId(`entity-${IDS.ledger}`).boundingBox())!;
+    await boxDrag(
+      page,
+      ['Shift'],
+      { x: gateway.x - 25, y: gateway.y - 25 },
+      { x: ledger.x + ledger.width + 25, y: ledger.y + ledger.height + 25 },
+    );
+
+    // The prior selection survives, and the box brings the two boxed nodes
+    // with the connections touching them.
+    await expect
+      .poll(() => selection(page))
+      .toEqual([IDS.ui, IDS.gateway, IDS.ledger, IDS.authorise, IDS.post].sort());
+    expect(await selectionDispatches(page)).toBe(before + 1);
+  });
+
+  test('ctrl+shift+drag removes a boxed subset, in one dispatch', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'set-selection', ids: [IDS.ui, IDS.gateway, IDS.ledger, IDS.authorise, IDS.post] },
+    ]);
+    await fit(page);
+    const before = await selectionDispatches(page);
+
+    const gateway = (await page.getByTestId(`entity-${IDS.gateway}`).boundingBox())!;
+    await boxDrag(
+      page,
+      ['Control', 'Shift'],
+      { x: gateway.x - 15, y: gateway.y - 15 },
+      { x: gateway.x + gateway.width + 15, y: gateway.y + gateway.height + 15 },
+    );
+
+    // The boxed node leaves, along with the connections touching it.
+    await expect.poll(() => selection(page)).toEqual([IDS.ui, IDS.ledger].sort());
+    expect(await selectionDispatches(page)).toBe(before + 1);
+  });
+
+  test('ctrl+click toggles an element in and out of the selection', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await fit(page);
+
+    await page.locator(`.react-flow__node[data-id="${IDS.ui}"]`).click();
+    await page.locator(`.react-flow__node[data-id="${IDS.gateway}"]`).click({
+      modifiers: ['ControlOrMeta'],
+    });
+    await expect.poll(() => selection(page)).toEqual([IDS.ui, IDS.gateway].sort());
+
+    const before = await selectionDispatches(page);
+    await page.locator(`.react-flow__node[data-id="${IDS.gateway}"]`).click({
+      modifiers: ['ControlOrMeta'],
+    });
+    await expect.poll(() => selection(page)).toEqual([IDS.ui]);
+    expect(await selectionDispatches(page)).toBe(before + 1);
+  });
+
+  test('ctrl+click on a group toggles its visible members with it', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      // Placed below its members so its header is free of them.
+      { type: 'group-elements', id: GROUP, title: 'Payments', memberIds: [IDS.ui, IDS.gateway], position: { x: 0, y: 260 } },
+      { type: 'set-expanded', id: GROUP, expanded: true },
+      // Creating a group selects it; the toggle needs a clean start.
+      { type: 'set-selection', ids: [] },
+    ]);
+    await fit(page);
+
+    await page.getByTestId(`group-${GROUP}`).click({
+      modifiers: ['ControlOrMeta'],
+      position: { x: 140, y: 14 },
+    });
+    await expect.poll(() => selection(page)).toEqual([IDS.ui, IDS.gateway, GROUP].sort());
+
+    await page.getByTestId(`group-${GROUP}`).click({
+      modifiers: ['ControlOrMeta'],
+      position: { x: 140, y: 14 },
+    });
+    await expect.poll(() => selection(page)).toEqual([]);
+  });
+
+  test('ctrl+a selects what is drawn: no collapsed members, no put-away elements', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'group-elements', id: GROUP, title: 'Payments', memberIds: [IDS.ui, IDS.gateway], position: { x: 0, y: 260 } },
+      { type: 'create-entity', id: SHADOW, entityType: 'component', title: 'Shadow', position: { x: 800, y: 0 } },
+      { type: 'set-hidden', id: SHADOW, hidden: true },
+    ]);
+    const before = await selectionDispatches(page);
+
+    await page.keyboard.press('Control+a');
+
+    // The collapsed group stands in for its members, and their internal
+    // connection has nothing drawn to select. The put-away element stays out.
+    await expect.poll(() => selection(page)).toEqual([IDS.ledger, IDS.post, GROUP].sort());
+    expect(await selectionDispatches(page)).toBe(before + 1);
+  });
+
+  test('ctrl+a inside a text field stays with the field', async ({ page }) => {
+    await dispatch(page, [...sampleDomain(), { type: 'set-selection', ids: [IDS.ledger] }]);
+
+    await page.getByTestId('filter-input').click();
+    await page.keyboard.press('Control+a');
+
+    expect(await selection(page)).toEqual([IDS.ledger]);
+  });
+});
+
+test.describe('minimap', () => {
+  test('is on the board, clear of the control cluster', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    const minimap = (await page.locator('.react-flow__minimap').boundingBox())!;
+    const controls = (await page.locator('.react-flow__controls').boundingBox())!;
+    expect(minimap.x).toBeGreaterThan(controls.x + controls.width);
+  });
+
+  test('a click repositions the viewport and touches nothing else', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    const before = await page
+      .locator('.react-flow__viewport')
+      .evaluate((el) => (el as HTMLElement).style.transform);
+
+    await page.locator('.react-flow__minimap-svg').click({ position: { x: 25, y: 25 } });
+
+    await expect
+      .poll(() =>
+        page.locator('.react-flow__viewport').evaluate((el) => (el as HTMLElement).style.transform),
+      )
+      .not.toBe(before);
+
+    // The camera moved; the document and the selection did not.
+    expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(5);
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([]);
+  });
+});

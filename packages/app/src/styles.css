@@ -446,6 +446,15 @@ select {
   cursor: default;
 }
 
+/* The minimap wears the panel theme. Colours inside it (node fill, mask)
+   come from the MiniMap props in Canvas.tsx. */
+.react-flow__minimap {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+}
+
 .react-flow__attribution {
   display: none;
 }
