@@ -6,6 +6,7 @@ import {
   MiniMap,
   ReactFlow,
   useReactFlow,
+  useStoreApi,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -19,6 +20,7 @@ import {
   descendantsOf,
   isConnection,
   isEntity,
+  isEntityLayout,
   selectionSpanOf,
   type Id,
   type Point,
@@ -40,6 +42,15 @@ import { GroupNode } from './GroupNode.js';
 import { ConnectionEdge } from './ConnectionEdge.js';
 import { ArrowMarkers } from './ArrowMarkers.js';
 import { PlacementPreview } from './PlacementPreview.js';
+import { DuplicatePreview } from './DuplicatePreview.js';
+import {
+  boundsOf,
+  copyRects,
+  copyToClipboard,
+  duplicateElements,
+  pasteableIds,
+  type CopyRect,
+} from './duplication.js';
 import { arm, disarm, getPending, usePending } from './placement.js';
 import { HistoryControls } from './HistoryControls.js';
 import { ExpansionMenu } from './ExpansionMenu.js';
@@ -77,6 +88,34 @@ function nearBoardControls(clientX: number, clientY: number): boolean {
   );
 }
 
+/** How far an alt+drag must travel before it copies anything, in flow pixels. */
+const COPY_DRAG_MINIMUM = 4;
+/** Where a paste lands when its copy draws no box to centre on the pointer. */
+const PASTE_NUDGE = { x: 32, y: 32 } as const;
+
+/**
+ * The node an alt+drag would copy, or null when the press is something else.
+ * Read from the event rather than from state because two handlers have to
+ * agree on it: the pointerdown that opens the gesture, and the mousedown that
+ * would otherwise start React Flow's node drag before the gesture is drawn.
+ */
+function duplicateTarget(event: {
+  altKey: boolean;
+  button: number;
+  target: EventTarget | null;
+}): Id | null {
+  if (!event.altKey || event.button !== 0 || getPending() !== null) return null;
+  const node = (event.target as HTMLElement | null)?.closest<HTMLElement>('.react-flow__node');
+  return node?.dataset['id'] ?? null;
+}
+
+/** The middle of the board in screen coordinates. */
+function centreOf(element: HTMLElement | null): { x: number; y: number } {
+  const rect = element?.getBoundingClientRect();
+  if (!rect) return { x: 0, y: 0 };
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
+
 /** The subset of a React Flow change this app acts on. */
 interface CanvasChange {
   type: string;
@@ -101,12 +140,29 @@ interface BoxGesture {
   start: Point;
 }
 
+/**
+ * An alt+drag in flight. The copies are ghosts until the release, so nothing
+ * on the board moves and the gesture settles as one `duplicate-elements`.
+ * See docs/decisions/013-duplication.md.
+ */
+interface CopyDrag {
+  /** What is being copied: the selection when it holds the pressed element, else that element alone. */
+  ids: Id[];
+  /** Boxes the copy would draw, before the drag moved it. */
+  rects: CopyRect[];
+  /** Where the press landed, in flow coordinates. */
+  from: Point;
+  /** How far the pointer has travelled since. */
+  offset: Point;
+}
+
 export function Canvas() {
   const state = useAppState();
   const editingId = useEditingId();
   const highlightId = useHighlightId();
   const loadCount = useLoadCount();
   const { screenToFlowPosition, fitView, setViewport, setCenter, getViewport } = useReactFlow();
+  const flowStore = useStoreApi();
 
   // A selection box in flight keeps element editors shut.
   const [boxSelecting, setBoxSelecting] = useState(false);
@@ -114,6 +170,18 @@ export function Canvas() {
   // Whether the last press held ctrl or cmd, read when React Flow reports the
   // resulting selection change: a toggle also speaks for a group's members.
   const pressToggles = useRef(false);
+  // An alt+drag in flight, drawn as ghosts where the copies would land.
+  const [copyDrag, setCopyDrag] = useState<CopyDrag | null>(null);
+  // Last pointer position over the board, so a paste knows where to centre.
+  const pointer = useRef<{ x: number; y: number } | null>(null);
+  /**
+   * Whether the click closing the current gesture should be swallowed. A
+   * press on a node released over the pane produces a click on the pane, and
+   * React Flow answers that by clearing the selection, which would throw away
+   * the copies an alt+drag just made.
+   */
+  const swallowClick = useRef(false);
+  const canvasRef = useRef<HTMLDivElement>(null);
   const pending = usePending();
   const warping = useWarpingIds();
   const [draft, setDraft] = useState<{ from: Point; to: Point | null } | null>(null);
@@ -494,6 +562,20 @@ export function Canvas() {
   );
 
   /**
+   * Drops the rectangle React Flow draws over the nodes a box gesture just
+   * selected. That rectangle sits above them and swallows every press aimed
+   * at one, so an alt+drag lands on it rather than on an element and a
+   * selection built by a box behaves unlike the same selection built by
+   * clicks. A selection is one thing here however it was made, so the
+   * rectangle goes and the elements underneath stay live.
+   */
+  const dropSelectionRect = useCallback(() => {
+    if (flowStore.getState().nodesSelectionActive) {
+      flowStore.setState({ nodesSelectionActive: false });
+    }
+  }, [flowStore]);
+
+  /**
    * Settles a box gesture on release: the nodes drawn fully inside the box
    * (the ones React Flow highlighted during the drag) and the connections
    * touching them, joined with the selection the gesture opened over, or
@@ -563,6 +645,105 @@ export function Canvas() {
     [nodes, edges, screenToFlowPosition],
   );
 
+  /**
+   * Where a copy lands decides which container holds it, the same rule a drop
+   * follows. Only a copy whose group stayed behind can move: one copied
+   * together with its group is already inside it.
+   */
+  const settleCopies = useCallback((idMap: Record<Id, Id>) => {
+    const copies = new Set(Object.values(idMap));
+    for (const copy of copies) {
+      const state = store.getState();
+      const element = state.document.model.elements[copy];
+      if (!element || isConnection(element)) continue;
+      if (element.groupId !== null && copies.has(element.groupId)) continue;
+
+      const entry = state.document.layout[copy];
+      if (!entry || !isEntityLayout(entry)) continue;
+      const size = state.expanded.includes(copy) && entry.expanded ? entry.expanded : entry;
+      const centre = { x: entry.x + size.width / 2, y: entry.y + size.height / 2 };
+
+      const own = new Set([copy, ...descendantsOf(state.document.model.elements, copy)]);
+      const container = containerAt(state, centre, own);
+      if (container !== element.groupId) {
+        store.dispatch({ type: 'set-group', id: copy, groupId: container });
+      }
+    }
+  }, []);
+
+  /**
+   * Settles an alt+drag on release: one duplicate at the distance travelled.
+   * A press that never moved copies nothing, since the copy would land
+   * exactly on top of what it came from.
+   */
+  const endCopyDrag = useCallback(
+    (event: React.PointerEvent) => {
+      if (!copyDrag) return;
+      setCopyDrag(null);
+
+      const at = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      const offset = { x: at.x - copyDrag.from.x, y: at.y - copyDrag.from.y };
+      if (Math.hypot(offset.x, offset.y) < COPY_DRAG_MINIMUM) return;
+
+      swallowClick.current = true;
+      settleCopies(duplicateElements(copyDrag.ids, offset));
+    },
+    [copyDrag, screenToFlowPosition, settleCopies],
+  );
+
+  /** Drops a copy of the clipboard, centred on a point in flow coordinates. */
+  const pasteAt = useCallback(
+    (at: Point) => {
+      const state = store.getState();
+      const ids = pasteableIds(state);
+      if (ids.length === 0) return;
+
+      // Centred on the cursor, which is where the reader is pointing. A copy
+      // with nothing drawn to measure, every element of it inside a collapsed
+      // group, is nudged instead so a second paste clears the first.
+      const bounds = boundsOf(copyRects(state, ids));
+      const offset = bounds
+        ? { x: at.x - (bounds.x + bounds.width / 2), y: at.y - (bounds.y + bounds.height / 2) }
+        : PASTE_NUDGE;
+      settleCopies(duplicateElements(ids, offset));
+    },
+    [settleCopies],
+  );
+
+  /**
+   * Ctrl+C remembers the selection and ctrl+V drops a copy centred on the
+   * pointer, so a run of pastes follows the cursor across the board. These
+   * live here rather than beside the other shortcuts in App because a paste
+   * needs the pointer in flow coordinates.
+   */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+      const key = event.key.toLowerCase();
+      if (key !== 'c' && key !== 'v') return;
+
+      // A focused field keeps the browser's copy and paste over its own text.
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, [contenteditable]')) return;
+
+      if (key === 'c') {
+        const selection = store.getState().selection;
+        // Nothing selected is nothing to copy, and the clipboard keeps what
+        // it already holds.
+        if (selection.length === 0) return;
+        event.preventDefault();
+        copyToClipboard(selection);
+        return;
+      }
+
+      if (pasteableIds(store.getState()).length === 0) return;
+      event.preventDefault();
+      pasteAt(screenToFlowPosition(pointer.current ?? centreOf(canvasRef.current)));
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [pasteAt, screenToFlowPosition]);
+
   /** A press on the minimap recentres the board there, at the zoom it holds. */
   const onMiniMapClick = useCallback(
     (_: unknown, position: { x: number; y: number }) => {
@@ -579,12 +760,48 @@ export function Canvas() {
 
   return (
     <div
+      ref={canvasRef}
       className={`canvas${pending ? ' is-placing' : ''}`}
       data-testid="canvas"
       data-placing={pending ?? undefined}
+      // React Flow starts a node drag on mousedown, so stopping the
+      // pointerdown below does not keep the original still by itself.
+      onMouseDownCapture={(event) => {
+        if (duplicateTarget(event)) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
+      // The click that ends an alt+drag belongs to the gesture, not to the
+      // board underneath it.
+      onClickCapture={(event) => {
+        if (!swallowClick.current) return;
+        swallowClick.current = false;
+        event.stopPropagation();
+      }}
       onPointerDownCapture={(event) => {
         pressToggles.current = event.ctrlKey || event.metaKey;
+        // A gesture that ended without its click leaves nothing armed here.
+        swallowClick.current = false;
         const target = event.target as HTMLElement;
+
+        // Alt+drag copies what it grabs, or the whole selection when it holds
+        // that element. The copies follow the pointer as ghosts and land on
+        // release, so the originals stay where they are.
+        const copying = duplicateTarget(event);
+        if (copying !== null) {
+          event.stopPropagation();
+          const state = store.getState();
+          const ids = state.selection.includes(copying) ? [...state.selection] : [copying];
+          setCopyDrag({
+            ids,
+            rects: copyRects(state, ids),
+            from: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+            offset: { x: 0, y: 0 },
+          });
+          return;
+        }
+
         if (!pending) {
           // Shift opens React Flow's selection box wherever the press lands
           // on the board, so the gesture is noted before any change arrives.
@@ -604,14 +821,27 @@ export function Canvas() {
         setDraft({ from: screenToFlowPosition({ x: event.clientX, y: event.clientY }), to: null });
       }}
       onPointerMove={(event) => {
+        pointer.current = { x: event.clientX, y: event.clientY };
+        if (copyDrag) {
+          const at = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+          setCopyDrag({
+            ...copyDrag,
+            offset: { x: at.x - copyDrag.from.x, y: at.y - copyDrag.from.y },
+          });
+        }
         if (!draft) return;
         setDraft({ ...draft, to: screenToFlowPosition({ x: event.clientX, y: event.clientY }) });
       }}
-      // A cancelled pointer never settles its box; the next gesture starts clean.
+      // A cancelled pointer never settles its gesture; the next one starts clean.
       onPointerCancel={() => {
         boxGesture.current = null;
+        setCopyDrag(null);
       }}
       onPointerUp={(event) => {
+        // The pane turns the rectangle on as it ends its own gesture, which
+        // it does before this handler runs.
+        dropSelectionRect();
+        endCopyDrag(event);
         endBoxSelection(event);
         if (!draft) return;
         const end = screenToFlowPosition({ x: event.clientX, y: event.clientY });
@@ -633,6 +863,7 @@ export function Canvas() {
       {draft?.to && (
         <PlacementPreview from={draft.from} to={draft.to} />
       )}
+      {copyDrag && <DuplicatePreview rects={copyDrag.rects} offset={copyDrag.offset} />}
       <ReactFlow
         nodes={nodes}
         edges={edges}

@@ -18,5 +18,6 @@ A decision earns a file when reversing it later would be expensive: it shapes th
 | [010](010-gravity-wave-art-direction.md) | Motion speaks the language of gravity waves, app-side only |
 | [011](011-expansion-tooling.md) | Expansion tooling batches set-expanded over a scope of items, read as one group |
 | [012](012-selection-gestures.md) | Selection gestures compute the next selection, then dispatch one set-selection |
+| [013](013-duplication.md) | A copy covers a self-contained set of elements, and arrives as one duplicate-elements |
 
 The build order these decisions were first applied in lives in [the bootstrap spec](../specs/001-bootstrap.md).
