@@ -91,6 +91,17 @@ export interface Connection extends ElementBase {
 export interface ConnectionNode extends ElementBase {
   kind: 'connection-node';
   shape: NodeShape;
+  /**
+   * What each branch answers, keyed by the id of the connection it labels.
+   *
+   * The node's title carries the question; a label carries the answer that
+   * sends a reader down one line rather than another. It lives here rather
+   * than on the connection because a line running between two decisions
+   * answers both of them, and one field per end would be two ways to say the
+   * same thing. A key naming a connection that does not touch this node is a
+   * `label-unattached` warning, not an error.
+   */
+  labels: Record<Id, string>;
 }
 
 export type Element = Entity | Connection | ConnectionNode;
@@ -156,10 +167,13 @@ export interface Document {
  * 4 -> 5: elements may carry `style`. Additive, but still a bump: a version 4
  *         build saving a version 5 file would silently strip every colour,
  *         and refusing the file is better than losing the work.
+ * 5 -> 6: a connection node carries `labels`, one per connection touching it.
+ *         Same reasoning as the last bump: an older build would drop the
+ *         reasons someone wrote against each branch on the next save.
  *
  * Older documents still load: the reader migrates them.
  */
-export const FORMAT_VERSION = 5;
+export const FORMAT_VERSION = 6;
 export const OLDEST_READABLE_VERSION = 1;
 
 export const DEFAULT_ENTITY_SIZE = { width: 180, height: 72 } as const;

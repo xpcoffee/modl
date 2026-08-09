@@ -198,6 +198,54 @@ describe('warnings', () => {
   });
 });
 
+describe('decision labels', () => {
+  const DECISION = '77777777-7777-4777-8777-777777777777';
+
+  /** The fixture with the gateway's two lines running through a decision. */
+  function branching(labels: Record<string, string>): Record<string, any> {
+    const document = fixture();
+    document['model']['elements'][DECISION] = {
+      id: DECISION,
+      kind: 'connection-node',
+      shape: 'diamond',
+      labels,
+      title: 'authorised?',
+      description: '',
+      tags: {},
+      sources: [],
+      groupId: null,
+    };
+    document['model']['elements'][AUTHORISE]['to'] = [DECISION];
+    document['model']['elements']['55555555-5555-4555-8555-555555555555']['from'] = [DECISION];
+    return document;
+  }
+
+  it('accepts a label against a connection touching the node', () => {
+    const result = validateDocument(branching({ [AUTHORISE]: 'card accepted' }));
+    expect(result.errors).toEqual([]);
+    expect(codes(result.warnings)).not.toContain('label-unattached');
+  });
+
+  it('label-unattached: a label naming a connection that misses the node', () => {
+    const result = validateDocument(branching({ '55555555-5555-4555-8555-555555555556': 'no' }));
+    expect(codes(result.warnings)).toContain('label-unattached');
+    expect(isLoadable(result)).toBe(true);
+  });
+
+  it('label-unattached: a label naming an entity rather than a connection', () => {
+    expect(codes(validateDocument(branching({ [UI]: 'no' })).warnings)).toContain(
+      'label-unattached',
+    );
+  });
+
+  it('reads a node written without labels at all', () => {
+    const document = branching({});
+    delete document['model']['elements'][DECISION]['labels'];
+    const result = validateDocument(document);
+    expect(result.errors).toEqual([]);
+  });
+});
+
 describe('styles', () => {
   it('schema-invalid: a colour that is not lowercase #rrggbb', () => {
     const document = fixture();

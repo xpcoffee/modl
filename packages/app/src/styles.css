@@ -911,6 +911,13 @@ select {
   left: 50%;
 }
 
+/* Hung off the entrance's right edge instead, for a menu beside a small
+   element: the options grow away from it rather than across it. */
+.roller-menu__viewport.is-right {
+  left: auto;
+  right: 0;
+}
+
 .roller-menu__option {
   position: absolute;
   top: 0;
@@ -931,6 +938,101 @@ select {
   border-color: var(--accent);
   background: rgb(91 141 239 / 15%);
   color: var(--text);
+}
+
+/* A two-line pill: what the option is, and what it is about. */
+.roller-menu__option.is-tall {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 12px;
+  border-radius: 10px;
+  text-align: left;
+}
+
+.roller-menu__sublabel {
+  font-size: 10px;
+  color: var(--muted);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Turns the roller a step at a time, for a reader without a wheel. */
+.roller-menu__step {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 22px;
+  height: 16px;
+  padding: 0;
+  border-radius: 6px;
+  font-size: 8px;
+  line-height: 1;
+  color: var(--muted);
+  background: var(--panel);
+}
+
+.roller-menu__step:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* Connections menu: a junction's branches, and the label editor behind them.
+   Left of the junction, opposite pan-to-relation. */
+
+.connections-menu {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  /* Same stacking as .pan-relations: above a selected node's 2000. */
+  z-index: 2500;
+  pointer-events: all;
+  /* Reaches the junction's edge while the pill sits clear of it, so the
+     pointer crossing the gap keeps the hover that opened the menu. */
+  padding-right: 10px;
+}
+
+.connection-label-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.connection-label-editor__peer {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.connection-label-editor__input {
+  width: 150px;
+  font-size: 12px;
+}
+
+/* What a decision's branch answers, drawn at that end of the line. */
+.decision-label {
+  position: absolute;
+  padding: 1px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--panel);
+  font-size: 10px;
+  color: var(--text);
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.decision-label.is-dimmed {
+  opacity: 0.25;
 }
 
 /* A stack of connections collapsing onto one pair of anchors */

@@ -7,6 +7,7 @@ import { ElementHover } from './ElementHover.js';
 import { InlineTitle } from './InlineTitle.js';
 import { MIN_NODE_SIZE } from './derive.js';
 import { stopEditing } from './editing.js';
+import { clearHovered, setHovered } from './hover.js';
 import { boxCss } from './styling.js';
 
 /**
@@ -31,6 +32,11 @@ export function ConnectionNodeView({ data, selected }: NodeProps<Node<Connection
       }`}
       data-testid={`node-${data.id}`}
       data-shape={data.shape}
+      // Pointing at a junction reads it: its branch labels appear on the
+      // board and its connections menu opens beside it, without the reader
+      // having to select it first.
+      onPointerEnter={() => setHovered(data.id)}
+      onPointerLeave={() => clearHovered(data.id)}
     >
       <NodeResizer
         isVisible={!!selected}

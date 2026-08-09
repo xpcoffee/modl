@@ -3491,3 +3491,217 @@ test.describe('duplication', () => {
     expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(5);
   });
 });
+
+test.describe('decision labels', () => {
+  const DECISION = 'authorised';
+  const SECOND = 'in-stock';
+  const PAID = 'paid';
+  const REFUSED = 'refused';
+  const ASKS = 'asks';
+  const YES = 'yes';
+  const NO = 'no';
+
+  /** Checkout UI -> a decision that branches to paid and refused. */
+  function branchingDomain(): import('@modl/core').Command[] {
+    return [
+      { type: 'create-entity', id: IDS.ui, entityType: 'component', title: 'Checkout UI', position: { x: 0, y: 120 } },
+      { type: 'create-entity', id: PAID, entityType: 'component', title: 'Paid', position: { x: 520, y: 0 } },
+      { type: 'create-entity', id: REFUSED, entityType: 'component', title: 'Refused', position: { x: 520, y: 240 } },
+      { type: 'create-connection-node', id: DECISION, shape: 'diamond', title: 'authorised?', position: { x: 280, y: 130 } },
+      { type: 'create-connection', id: ASKS, connectionType: 'interaction', from: [IDS.ui], to: [DECISION], title: 'authorise' },
+      { type: 'create-connection', id: YES, connectionType: 'interaction', from: [DECISION], to: [PAID], title: '' },
+      { type: 'create-connection', id: NO, connectionType: 'interaction', from: [DECISION], to: [REFUSED], title: '' },
+    ];
+  }
+
+  /** Opens the connections roller on a decision that is already selected. */
+  async function openMenu(page: import('@playwright/test').Page): Promise<void> {
+    await page.getByTestId('connections-menu-toggle').click();
+  }
+
+  test('a decision offers a pill per connection, named for what it reaches', async ({ page }) => {
+    await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [DECISION] }]);
+    await fit(page);
+
+    await expect(page.getByTestId('connections-menu-toggle')).toContainText('3');
+    await openMenu(page);
+
+    await expect(page.getByTestId(`connection-pill-${YES}`)).toContainText('Paid');
+    await expect(page.getByTestId(`connection-pill-${NO}`)).toContainText('Refused');
+    // The connector's own title reads as the pill's second line.
+    await expect(page.getByTestId(`connection-pill-${ASKS}`)).toContainText('authorise');
+  });
+
+  test('a junction with no connections offers no menu', async ({ page }) => {
+    await dispatch(page, [
+      { type: 'create-connection-node', id: DECISION, shape: 'diamond', title: 'lonely?', position: { x: 100, y: 100 } },
+      { type: 'set-selection', ids: [DECISION] },
+    ]);
+    await fit(page);
+
+    await expect(page.getByTestId('connections-menu')).toHaveCount(0);
+  });
+
+  test('choosing a pill opens the label editor and the answer lands in the document', async ({ page }) => {
+    await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [DECISION] }]);
+    await fit(page);
+
+    await openMenu(page);
+    // The roller opens on the first branch (its options run in id order, so
+    // "asks" leads); a click on a neighbour turns to it, and the second click
+    // chooses it.
+    await page.getByTestId(`connection-pill-${NO}`).click();
+    await page.getByTestId(`connection-pill-${NO}`).click();
+
+    await page.getByTestId(`connection-label-input-${NO}`).fill('declined');
+    await page.keyboard.press('Enter');
+
+    const document = await getDocument(page);
+    expect(document.model.elements[DECISION]).toMatchObject({ labels: { [NO]: 'declined' } });
+  });
+
+  test('the label travels through the command bus', async ({ page }) => {
+    await dispatch(page, [
+      ...branchingDomain(),
+      { type: 'set-connection-label', id: DECISION, connectionId: YES, label: 'funds held' },
+    ]);
+
+    const trace = await getTrace(page);
+    expect(
+      trace.some(
+        (entry) =>
+          entry.command.type === 'set-connection-label' && entry.command.label === 'funds held',
+      ),
+    ).toBe(true);
+  });
+
+  test('an emptied label clears the answer', async ({ page }) => {
+    await dispatch(page, [
+      ...branchingDomain(),
+      { type: 'set-connection-label', id: DECISION, connectionId: NO, label: 'declined' },
+      { type: 'set-selection', ids: [DECISION] },
+    ]);
+    await fit(page);
+
+    await openMenu(page);
+    await page.getByTestId(`connection-pill-${NO}`).click();
+    await page.getByTestId(`connection-pill-${NO}`).click();
+    await page.getByTestId(`connection-label-input-${NO}`).fill('');
+    await page.keyboard.press('Enter');
+
+    expect((await getDocument(page)).model.elements[DECISION]).toMatchObject({ labels: {} });
+  });
+
+  test('labels stay off the board until a decision or its line is read', async ({ page }) => {
+    await dispatch(page, [
+      ...branchingDomain(),
+      { type: 'set-connection-label', id: DECISION, connectionId: YES, label: 'funds held' },
+    ]);
+    await fit(page);
+
+    await expect(page.getByTestId(`decision-label-${DECISION}-${YES}`)).toHaveCount(0);
+  });
+
+  test('hovering the decision shows what its branches answer', async ({ page }) => {
+    await dispatch(page, [
+      ...branchingDomain(),
+      { type: 'set-connection-label', id: DECISION, connectionId: YES, label: 'funds held' },
+      { type: 'set-connection-label', id: DECISION, connectionId: NO, label: 'declined' },
+    ]);
+    await fit(page);
+
+    await page.getByTestId(`node-${DECISION}`).hover();
+
+    await expect(page.getByTestId(`decision-label-${DECISION}-${YES}`)).toHaveText('funds held');
+    await expect(page.getByTestId(`decision-label-${DECISION}-${NO}`)).toHaveText('declined');
+  });
+
+  test('selecting the decision shows them too', async ({ page }) => {
+    await dispatch(page, [
+      ...branchingDomain(),
+      { type: 'set-connection-label', id: DECISION, connectionId: YES, label: 'funds held' },
+      { type: 'set-selection', ids: [DECISION] },
+    ]);
+    await fit(page);
+
+    await expect(page.getByTestId(`decision-label-${DECISION}-${YES}`)).toBeVisible();
+  });
+
+  test('selecting a line shows the answer from each decision it touches', async ({ page }) => {
+    // A second decision on the far end of the "paid" line, so the one line
+    // answers to both.
+    await dispatch(page, [
+      ...branchingDomain(),
+      { type: 'create-connection-node', id: SECOND, shape: 'diamond', title: 'in stock?', position: { x: 520, y: 0 } },
+      { type: 'set-endpoints', id: YES, from: [DECISION], to: [SECOND] },
+      { type: 'set-connection-label', id: DECISION, connectionId: YES, label: 'funds held' },
+      { type: 'set-connection-label', id: SECOND, connectionId: YES, label: 'checking stock' },
+      { type: 'set-selection', ids: [YES] },
+    ]);
+    await fit(page);
+
+    await expect(page.getByTestId(`decision-label-${DECISION}-${YES}`)).toHaveText('funds held');
+    await expect(page.getByTestId(`decision-label-${SECOND}-${YES}`)).toHaveText('checking stock');
+    // The other decision's other branch is not being read, so it stays quiet.
+    await expect(page.getByTestId(`decision-label-${DECISION}-${NO}`)).toHaveCount(0);
+  });
+
+  test('turning the roller emphasises the connector it points at', async ({ page }) => {
+    await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [DECISION] }]);
+    await fit(page);
+
+    await openMenu(page);
+    await expect(page.getByTestId(`connection-${ASKS}`)).toHaveClass(/is-highlighted/);
+
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId(`connection-${NO}`)).toHaveClass(/is-highlighted/);
+    await expect(page.getByTestId(`connection-${ASKS}`)).not.toHaveClass(/is-highlighted/);
+  });
+
+  test('the stepper buttons turn the roller, wrapping at the ends', async ({ page }) => {
+    await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [DECISION] }]);
+    await fit(page);
+
+    await openMenu(page);
+    await expect(page.getByTestId(`connection-pill-${ASKS}`)).toHaveClass(/is-active/);
+
+    await page.getByTestId('connections-menu-down').click();
+    await expect(page.getByTestId(`connection-pill-${NO}`)).toHaveClass(/is-active/);
+
+    await page.getByTestId('connections-menu-up').click();
+    await page.getByTestId('connections-menu-up').click();
+    // Up from the first wraps round to the last.
+    await expect(page.getByTestId(`connection-pill-${YES}`)).toHaveClass(/is-active/);
+  });
+
+  test('the connections menu and pan-to-relation stand apart on one decision', async ({ page }) => {
+    await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [DECISION] }]);
+    await fit(page);
+
+    const connections = (await page.getByTestId('connections-menu-toggle').boundingBox())!;
+    const pan = (await page.getByTestId('pan-relations-toggle').boundingBox())!;
+    const node = (await page.getByTestId(`node-${DECISION}`).boundingBox())!;
+
+    expect(connections.x + connections.width).toBeLessThanOrEqual(node.x);
+    expect(pan.x).toBeGreaterThanOrEqual(node.x + node.width);
+  });
+
+  test('a label survives a save and a load', async ({ page }) => {
+    await dispatch(page, [
+      ...branchingDomain(),
+      { type: 'set-connection-label', id: DECISION, connectionId: YES, label: 'funds held' },
+    ]);
+
+    const saved = await serialize(page);
+    expect(JSON.parse(saved).model.elements[DECISION].labels).toEqual({ [YES]: 'funds held' });
+
+    await page.evaluate((text) => {
+      const document = JSON.parse(text);
+      window.__modl.dispatch({ type: 'load-document', document });
+    }, saved);
+
+    expect((await getDocument(page)).model.elements[DECISION]).toMatchObject({
+      labels: { [YES]: 'funds held' },
+    });
+  });
+});

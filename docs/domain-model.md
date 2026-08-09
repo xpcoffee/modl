@@ -56,6 +56,7 @@ interface Connection extends ElementBase {
 interface ConnectionNode extends ElementBase {
   kind: 'connection-node';
   shape: ForkShape;
+  labels: Record<Id, string>;        // what each branch answers, by connection id
 }
 
 type Element = Entity | Connection | ConnectionNode;
@@ -102,7 +103,7 @@ The whiteboard remembers the last style the reader chose and applies it to the n
 
 ### Versions
 
-`formatVersion` is 5. Older documents still load, and saving writes the current version, so a file upgrades the first time it is written.
+`formatVersion` is 6. Older documents still load, and saving writes the current version, so a file upgrades the first time it is written.
 
 | Change | What the reader does |
 |---|---|
@@ -110,6 +111,7 @@ The whiteboard remembers the last style the reader chose and applies it to the n
 | 2 → 3 | Connections gain `direction`, and arrowheads leave `layout`. A line drawn with a head at each end becomes `both`; anything else becomes `forward`, since `from` and `to` already said which way it ran |
 | 3 → 4 | A `fork` becomes a `connection-node`, matching the word a reader sees |
 | 4 → 5 | Elements may carry `style`. Nothing is rewritten; the bump stops a version 4 build from stripping colours on save |
+| 5 → 6 | A connection node carries `labels`. Existing nodes gain an empty map; the bump stops a version 5 build from stripping the answers written against each branch |
 
 ## Paradigms
 
@@ -206,6 +208,7 @@ Version checking short-circuits: an unreadable `formatVersion` returns on its ow
 | `orphan-entity` | An entity has no connections and holds no members. A container's connections are its members' |
 | `duplicate-title` | Two elements in the same group share a non-empty title. The same role name in two different groups reads naturally |
 | `connection-node-one-sided` | A connection node has connections on only one side |
+| `label-unattached` | A connection node labels something that is not a connection touching it |
 
 A connection pointing at targets from several paradigms produces no `paradigm-mismatch`, because a cross-paradigm connection is legal and only one of its endpoints can be satisfied.
 
@@ -225,6 +228,7 @@ A connection node anchors its lines at its middle, whichever shape it is, so a l
 interface ConnectionNode extends ElementBase {
   kind: 'connection-node';
   shape: 'circle' | 'diamond';   // the author's choice, no meaning attached
+  labels: Record<Id, string>;    // keyed by the connections touching this node
 }
 ```
 
@@ -233,6 +237,20 @@ The title carries the question or the condition; the connections leaving it carr
 `shape` is presentation, kept on the element rather than in `layout` because it is a choice about what the fork *is* to the author, and it should travel with the fork when a document is read by something that ignores layout.
 
 A connection node with connections on only one side draws a `connection-node-one-sided` warning: a junction that only receives, or only sends, reads as a mistake.
+
+### Labels
+
+`labels` records why a branch is taken, keyed by the id of the connection it labels:
+
+```json
+"labels": { "authorise-ok": "funds held", "authorise-fail": "card declined" }
+```
+
+The answers sit on the junction rather than on the connections because a line running between two decisions answers both of them, and one field per end would be two ways to say the same thing. Any connection node may carry them: `shape` is presentation, so gating a model field on it would make the drawing decide what the document can say.
+
+A label naming something that is not a connection touching this node is a `label-unattached` warning. The document still loads: a sentence someone wrote outliving its line is worth keeping until they say otherwise. The whiteboard keeps its own house in order instead — deleting a connection, or dragging its end off the junction, takes the label with it.
+
+The interface shows the labels while their junction is hovered or selected, and shows a connection's own labels while it is selected. See [decision 014](decisions/014-connection-labels.md).
 
 ### Direction
 
@@ -277,4 +295,4 @@ Deleting a group lifts its members to whatever contained the group. Nothing is l
 
 ## Coverage
 
-Implemented: `Entity` across all four types, `Connection`, `ConnectionNode`, element styles, groups with collapse and expand, the full document format, readable names, validation.
+Implemented: `Entity` across all four types, `Connection`, `ConnectionNode` with branch labels, element styles, groups with collapse and expand, the full document format, readable names, validation.

@@ -64,6 +64,15 @@ export interface ConnectionNodeData extends Record<string, unknown> {
 
 export type BoardNodeData = EntityNodeData | ConnectionNodeData;
 
+/** An answer a decision gives, drawn at the end of the line it belongs to. */
+export interface EndLabel {
+  /** The connection node the label belongs to. */
+  nodeId: Id;
+  text: string;
+  /** True when that node is this edge's source, so the label sits at that end. */
+  atSource: boolean;
+}
+
 export interface ConnectionEdgeData extends Record<string, unknown> {
   connectionId: Id;
   title: string;
@@ -84,6 +93,8 @@ export interface ConnectionEdgeData extends Record<string, unknown> {
   /** True when that end anchors at a point rather than a side. */
   centredSource: boolean;
   centredTarget: boolean;
+  /** Decision labels to draw on this line, empty unless one is being read. */
+  endLabels: EndLabel[];
   style?: ElementStyle;
 }
 
@@ -94,6 +105,8 @@ export interface DeriveOptions {
   boxSelecting: boolean;
   /** Connection the pan-to-relation control is pointing at, drawn emphasised. */
   highlightId: Id | null;
+  /** Element the pointer rests on. A decision shows its branch labels. */
+  hoverId: Id | null;
 }
 
 interface Rect {
@@ -402,6 +415,8 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           rolledUp: ids,
           centredSource: isCentred(elements, first.from),
           centredTarget: isCentred(elements, first.to),
+          // A roll-up stands in for several lines, so no one answer is its own.
+          endLabels: [],
         },
       });
       continue;
@@ -467,6 +482,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           rolledUp: [],
           centredSource: isCentred(elements, from),
           centredTarget: isCentred(elements, to),
+          endLabels: endLabelsFor(elements, element, from, to, selected, options.hoverId),
           ...(element.style === undefined ? {} : { style: element.style }),
         },
       });
@@ -474,6 +490,37 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
   }
 
   return edges;
+}
+
+/**
+ * The decision labels this line should be showing (issue #12).
+ *
+ * A label belongs to the junction at one end, so it is drawn when the reader
+ * is reading that junction: pointing at it, or holding it selected. Selecting
+ * the line itself shows every answer written against it, which is one label
+ * per end when it runs between two decisions.
+ */
+function endLabelsFor(
+  elements: Record<Id, Element>,
+  connection: Connection,
+  from: Id,
+  to: Id,
+  selected: ReadonlySet<Id>,
+  hoverId: Id | null,
+): EndLabel[] {
+  const readingLine = selected.has(connection.id);
+
+  return ([
+    [from, true],
+    [to, false],
+  ] as const).flatMap(([anchor, atSource]) => {
+    const node = elements[anchor];
+    if (!node || !isConnectionNode(node)) return [];
+    const text = node.labels[connection.id];
+    if (text === undefined || text === '') return [];
+    if (!readingLine && !selected.has(anchor) && hoverId !== anchor) return [];
+    return [{ nodeId: anchor, text, atSource }];
+  });
 }
 
 /** True when either end of this connection is hidden inside a collapsed group. */

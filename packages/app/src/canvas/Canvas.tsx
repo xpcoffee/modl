@@ -55,9 +55,11 @@ import { arm, disarm, getPending, usePending } from './placement.js';
 import { HistoryControls } from './HistoryControls.js';
 import { ExpansionMenu } from './ExpansionMenu.js';
 import { PanRelations } from './PanRelations.js';
+import { ConnectionsMenu } from './ConnectionsMenu.js';
 import { SelectionActions } from './SelectionActions.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
 import { useHighlightId } from './highlight.js';
+import { useHoveredId } from './hover.js';
 import { lastConnectionStyle, lastEntityStyle } from './styleMemory.js';
 import { pressRipple, useWarpingIds } from './animations.js';
 import { GravityGrid } from './GravityGrid.js';
@@ -160,6 +162,7 @@ export function Canvas() {
   const state = useAppState();
   const editingId = useEditingId();
   const highlightId = useHighlightId();
+  const hoverId = useHoveredId();
   const loadCount = useLoadCount();
   const { screenToFlowPosition, fitView, setViewport, setCenter, getViewport } = useReactFlow();
   const flowStore = useStoreApi();
@@ -186,8 +189,8 @@ export function Canvas() {
   const warping = useWarpingIds();
   const [draft, setDraft] = useState<{ from: Point; to: Point | null } | null>(null);
   const options = useMemo(
-    () => ({ editingId, boxSelecting, highlightId }),
-    [editingId, boxSelecting, highlightId],
+    () => ({ editingId, boxSelecting, highlightId, hoverId }),
+    [editingId, boxSelecting, highlightId, hoverId],
   );
   const derived = useMemo(
     () =>
@@ -923,6 +926,7 @@ export function Canvas() {
         />
         <SelectionActions nodes={nodes} />
         <PanRelations nodes={nodes} />
+        <ConnectionsMenu nodes={nodes} />
         <ExpansionMenu nodes={nodes} />
       </ReactFlow>
     </div>

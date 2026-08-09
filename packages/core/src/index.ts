@@ -13,6 +13,7 @@ export * from './query/duplication.js';
 export * from './query/filter.js';
 export * from './query/expansion.js';
 export * from './query/groups.js';
+export * from './query/labels.js';
 export * from './query/layout-report.js';
 export * from './query/selection.js';
 export * from './query/view.js';

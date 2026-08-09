@@ -89,6 +89,12 @@ export type Command =
       style?: ElementStyle;
     }
   | { type: 'set-node-shape'; id: Id; shape: NodeShape }
+  /**
+   * Writes the answer a junction gives for one of its branches. An empty
+   * label removes it, so there is one way to say "nothing to add" and a
+   * cleared label leaves no empty string behind in the file.
+   */
+  | { type: 'set-connection-label'; id: Id; connectionId: Id; label: string }
   | {
       type: 'create-connection';
       id: Id;

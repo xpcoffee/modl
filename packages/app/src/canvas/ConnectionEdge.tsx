@@ -166,6 +166,23 @@ function addHandles(from: Point, waypoints: Point[], to: Point): { at: Point; in
   return handles;
 }
 
+/**
+ * How far along the line a decision's label sits, in pixels from the junction,
+ * and the most of the line it is allowed to take on a short run. Far enough
+ * out to clear the diamond, near enough that it reads as belonging to that end
+ * rather than to the connection.
+ */
+const END_LABEL_REACH = 56;
+const END_LABEL_SHARE = 0.35;
+
+/** Where an end label goes: along the line, out from the end it belongs to. */
+function endLabelPoint(at: Point, towards: Point): Point {
+  const span = { x: towards.x - at.x, y: towards.y - at.y };
+  const length = Math.hypot(span.x, span.y) || 1;
+  const reach = Math.min(END_LABEL_REACH, length * END_LABEL_SHARE);
+  return { x: at.x + (span.x / length) * reach, y: at.y + (span.y / length) * reach };
+}
+
 /** Midpoint of the whole route, where the label goes. */
 function routeMidpoint(from: Point, waypoints: Point[], to: Point): Point {
   const points = [from, ...waypoints, to];
@@ -289,6 +306,27 @@ export function ConnectionEdge({
       />
 
       <EdgeLabelRenderer>
+        {/* What a decision's branch answers, drawn at the decision's end of
+            the line. It shows while that decision is being read, or while
+            this line is selected, which is why a line between two decisions
+            can carry one at each end. */}
+        {(data?.endLabels ?? []).map((label) => {
+          const at = label.atSource ? source : target;
+          const point = endLabelPoint(at, label.atSource ? target : source);
+          return (
+            <div
+              key={label.nodeId}
+              className={`decision-label${dimmed ? ' is-dimmed' : ''}`}
+              data-testid={`decision-label-${label.nodeId}-${connectionId}`}
+              style={{
+                transform: `translate(-50%, -50%) translate(${point.x}px, ${point.y}px)`,
+              }}
+            >
+              {label.text}
+            </div>
+          );
+        })}
+
         {/* Handles live in this layer rather than the edge SVG so they stack
             above the label instead of being swallowed by it. */}
         {selected && !rolledUp && (

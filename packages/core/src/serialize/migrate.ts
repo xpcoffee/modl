@@ -95,11 +95,32 @@ function v4ToV5(document: Loose): Loose {
   return { ...document, formatVersion: 5 };
 }
 
+/**
+ * 5 -> 6: a connection node carries `labels`, keyed by the connections
+ * touching it. An older node has nothing to say about its branches, so it
+ * arrives with an empty map rather than inventing answers.
+ */
+function v5ToV6(document: Loose): Loose {
+  const model = (document['model'] ?? {}) as Loose;
+  const elements = (model['elements'] ?? {}) as Record<string, Loose>;
+
+  const migrated: Record<string, Loose> = {};
+  for (const [id, element] of Object.entries(elements)) {
+    migrated[id] =
+      element['kind'] === 'connection-node'
+        ? { ...element, labels: element['labels'] ?? {} }
+        : element;
+  }
+
+  return { ...document, formatVersion: 6, model: { ...model, elements: migrated } };
+}
+
 const MIGRATIONS: Record<number, (document: Loose) => Loose> = {
   1: v1ToV2,
   2: v2ToV3,
   3: v3ToV4,
   4: v4ToV5,
+  5: v5ToV6,
 };
 
 export function migrateDocument(raw: unknown): MigrationResult {

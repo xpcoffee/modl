@@ -4,23 +4,30 @@ export interface RollerOption<T> {
   /** Stable key among this menu's options. */
   id: string;
   label: string;
+  /** A second line under the label, for what the option is about. */
+  sublabel?: string;
   value: T;
   testId?: string;
 }
 
 /** One step of the roller, in pixels. Options sit this far apart. */
 const SLOT_HEIGHT = 30;
+/** A two-line pill needs more room than a one-line one. */
+const TALL_SLOT_HEIGHT = 44;
 /** Neighbours of the active option stay readable; anything further fades out. */
 const OPACITY_BY_DISTANCE = [1, 0.45, 0.12];
+/** How far past the last visible option a stepper button sits, in pixels. */
+const STEP_GAP = 28;
 
 /**
  * A roller menu: a pill that expands on hover into a vertical list whose
- * active option sits in the middle, over where the pill was. Arrow keys and
- * the mouse wheel turn the roller, options slide into place, and clicking the
- * middle option chooses it. Clicking a faded option turns the roller to it.
+ * active option sits in the middle, over where the pill was. Arrow keys, the
+ * mouse wheel, and the optional stepper buttons turn the roller, options slide
+ * into place, and clicking the middle option chooses it. Clicking a faded
+ * option turns the roller to it.
  *
  * Generic on purpose: the first consumer pans to a connection, and the same
- * control can later carry any pick-one-of-N action beside an element.
+ * control now also carries a decision's connections (issue #12).
  */
 export function RollerMenu<T>({
   entranceLabel,
@@ -28,6 +35,9 @@ export function RollerMenu<T>({
   options,
   onSelect,
   onActiveChange,
+  steppers = false,
+  align = 'centre',
+  depth = OPACITY_BY_DISTANCE.length - 1,
   testId,
 }: {
   entranceLabel: string;
@@ -36,6 +46,16 @@ export function RollerMenu<T>({
   onSelect: (value: T) => void;
   /** Fires with the active option while open, and null when shut. */
   onActiveChange?: (value: T | null) => void;
+  /** Buttons above and below the list, for turning it without a wheel. */
+  steppers?: boolean;
+  /**
+   * Where the options sit against the entrance. `centre` puts them over it;
+   * `right` hangs them off its right edge, so a menu placed beside a small
+   * element grows away from it rather than across it.
+   */
+  align?: 'centre' | 'right';
+  /** How many options sit either side of the active one before they fade out. */
+  depth?: number;
   testId: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -57,6 +77,10 @@ export function RollerMenu<T>({
 
   if (options.length === 0) return null;
 
+  const tall = options.some((option) => option.sublabel !== undefined);
+  const slot = tall ? TALL_SLOT_HEIGHT : SLOT_HEIGHT;
+  const acrossBy = align === 'right' ? '-100%' : '-50%';
+
   const step = (by: number): void => {
     if (!open) {
       setOpen(true);
@@ -64,6 +88,30 @@ export function RollerMenu<T>({
     }
     setActive((current) => (current + by + options.length) % options.length);
   };
+
+  /**
+   * One end of the roller, drawn just past the furthest option still shown.
+   * Past it rather than a whole slot further: the slot beyond the last visible
+   * option holds a faded one, and a stepper landing on top of it would take
+   * the clicks meant for that option once the roller turns.
+   */
+  const stepper = (by: number, glyph: string, name: string) => (
+    <button
+      type="button"
+      className={`roller-menu__step roller-menu__step--${name}`}
+      data-testid={`${testId}-${name}`}
+      aria-label={`${name === 'up' ? 'Previous' : 'Next'} option`}
+      style={{
+        transform: `translate(${acrossBy}, calc(-50% + ${by * (depth * slot + STEP_GAP)}px))`,
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        step(by);
+      }}
+    >
+      {glyph}
+    </button>
+  );
 
   return (
     <div
@@ -103,21 +151,30 @@ export function RollerMenu<T>({
       </button>
 
       {open && (
-        <div className="roller-menu__viewport" data-testid={`${testId}-list`}>
+        <div
+          className={`roller-menu__viewport${align === 'right' ? ' is-right' : ''}`}
+          data-testid={`${testId}-list`}
+        >
+          {steppers && options.length > 1 && (
+            <>
+              {stepper(-1, '▲', 'up')}
+              {stepper(1, '▼', 'down')}
+            </>
+          )}
           {options.map((option, index) => {
             const offset = index - active;
             return (
               <button
                 type="button"
                 key={option.id}
-                className={`roller-menu__option${offset === 0 ? ' is-active' : ''}`}
+                className={`roller-menu__option${tall ? ' is-tall' : ''}${offset === 0 ? ' is-active' : ''}`}
                 {...(option.testId ? { 'data-testid': option.testId } : {})}
                 style={{
-                  transform: `translate(-50%, calc(-50% + ${offset * SLOT_HEIGHT}px))`,
-                  opacity: OPACITY_BY_DISTANCE[Math.abs(offset)] ?? 0,
+                  transform: `translate(${acrossBy}, calc(-50% + ${offset * slot}px))`,
+                  opacity: Math.abs(offset) > depth ? 0 : (OPACITY_BY_DISTANCE[Math.abs(offset)] ?? 0),
                   // A fully faded option would still catch clicks meant for
                   // the board behind it.
-                  pointerEvents: Math.abs(offset) >= OPACITY_BY_DISTANCE.length ? 'none' : 'auto',
+                  pointerEvents: Math.abs(offset) > depth ? 'none' : 'auto',
                 }}
                 // No hover-to-activate: turning the roller slides the options,
                 // so activating whatever the pointer crosses would spin it
@@ -125,7 +182,10 @@ export function RollerMenu<T>({
                 // to it deliberately.
                 onClick={() => (offset === 0 ? onSelect(option.value) : setActive(index))}
               >
-                {option.label}
+                <span className="roller-menu__label">{option.label}</span>
+                {option.sublabel !== undefined && (
+                  <span className="roller-menu__sublabel">{option.sublabel}</span>
+                )}
               </button>
             );
           })}

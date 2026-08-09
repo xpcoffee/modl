@@ -26,7 +26,8 @@ export type IssueCode =
   | 'empty-endpoints'
   | 'orphan-entity'
   | 'duplicate-title'
-  | 'connection-node-one-sided';
+  | 'connection-node-one-sided'
+  | 'label-unattached';
 
 export interface Issue {
   code: IssueCode;
@@ -170,6 +171,24 @@ export function validateDocument(input: unknown): ValidationResult {
         elementId: element.id,
         message: `node has ${incoming} incoming and ${outgoing} outgoing connections`,
       });
+    }
+
+    // A label answers for one branch, so it has to name a line that actually
+    // leaves or arrives here. A stale key is advisory rather than fatal: a
+    // sentence someone wrote is worth keeping until they say otherwise.
+    for (const ref of Object.keys(element.labels).sort()) {
+      const labelled = elements[ref];
+      const attached =
+        labelled !== undefined &&
+        isConnection(labelled) &&
+        [...labelled.from, ...labelled.to].includes(element.id);
+      if (!attached) {
+        warnings.push({
+          code: 'label-unattached',
+          elementId: element.id,
+          message: `label names ${ref}, which is not a connection touching this node`,
+        });
+      }
     }
   }
 
