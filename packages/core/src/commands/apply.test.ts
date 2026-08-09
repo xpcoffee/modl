@@ -122,6 +122,180 @@ describe('create-connection', () => {
   });
 });
 
+describe('duplicate-elements', () => {
+  const COPY_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const COPY_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const COPY_LINK = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const GROUP = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const COPY_GROUP = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+
+  function duplicate(idMap: Record<string, string>, offset = { x: 40, y: 40 }): Command {
+    return { type: 'duplicate-elements', idMap, offset };
+  }
+
+  it('copies an element under its new id, offset from the original', () => {
+    const state = must(
+      base,
+      { type: 'set-metadata', id: A, description: 'the front end' },
+      { type: 'set-tag', id: A, key: 'team', values: ['web', 'core'] },
+      { type: 'set-sources', id: A, sources: [{ ref: 'src/ui.ts:1' }] },
+      { type: 'set-style', id: A, style: { fill: '#112233' } },
+      duplicate({ [A]: COPY_A }),
+    );
+
+    expect(state.document.model.elements[COPY_A]).toEqual({
+      id: COPY_A,
+      kind: 'entity',
+      type: 'component',
+      title: 'Checkout UI',
+      description: 'the front end',
+      tags: { team: ['web', 'core'] },
+      sources: [{ ref: 'src/ui.ts:1' }],
+      groupId: null,
+      style: { fill: '#112233' },
+    });
+    expect(state.document.layout[COPY_A]).toEqual({ x: 40, y: 40, width: 180, height: 72 });
+    // The original is untouched.
+    expect(state.document.layout[A]).toEqual({ x: 0, y: 0, width: 180, height: 72 });
+  });
+
+  it('shares nothing mutable with the element it copied', () => {
+    const state = must(
+      base,
+      { type: 'set-tag', id: A, key: 'team', values: ['web'] },
+      duplicate({ [A]: COPY_A }),
+    );
+    const original = state.document.model.elements[A];
+    const copy = state.document.model.elements[COPY_A];
+    expect(copy?.tags).not.toBe(original?.tags);
+    expect(copy?.tags['team']).not.toBe(original?.tags['team']);
+    expect(copy?.sources).not.toBe(original?.sources);
+  });
+
+  it('re-points a connection at the copies of its ends', () => {
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      duplicate({ [A]: COPY_A, [B]: COPY_B, [LINK]: COPY_LINK }),
+    );
+    expect(state.document.model.elements[COPY_LINK]).toMatchObject({
+      kind: 'connection',
+      from: [COPY_A],
+      to: [COPY_B],
+    });
+  });
+
+  it('leaves an end outside the copy pointing at the original', () => {
+    const state = must(base, link(LINK, [A], [B]), duplicate({ [A]: COPY_A, [LINK]: COPY_LINK }));
+    expect(state.document.model.elements[COPY_LINK]).toMatchObject({ from: [COPY_A], to: [B] });
+  });
+
+  it('keeps a copy inside the group its original belongs to', () => {
+    const state = must(
+      base,
+      { type: 'group-elements', id: GROUP, title: 'Payments', memberIds: [A], position: { x: 0, y: 0 } },
+      duplicate({ [A]: COPY_A }),
+    );
+    expect(state.document.model.elements[COPY_A]?.groupId).toBe(GROUP);
+  });
+
+  it('re-points a member at the copy of its group', () => {
+    const state = must(
+      base,
+      { type: 'group-elements', id: GROUP, title: 'Payments', memberIds: [A], position: { x: 0, y: 0 } },
+      duplicate({ [GROUP]: COPY_GROUP, [A]: COPY_A }),
+    );
+    expect(state.document.model.elements[COPY_A]?.groupId).toBe(COPY_GROUP);
+    expect(state.document.model.elements[COPY_GROUP]?.groupId).toBeNull();
+  });
+
+  it('opens a copy of an open group, and keeps both of its sizes', () => {
+    const state = must(
+      base,
+      { type: 'group-elements', id: GROUP, title: 'Payments', memberIds: [A], position: { x: 0, y: 0 } },
+      { type: 'set-expanded', id: GROUP, expanded: true },
+      { type: 'resize-element', id: GROUP, width: 400, height: 300 },
+      duplicate({ [GROUP]: COPY_GROUP, [A]: COPY_A }, { x: 500, y: 0 }),
+    );
+    expect(state.expanded).toContain(COPY_GROUP);
+    expect(state.document.layout[COPY_GROUP]).toMatchObject({
+      x: (state.document.layout[GROUP] as { x: number }).x + 500,
+      expanded: { width: 400, height: 300 },
+    });
+  });
+
+  it('shifts a connection\'s bends with it', () => {
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      { type: 'set-waypoints', id: LINK, waypoints: [{ x: 100, y: 100 }] },
+      duplicate({ [A]: COPY_A, [B]: COPY_B, [LINK]: COPY_LINK }, { x: 10, y: 20 }),
+    );
+    expect(state.document.layout[COPY_LINK]).toMatchObject({ waypoints: [{ x: 110, y: 120 }] });
+  });
+
+  it('selects the copies and reports them created', () => {
+    const result = apply(base, duplicate({ [A]: COPY_A, [B]: COPY_B }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.selection.sort()).toEqual([COPY_A, COPY_B].sort());
+    expect(result.events).toContainEqual({ type: 'element-created', id: COPY_A });
+    expect(result.events).toContainEqual({ type: 'element-created', id: COPY_B });
+  });
+
+  it('is undoable in one step', () => {
+    const state = must(base, duplicate({ [A]: COPY_A, [B]: COPY_B }), { type: 'undo' });
+    expect(state.document.model.elements[COPY_A]).toBeUndefined();
+    expect(state.document.model.elements[COPY_B]).toBeUndefined();
+    expect(Object.keys(state.document.model.elements)).toHaveLength(2);
+  });
+
+  it('unknown-element: rejects copying something that is not there', () => {
+    const result = apply(base, duplicate({ [MISSING]: COPY_A }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('unknown-element');
+  });
+
+  it('duplicate-id: rejects an id already in the document', () => {
+    const result = apply(base, duplicate({ [A]: B }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('duplicate-id');
+  });
+
+  it('duplicate-id: rejects two copies claiming one id', () => {
+    const result = apply(base, duplicate({ [A]: COPY_A, [B]: COPY_A }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('duplicate-id');
+  });
+
+  it('schema-invalid: rejects a copy of nothing', () => {
+    const result = apply(base, duplicate({}));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('schema-invalid');
+  });
+
+  it('schema-invalid: rejects an offset that is not a number', () => {
+    const result = apply(base, duplicate({ [A]: COPY_A }, { x: Number.NaN, y: 0 }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('schema-invalid');
+  });
+
+  it('leaves the document valid to save and load', () => {
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      duplicate({ [A]: COPY_A, [B]: COPY_B, [LINK]: COPY_LINK }),
+    );
+    const parsed = parseDocument(serializeDocument(state.document));
+    expect(parsed.ok).toBe(true);
+  });
+});
+
 describe('move-element', () => {
   it('updates the position and keeps the size', () => {
     const state = must(base, { type: 'move-element', id: A, position: { x: 50, y: 60 } });

@@ -1,6 +1,7 @@
 import type { AppState, Command, CommandResult, Document, TraceEntry } from '@modl/core';
 import { store, replayFromJson } from '../store/store.js';
 import { forgetStyle } from '../canvas/styleMemory.js';
+import { forgetClipboard } from '../canvas/duplication.js';
 
 export interface DomainMapperApi {
   dispatch(command: Command): CommandResult;
@@ -41,8 +42,10 @@ export function installRuntimeApi(): void {
     undo: () => store.dispatch({ type: 'undo' }),
     redo: () => store.dispatch({ type: 'redo' }),
     reset: () => {
-      // The remembered style is session state too; a fresh session starts plain.
+      // The remembered style and the clipboard are session state too; a fresh
+      // session starts plain, with nothing to paste.
       forgetStyle();
+      forgetClipboard();
       store.reset();
     },
     ready: false,

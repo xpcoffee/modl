@@ -5,12 +5,14 @@ import {
   STROKE_STYLES,
   isConnection,
   isEntity,
+  isEntityLayout,
   isConnectionNode,
   type Connection,
   type Direction,
   type Document,
   type Element,
   type ElementKind,
+  type ElementLayout,
   type ElementStyle,
   type Id,
   type Point,
@@ -212,6 +214,64 @@ function reduce(state: AppState, command: Command): CommandResult {
       return ok(withElement(state, connection, state.document.layout), [
         { type: 'element-created', id: command.id },
       ]);
+    }
+
+    case 'duplicate-elements': {
+      // Sorted, so a copy of the same set is the same copy every time.
+      const pairs = Object.keys(command.idMap)
+        .sort()
+        .map((source) => [source, command.idMap[source] as Id] as const);
+
+      if (pairs.length === 0) {
+        return fail(command.type, 'schema-invalid', 'a duplicate needs at least one element');
+      }
+      if (!Number.isFinite(command.offset.x) || !Number.isFinite(command.offset.y)) {
+        return fail(command.type, 'schema-invalid', 'the offset needs finite coordinates');
+      }
+
+      const minted = new Set<Id>();
+      for (const [source, copy] of pairs) {
+        if (!state.document.model.elements[source]) return unknown(command.type, source);
+        if (state.document.model.elements[copy] || minted.has(copy)) {
+          return fail(command.type, 'duplicate-id', `element ${copy} already exists`);
+        }
+        minted.add(copy);
+      }
+
+      const elements = { ...state.document.model.elements };
+      const layout = { ...state.document.layout };
+      const expanded = new Set(state.expanded);
+      const events: DomainEvent[] = [];
+
+      for (const [source, copy] of pairs) {
+        const element = state.document.model.elements[source];
+        if (!element) continue;
+        elements[copy] = copyOf(element, copy, command.idMap);
+
+        const entry = state.document.layout[source];
+        if (entry) layout[copy] = movedLayout(entry, command.offset);
+
+        // A copy of an open group opens too, so it draws like the thing it
+        // came from rather than as a node the reader has to expand again.
+        if (expanded.has(source)) {
+          expanded.add(copy);
+          events.push({ type: 'expansion-changed', id: copy, expanded: true });
+        }
+        events.push({ type: 'element-created', id: copy });
+      }
+
+      // The copies become the selection: they are what the reader is now
+      // holding, and a second duplicate should repeat over them.
+      const copies = pairs.map(([, copy]) => copy);
+      return ok(
+        {
+          ...state,
+          document: { ...state.document, model: { elements }, layout },
+          expanded: [...expanded].sort(),
+          selection: copies,
+        },
+        [...events, { type: 'selection-changed', ids: [...copies] }],
+      );
     }
 
     case 'move-element': {
@@ -983,6 +1043,60 @@ function flipSides(layout: Document['layout'], id: Id): Document['layout'] {
       ...(targetSide === undefined ? {} : { sourceSide: targetSide }),
       ...(sourceSide === undefined ? {} : { targetSide: sourceSide }),
     },
+  };
+}
+
+/**
+ * One element copied under a new id. Every field is named rather than spread,
+ * so a field added to the model has to be considered here rather than
+ * silently shared between an element and its copy.
+ *
+ * A reference to something being copied follows the map; one reaching outside
+ * it is left alone, which is how a copy made inside a group stays in it.
+ */
+function copyOf(element: Element, id: Id, idMap: Record<Id, Id>): Element {
+  const remap = (ref: Id): Id => idMap[ref] ?? ref;
+  const shared = {
+    id,
+    title: element.title,
+    description: element.description,
+    tags: Object.fromEntries(
+      Object.entries(element.tags).map(([key, values]) => [key, [...values]]),
+    ),
+    sources: element.sources.map((source) => ({ ...source })),
+    groupId: element.groupId === null ? null : remap(element.groupId),
+    ...(element.style === undefined ? {} : { style: { ...element.style } }),
+  };
+
+  if (isConnection(element)) {
+    return {
+      ...shared,
+      kind: 'connection',
+      type: element.type,
+      direction: element.direction,
+      from: element.from.map(remap),
+      to: element.to.map(remap),
+    };
+  }
+  if (isConnectionNode(element)) {
+    return { ...shared, kind: 'connection-node', shape: element.shape };
+  }
+  return { ...shared, kind: 'entity', type: element.type };
+}
+
+/** The same layout, shifted. A copy keeps its size, its container box, and its bends. */
+function movedLayout(entry: ElementLayout, offset: Point): ElementLayout {
+  if (isEntityLayout(entry)) {
+    return {
+      ...entry,
+      x: entry.x + offset.x,
+      y: entry.y + offset.y,
+      ...(entry.expanded === undefined ? {} : { expanded: { ...entry.expanded } }),
+    };
+  }
+  return {
+    ...entry,
+    waypoints: entry.waypoints.map((point) => ({ x: point.x + offset.x, y: point.y + offset.y })),
   };
 }
 

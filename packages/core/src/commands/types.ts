@@ -99,6 +99,14 @@ export type Command =
       direction?: Direction;
       style?: ElementStyle;
     }
+  /**
+   * Copies elements. `idMap` names every source element and the id its copy
+   * takes, so a duplicate replays without a random source, and `offset` moves
+   * each copy off the thing it came from. A reference between two copied
+   * elements (a member's group, a connection's ends) follows the map; one
+   * reaching outside it keeps pointing at the original.
+   */
+  | { type: 'duplicate-elements'; idMap: Record<Id, Id>; offset: Point }
   | { type: 'move-element'; id: Id; position: Point }
   | { type: 'set-metadata'; id: Id; title?: string; description?: string }
   | { type: 'set-tag'; id: Id; key: string; values: string[] }

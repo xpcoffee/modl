@@ -3199,3 +3199,238 @@ test.describe('minimap', () => {
     expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([]);
   });
 });
+
+test.describe('duplication', () => {
+  const GROUP = 'pay-group';
+
+  type Point = { x: number; y: number };
+
+  async function elementIds(page: import('@playwright/test').Page): Promise<string[]> {
+    return Object.keys((await getDocument(page)).model.elements);
+  }
+
+  /** The elements a run added, in the order the document holds them. */
+  async function addedSince(
+    page: import('@playwright/test').Page,
+    before: string[],
+  ): Promise<string[]> {
+    return (await elementIds(page)).filter((id) => !before.includes(id));
+  }
+
+  /** The middle of a node on screen. */
+  async function centreOf(
+    page: import('@playwright/test').Page,
+    testId: string,
+  ): Promise<Point> {
+    const box = (await page.getByTestId(testId).boundingBox())!;
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  }
+
+  /** Holds alt and drags from one screen point to another. */
+  async function altDrag(
+    page: import('@playwright/test').Page,
+    from: Point,
+    to: Point,
+  ): Promise<void> {
+    await page.keyboard.down('Alt');
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 8 });
+    await page.mouse.up();
+    await page.keyboard.up('Alt');
+  }
+
+  /** Which node is drawn at a screen point, if any. */
+  async function nodeAt(page: import('@playwright/test').Page, at: Point): Promise<string | null> {
+    return page.evaluate(
+      (point) =>
+        (document.elementFromPoint(point.x, point.y) as HTMLElement | null)
+          ?.closest<HTMLElement>('.react-flow__node')
+          ?.dataset['id'] ?? null,
+      at,
+    );
+  }
+
+  test('alt+drag copies the element and leaves the original where it was', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await fit(page);
+    const before = await elementIds(page);
+
+    const from = await centreOf(page, `entity-${IDS.ui}`);
+    await altDrag(page, from, { x: from.x, y: from.y + 220 });
+
+    const added = await addedSince(page, before);
+    expect(added).toHaveLength(1);
+
+    const document = await getDocument(page);
+    expect(document.model.elements[added[0]!]).toMatchObject({
+      kind: 'entity',
+      type: 'component',
+      title: 'Checkout UI',
+      tags: { team: ['web'] },
+    });
+    // The original stayed put, and the copy sits below it.
+    expect(document.layout[IDS.ui]).toMatchObject({ x: 0, y: 0 });
+    expect((document.layout[added[0]!] as { y: number }).y).toBeGreaterThan(0);
+    // The copy is what the reader is now holding.
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual(added);
+  });
+
+  test('alt+drag settles as one command, undone in one step', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await fit(page);
+
+    const from = await centreOf(page, `entity-${IDS.gateway}`);
+    await altDrag(page, from, { x: from.x + 60, y: from.y + 200 });
+
+    const trace = await getTrace(page);
+    expect(trace.filter((entry) => entry.command.type === 'duplicate-elements')).toHaveLength(1);
+    // No move: the original never left, so nothing about it changed.
+    expect(trace.filter((entry) => entry.command.type === 'move-element')).toHaveLength(0);
+
+    await page.evaluate(() => window.__modl.undo());
+    expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(5);
+  });
+
+  test('alt+drag on a selection copies all of it, with the connections inside it', async ({ page }) => {
+    await dispatch(page, [...sampleDomain(), { type: 'set-selection', ids: [IDS.ui, IDS.gateway] }]);
+    await fit(page);
+    const before = await elementIds(page);
+
+    const from = await centreOf(page, `entity-${IDS.ui}`);
+    await altDrag(page, from, { x: from.x, y: from.y + 240 });
+
+    // Both components and the connection between them, which was not itself
+    // selected. The line out to the ledger stays out: its far end is not copied.
+    const added = await addedSince(page, before);
+    expect(added).toHaveLength(3);
+
+    const document = await getDocument(page);
+    const copiedLink = added
+      .map((id) => document.model.elements[id]!)
+      .find((element) => element.kind === 'connection')!;
+    expect(copiedLink.title).toBe('authorise');
+    expect(added).toContain((copiedLink as { from: string[] }).from[0]);
+    expect(added).toContain((copiedLink as { to: string[] }).to[0]);
+  });
+
+  test('alt+drag draws the copies where they would land, and moves nothing until released', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await fit(page);
+
+    const from = await centreOf(page, `entity-${IDS.ui}`);
+    await page.keyboard.down('Alt');
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 150, from.y + 150, { steps: 6 });
+
+    await expect(page.getByTestId('duplicate-preview')).toHaveCount(1);
+    // Nothing has been created or moved yet.
+    expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(5);
+    expect((await getDocument(page)).layout[IDS.ui]).toMatchObject({ x: 0, y: 0 });
+
+    await page.mouse.up();
+    await page.keyboard.up('Alt');
+    await expect(page.getByTestId('duplicate-preview')).toHaveCount(0);
+  });
+
+  test('alt+click without a drag copies nothing', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await fit(page);
+
+    const at = await centreOf(page, `entity-${IDS.ledger}`);
+    await altDrag(page, at, at);
+
+    expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(5);
+  });
+
+  test('a copy dragged out of a group leaves it', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'group-elements', id: GROUP, title: 'Payments', memberIds: [IDS.ui], position: { x: 0, y: 0 } },
+      { type: 'set-expanded', id: GROUP, expanded: true },
+      { type: 'set-selection', ids: [] },
+    ]);
+    await fit(page);
+    const before = await elementIds(page);
+
+    const from = await centreOf(page, `entity-${IDS.ui}`);
+    await altDrag(page, from, { x: from.x, y: from.y + 320 });
+
+    const added = await addedSince(page, before);
+    expect(added).toHaveLength(1);
+    // Where a copy lands decides what holds it, the same rule a drop follows.
+    expect((await getDocument(page)).model.elements[added[0]!]?.groupId).toBeNull();
+  });
+
+  test('copying a collapsed group brings its members with it', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'group-elements', id: GROUP, title: 'Payments', memberIds: [IDS.ui, IDS.gateway], position: { x: 0, y: 260 } },
+    ]);
+    await fit(page);
+    const before = await elementIds(page);
+
+    const from = await centreOf(page, `entity-${GROUP}`);
+    await altDrag(page, from, { x: from.x + 320, y: from.y });
+
+    // The group, both members, and the connection between them. A box copied
+    // without its contents would be an empty box.
+    const added = await addedSince(page, before);
+    expect(added).toHaveLength(4);
+
+    const document = await getDocument(page);
+    const copiedGroup = added.find((id) => document.model.elements[id]?.title === 'Payments')!;
+    const members = added.filter((id) => document.model.elements[id]?.groupId === copiedGroup);
+    expect(members).toHaveLength(2);
+  });
+
+  test('ctrl+c then ctrl+v drops a copy on the pointer, and pastes chain', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await fit(page);
+    const before = await elementIds(page);
+
+    await page.getByTestId(`entity-${IDS.ledger}`).click();
+    await page.keyboard.press('Control+c');
+
+    const first = { x: 260, y: 420 };
+    await page.mouse.move(first.x, first.y);
+    await page.keyboard.press('Control+v');
+    await expect.poll(async () => (await addedSince(page, before)).length).toBe(1);
+    // Centred on the cursor, so the copy is the node under it.
+    expect(await nodeAt(page, first)).toBe((await addedSince(page, before))[0]);
+
+    const second = { x: 620, y: 420 };
+    await page.mouse.move(second.x, second.y);
+    await page.keyboard.press('Control+v');
+    await expect.poll(async () => (await addedSince(page, before)).length).toBe(2);
+
+    // The clipboard still holds the original, so both pastes copied it.
+    const document = await getDocument(page);
+    for (const id of await addedSince(page, before)) {
+      expect(document.model.elements[id]?.title).toBe('Ledger');
+    }
+  });
+
+  test('ctrl+v with nothing copied does nothing', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await fit(page);
+
+    await page.mouse.move(300, 400);
+    await page.keyboard.press('Control+v');
+
+    expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(5);
+  });
+
+  test('ctrl+c inside a text field stays with the field', async ({ page }) => {
+    await dispatch(page, [...sampleDomain(), { type: 'set-selection', ids: [IDS.ledger] }]);
+
+    await page.getByTestId('filter-input').click();
+    await page.keyboard.press('Control+c');
+    // The board's clipboard never saw it, so there is nothing to paste.
+    await page.mouse.move(300, 400);
+    await page.keyboard.press('Control+v');
+
+    expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(5);
+  });
+});

@@ -1061,6 +1061,20 @@ select {
   pointer-events: none;
 }
 
+/* Where an alt+drag would drop its copies. Fainter than the placement
+   preview: this is a copy of something already on the board, not a new
+   element being sized. */
+.duplicate-preview {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 1.5px dashed var(--accent);
+  border-radius: 8px;
+  background: rgb(91 141 239 / 5%);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
 .toolbar__add {
   position: relative;
 }
