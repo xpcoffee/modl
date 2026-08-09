@@ -18,6 +18,8 @@ Issue #29 asks for two ways to duplicate. Alt+drag copies what it grabs and the 
 
 **Alt+drag has to stop React Flow twice.** React Flow drags a node with d3-drag, which starts on `mousedown`, so stopping the `pointerdown` that opens the gesture leaves the original moving under the pointer. The canvas stops both. The release then produces a click on the pane, which React Flow answers by clearing the selection, so the canvas swallows that one click and the copies stay selected.
 
+**A selection behaves the same however it was built.** React Flow answers a box gesture by drawing a rectangle over the boxed nodes and dragging that rectangle instead of the nodes. It sits above them and takes every press aimed at one, so an alt+drag on a boxed element moved the selection rather than copying it, while the same selection built by ctrl+clicks copied. The canvas turns the rectangle off as the gesture ends, and the elements underneath stay live. Selection is one list of ids that every gesture reads (decision 012), so a box and a run of ctrl+clicks ending on the same ids now do the same thing.
+
 **The clipboard holds ids.** A paste copies what is on the board now, and anything deleted since the copy drops out of it. The ids live beside the canvas like the placement picker, outside the document and the trace.
 
 ## Rejected

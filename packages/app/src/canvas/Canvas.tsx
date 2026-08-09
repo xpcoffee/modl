@@ -6,6 +6,7 @@ import {
   MiniMap,
   ReactFlow,
   useReactFlow,
+  useStoreApi,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -161,6 +162,7 @@ export function Canvas() {
   const highlightId = useHighlightId();
   const loadCount = useLoadCount();
   const { screenToFlowPosition, fitView, setViewport, setCenter, getViewport } = useReactFlow();
+  const flowStore = useStoreApi();
 
   // A selection box in flight keeps element editors shut.
   const [boxSelecting, setBoxSelecting] = useState(false);
@@ -560,6 +562,20 @@ export function Canvas() {
   );
 
   /**
+   * Drops the rectangle React Flow draws over the nodes a box gesture just
+   * selected. That rectangle sits above them and swallows every press aimed
+   * at one, so an alt+drag lands on it rather than on an element and a
+   * selection built by a box behaves unlike the same selection built by
+   * clicks. A selection is one thing here however it was made, so the
+   * rectangle goes and the elements underneath stay live.
+   */
+  const dropSelectionRect = useCallback(() => {
+    if (flowStore.getState().nodesSelectionActive) {
+      flowStore.setState({ nodesSelectionActive: false });
+    }
+  }, [flowStore]);
+
+  /**
    * Settles a box gesture on release: the nodes drawn fully inside the box
    * (the ones React Flow highlighted during the drag) and the connections
    * touching them, joined with the selection the gesture opened over, or
@@ -822,6 +838,9 @@ export function Canvas() {
         setCopyDrag(null);
       }}
       onPointerUp={(event) => {
+        // The pane turns the rectangle on as it ends its own gesture, which
+        // it does before this handler runs.
+        dropSelectionRect();
         endCopyDrag(event);
         endBoxSelection(event);
         if (!draft) return;

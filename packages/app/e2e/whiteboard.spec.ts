@@ -3363,6 +3363,63 @@ test.describe('duplication', () => {
     expect((await getDocument(page)).model.elements[added[0]!]?.groupId).toBeNull();
   });
 
+  test('alt+drag copies a selection built by a box, the same as one built by clicks', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await fit(page);
+    const before = await elementIds(page);
+
+    // A box around the gateway and the ledger, rather than a click on each.
+    const gateway = (await page.getByTestId(`entity-${IDS.gateway}`).boundingBox())!;
+    const ledger = (await page.getByTestId(`entity-${IDS.ledger}`).boundingBox())!;
+    await page.keyboard.down('Shift');
+    await page.mouse.move(gateway.x - 25, gateway.y - 25);
+    await page.mouse.down();
+    await page.mouse.move(ledger.x + ledger.width + 25, ledger.y + ledger.height + 25, { steps: 8 });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    // Both components, plus every connection touching them.
+    await expect
+      .poll(() => page.evaluate(() => [...window.__modl.getState().selection].sort()))
+      .toEqual([IDS.gateway, IDS.ledger, IDS.authorise, IDS.post].sort());
+
+    // React Flow's rectangle over the boxed nodes is gone, so the elements
+    // themselves take the press.
+    await expect(page.locator('.react-flow__nodesselection')).toHaveCount(0);
+    expect(await nodeAt(page, await centreOf(page, `entity-${IDS.gateway}`))).toBe(IDS.gateway);
+
+    const from = await centreOf(page, `entity-${IDS.gateway}`);
+    await altDrag(page, from, { x: from.x, y: from.y + 240 });
+
+    // Both components and the connection between them, as clicking each would give.
+    expect(await addedSince(page, before)).toHaveLength(3);
+  });
+
+  test('a boxed selection drags like any other, moving every element in it', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await fit(page);
+
+    const gateway = (await page.getByTestId(`entity-${IDS.gateway}`).boundingBox())!;
+    const ledger = (await page.getByTestId(`entity-${IDS.ledger}`).boundingBox())!;
+    await page.keyboard.down('Shift');
+    await page.mouse.move(gateway.x - 25, gateway.y - 25);
+    await page.mouse.down();
+    await page.mouse.move(ledger.x + ledger.width + 25, ledger.y + ledger.height + 25, { steps: 8 });
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+
+    const from = await centreOf(page, `entity-${IDS.gateway}`);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x, from.y + 200, { steps: 8 });
+    await page.mouse.up();
+
+    const document = await getDocument(page);
+    expect((document.layout[IDS.gateway] as { y: number }).y).toBeGreaterThan(0);
+    expect((document.layout[IDS.ledger] as { y: number }).y).toBeGreaterThan(0);
+    // The element outside the box stayed where it was.
+    expect(document.layout[IDS.ui]).toMatchObject({ x: 0, y: 0 });
+  });
+
   test('copying a collapsed group brings its members with it', async ({ page }) => {
     await dispatch(page, [
       ...sampleDomain(),
