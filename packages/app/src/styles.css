@@ -1171,9 +1171,20 @@ select {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .react-flow__node.is-warping-in > :is(.entity-node, .group-node, .connection-node),
-  .warp-ghost {
-    animation: none;
-  }
+/* Keyed off the attribute rather than the media query directly: motion.ts
+   stamps it from the system preference and the reader's override together,
+   so the keyframes and the JavaScript triggers answer to one source. */
+:root[data-motion='reduced'] .react-flow__node.is-warping-in
+  > :is(.entity-node, .group-node, .connection-node),
+:root[data-motion='reduced'] .warp-ghost {
+  animation: none;
+}
+
+/* The motion control draws its wave as a stroke; the other control icons are
+   filled paths, so it opts out of the cluster's fill. */
+.react-flow__controls-button.motion-control svg {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2;
+  stroke-linecap: round;
 }

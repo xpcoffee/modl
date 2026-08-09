@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { dispatch, getDocument, IDS, open, sampleDomain } from './support.js';
 
 /**
@@ -11,6 +11,50 @@ import { dispatch, getDocument, IDS, open, sampleDomain } from './support.js';
  */
 
 const ENTITY = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+
+/**
+ * How far the wave from a click at `x, y` reaches on screen, in CSS pixels:
+ * the furthest pixel the wave moved or lit, measured against the resting
+ * grid. Sizes a wave the way a reader sees it, whatever the zoom.
+ */
+async function waveRadiusOnScreen(page: Page, x: number, y: number): Promise<number> {
+  await page.evaluate(
+    ([pageX, pageY]) => {
+      const canvas = document.querySelector('canvas.gravity-grid') as HTMLCanvasElement;
+      const context = canvas.getContext('2d')!;
+      const rect = canvas.getBoundingClientRect();
+      const scale = canvas.width / rect.width;
+      const centreX = (pageX! - rect.left) * scale;
+      const centreY = (pageY! - rect.top) * scale;
+      const read = () => context.getImageData(0, 0, canvas.width, canvas.height).data;
+
+      delete (window as unknown as { __waveRadius?: number }).__waveRadius;
+      const resting = read();
+      let furthest = 0;
+      const started = performance.now();
+      const tick = () => {
+        const now = read();
+        for (let i = 0; i < now.length; i += 4) {
+          if (Math.abs(now[i + 3]! - resting[i + 3]!) <= 8) continue;
+          const pixel = i / 4;
+          const dx = (pixel % canvas.width) - centreX;
+          const dy = Math.floor(pixel / canvas.width) - centreY;
+          furthest = Math.max(furthest, Math.hypot(dx, dy) / scale);
+        }
+        if (performance.now() - started < 500) requestAnimationFrame(tick);
+        else (window as unknown as { __waveRadius: number }).__waveRadius = furthest;
+      };
+      requestAnimationFrame(tick);
+    },
+    [x, y],
+  );
+
+  await page.mouse.click(x, y);
+  await page.waitForFunction(
+    () => (window as unknown as { __waveRadius?: number }).__waveRadius !== undefined,
+  );
+  return page.evaluate(() => (window as unknown as { __waveRadius: number }).__waveRadius);
+}
 
 test.describe('gravity waves', () => {
   test.use({ contextOptions: { reducedMotion: 'no-preference' } });
@@ -29,6 +73,23 @@ test.describe('gravity waves', () => {
     await expect(grid).toHaveAttribute('data-ripples-started', '1');
     // Damped: the wave ends rather than looping.
     await expect(grid).toHaveAttribute('data-ripples', '0');
+  });
+
+  test('a wave keeps its size on screen when the board is zoomed out', async ({ page }) => {
+    // Regression: wave geometry is in flow pixels, so zooming out shrank the
+    // wave along with the board until there was nothing left to see. A reader
+    // on a large board saw clicks answer with nothing at all (issue #30).
+    const framed = await waveRadiusOnScreen(page, 500, 400);
+    expect(framed).toBeGreaterThan(50);
+
+    await dispatch(page, [{ type: 'set-view', pan: { x: 0, y: 0 }, zoom: 0.4 }]);
+    await expect(page.locator('.react-flow__viewport')).toHaveAttribute(
+      'style',
+      /scale\(0\.4\)/,
+    );
+
+    const zoomedOut = await waveRadiusOnScreen(page, 500, 400);
+    expect(Math.abs(zoomedOut - framed) / framed).toBeLessThan(0.25);
   });
 
   test('edges still anchor on element edges when nodes warp in', async ({ page }) => {
@@ -203,5 +264,62 @@ test.describe('reduced motion', () => {
     await expect(node).toHaveCount(0);
     await expect(page.locator('.warp-ghost')).toHaveCount(0);
     await expect(grid).toHaveAttribute('data-ripples-started', '0');
+  });
+
+  test('the motion control overrides the system, and the override survives a reload', async ({
+    page,
+  }) => {
+    const grid = page.getByTestId('gravity-grid');
+    const toggle = page.getByTestId('motion-toggle');
+    await expect(toggle).toHaveAttribute('data-motion', 'reduced');
+
+    await toggle.click();
+
+    await expect(grid).toHaveAttribute('data-motion', 'full');
+    await page.locator('.react-flow__pane').click({ position: { x: 240, y: 240 } });
+    await expect(grid).toHaveAttribute('data-ripples-started', '1');
+
+    // The warps run off CSS, which reads the same override.
+    const warpSeen = page.waitForSelector('.react-flow__node.is-warping-in', { state: 'attached' });
+    await page.evaluate(
+      (id) =>
+        window.__modl.dispatch({
+          type: 'create-entity',
+          id,
+          entityType: 'component',
+          title: 'Warped in',
+          position: { x: 200, y: 200 },
+        }),
+      ENTITY,
+    );
+    await warpSeen;
+    const box = page.locator('.react-flow__node.is-warping-in .entity-node');
+    expect(await box.evaluate((el) => getComputedStyle(el).animationName)).toBe('warp-in');
+
+    await page.reload();
+    await page.waitForFunction(() => window.__modl?.ready === true);
+    await expect(page.getByTestId('gravity-grid')).toHaveAttribute('data-motion', 'full');
+  });
+});
+
+test.describe('turning motion off', () => {
+  test.use({ contextOptions: { reducedMotion: 'no-preference' } });
+
+  test('stills the board, and stops a wave already in flight', async ({ page }) => {
+    await open(page);
+    const grid = page.getByTestId('gravity-grid');
+    await expect(grid).toHaveAttribute('data-motion', 'full');
+
+    await page.locator('.react-flow__pane').click({ position: { x: 240, y: 240 } });
+    await expect(grid).toHaveAttribute('data-ripples-started', '1');
+
+    await page.getByTestId('motion-toggle').click();
+
+    await expect(grid).toHaveAttribute('data-motion', 'reduced');
+    await expect(grid).toHaveAttribute('data-ripples', '0');
+    await page.locator('.react-flow__pane').click({ position: { x: 400, y: 400 } });
+    // Still one: the click after the toggle started no wave.
+    await page.waitForTimeout(400);
+    expect(await grid.getAttribute('data-ripples-started')).toBe('1');
   });
 });
