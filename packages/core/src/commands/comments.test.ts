@@ -3,7 +3,7 @@ import { apply, applyAll } from './apply.js';
 import { initialState } from '../state.js';
 import { commentsOn, commentedElementIds } from '../query/comments.js';
 import { formatTerm, parseFilter, selectIds } from '../query/filter.js';
-import { commentSuggestions } from '../query/search.js';
+import { commentSuggestions, tagSuggestions } from '../query/search.js';
 import { boardEmphasis } from '../query/view.js';
 import { validateDocument } from '../model/validate.js';
 import { parseDocument, serializeDocument } from '../serialize/serialize.js';
@@ -250,6 +250,12 @@ describe('filtering by comment', () => {
     const state = must(base, comment(NOTE, 'retry on timeout', [A]));
     const options = commentSuggestions(state.document.comments, 'retry');
     expect(options.map((option) => option.label)).toContain('comment=retry');
+  });
+
+  it('never offers a tag named "comment", whose term the grammar reads as a comment filter', () => {
+    const state = must(base, { type: 'set-tag', id: A, key: 'comment', values: ['todo'] });
+    const options = tagSuggestions(state.document.model.elements, 'comment');
+    expect(options).toEqual([]);
   });
 });
 

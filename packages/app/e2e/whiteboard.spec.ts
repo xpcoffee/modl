@@ -4197,6 +4197,11 @@ test.describe('comments', () => {
 
     await openSearch(page);
     await page.getByTestId('search-input').fill('retry on timeout');
+    // The option says which kind of filter it is, so a comment filter and a
+    // tag that happens to read alike tell apart in the list.
+    await expect(
+      page.getByTestId('search-comment-comment-retry-on-timeout').locator('.search-menu__option-kind'),
+    ).toHaveText('filter by comment');
     await page.getByTestId('search-comment-comment-retry-on-timeout').click();
 
     await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-dimmed/);
