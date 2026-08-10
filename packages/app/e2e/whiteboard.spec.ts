@@ -4078,3 +4078,154 @@ test.describe('decision labels', () => {
     });
   });
 });
+
+test.describe('comments', () => {
+  const NOTE = 'is-this-current';
+  const NOTE2 = 'second-thought';
+
+  /** The sample domain with one comment discussing the UI and the gateway. */
+  function commentedDomain() {
+    return [
+      ...sampleDomain(),
+      {
+        type: 'create-comment' as const,
+        id: NOTE,
+        text: 'Retry on timeout is assumed here',
+        targets: [IDS.ui, IDS.gateway],
+      },
+    ];
+  }
+
+  test('a badge marks everything a comment discusses, and only that', async ({ page }) => {
+    await dispatch(page, commentedDomain());
+    await fit(page);
+
+    await expect(page.getByTestId(`comment-badge-${IDS.ui}`)).toBeVisible();
+    await expect(page.getByTestId(`comment-badge-${IDS.gateway}`)).toBeVisible();
+    await expect(page.getByTestId(`comment-badge-${IDS.ledger}`)).toHaveCount(0);
+  });
+
+  test('the text stays folded until a discussed element is selected', async ({ page }) => {
+    await dispatch(page, commentedDomain());
+    await fit(page);
+
+    await expect(page.getByTestId(`comment-bubble-${NOTE}`)).toHaveCount(0);
+
+    // Two elements selected: no editor opens, so the bubbles carry the text.
+    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ui, IDS.gateway] }]);
+    await expect(
+      page.getByTestId(`comment-bubbles-${IDS.ui}`).getByTestId(`comment-bubble-${NOTE}`),
+    ).toBeVisible();
+  });
+
+  test('selecting the comment itself shows its text and highlights its targets', async ({ page }) => {
+    // The highlight keeps everything one connection away readable, so the
+    // element that must dim is one nothing in the selection touches.
+    const APART = 'floating-note-pad';
+    await dispatch(page, [
+      ...commentedDomain(),
+      { type: 'create-entity', id: APART, entityType: 'component', title: 'Apart', position: { x: 0, y: 300 } },
+    ]);
+    await fit(page);
+
+    await dispatch(page, [{ type: 'set-selection', ids: [NOTE] }]);
+    await expect(
+      page.getByTestId(`comment-bubbles-${IDS.ui}`).getByTestId(`comment-bubble-${NOTE}`),
+    ).toBeVisible();
+    await expect(page.getByTestId(`entity-${APART}`)).toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).not.toHaveClass(/is-dimmed/);
+  });
+
+  test('the element editor writes, edits, and deletes a comment', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await fit(page);
+
+    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ui] }]);
+    await page.getByTestId(`editor-add-comment-${IDS.ui}`).click();
+
+    const field = page.locator('[data-testid^="editor-comment-"]');
+    await field.fill('needs a source');
+
+    const document = await getDocument(page);
+    const written = Object.values(document.comments)[0];
+    expect(written).toMatchObject({ text: 'needs a source', targets: [IDS.ui] });
+
+    await page.getByTestId(`editor-delete-comment-${written!.id}`).click();
+    expect(Object.keys((await getDocument(page)).comments)).toHaveLength(0);
+  });
+
+  test('one comment lands across a whole selection', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await fit(page);
+
+    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ui, IDS.gateway] }]);
+    await page.getByTestId('comment-selected-text').fill('this pair is provisional');
+    await page.getByTestId('comment-selected').click();
+
+    const document = await getDocument(page);
+    const written = Object.values(document.comments)[0];
+    expect(written).toMatchObject({
+      text: 'this pair is provisional',
+      targets: [IDS.ui, IDS.gateway],
+    });
+  });
+
+  test('the comment filter narrows the board to what is discussed', async ({ page }) => {
+    await dispatch(page, commentedDomain());
+    await fit(page);
+
+    await setFilter(page, 'comment');
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-dimmed/);
+
+    await setFilter(page, 'comment=retry');
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveClass(/is-dimmed/);
+  });
+
+  test('the search menu finds a comment from its words', async ({ page }) => {
+    await dispatch(page, [
+      ...commentedDomain(),
+      {
+        type: 'create-comment' as const,
+        id: NOTE2,
+        text: 'rename the ledger',
+        targets: [IDS.ledger],
+      },
+    ]);
+    await fit(page);
+
+    await openSearch(page);
+    await page.getByTestId('search-input').fill('retry on timeout');
+    await page.getByTestId('search-comment-comment-retry-on-timeout').click();
+
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveClass(/is-dimmed/);
+  });
+
+  test('a comment survives a save and a load', async ({ page }) => {
+    await dispatch(page, commentedDomain());
+
+    const saved = await serialize(page);
+    expect(JSON.parse(saved).comments[NOTE].targets).toEqual([IDS.ui, IDS.gateway].sort());
+
+    await page.evaluate((text) => {
+      const document = JSON.parse(text);
+      window.__modl.dispatch({ type: 'load-document', document });
+    }, saved);
+
+    expect((await getDocument(page)).comments[NOTE]).toMatchObject({
+      text: 'Retry on timeout is assumed here',
+    });
+  });
+
+  test('deleting the last discussed element takes the comment with it', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'create-comment' as const, id: NOTE, text: 'only about the ledger', targets: [IDS.ledger] },
+      { type: 'delete-element', id: IDS.ledger },
+    ]);
+
+    expect(Object.keys((await getDocument(page)).comments)).toHaveLength(0);
+  });
+});

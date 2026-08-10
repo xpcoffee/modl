@@ -2,6 +2,7 @@ import { Handle, NodeResizer, Position, type Node, type NodeProps } from '@xyflo
 import type { NodeShape } from '@modl/core';
 import { store } from '../store/store.js';
 import type { ConnectionNodeData } from './derive.js';
+import { CommentBadge, CommentBubbles } from './CommentMarker.js';
 import { ElementEditor } from './ElementEditor.js';
 import { ElementHover } from './ElementHover.js';
 import { InlineTitle } from './InlineTitle.js';
@@ -75,6 +76,8 @@ export function ConnectionNodeView({ data, selected }: NodeProps<Node<Connection
       >
         <div className="connection-node__face" style={boxCss(data.style)} />
 
+        <CommentBadge id={data.id} count={data.comments.length} />
+
         <div className="connection-node__label">
           {data.editing ? (
             <InlineTitle
@@ -110,6 +113,7 @@ export function ConnectionNodeView({ data, selected }: NodeProps<Node<Connection
               elementType={label(data.shape)}
               description={data.description}
               tags={data.tags}
+              comments={data.comments}
             />
           </div>
         ) : (
@@ -121,6 +125,12 @@ export function ConnectionNodeView({ data, selected }: NodeProps<Node<Connection
             />
           </div>
         )}
+
+        <CommentBubbles
+          id={data.id}
+          comments={data.comments}
+          open={data.readComments && !data.soleSelection}
+        />
       </div>
     </>
   );

@@ -58,6 +58,7 @@ function slug(label: string): string {
 function testIdOf(option: SearchOption): string {
   if (option.kind === 'element') return `search-element-${option.id}`;
   if (option.term.kind === 'text') return `search-text-${slug(option.term.text)}`;
+  if (option.term.kind === 'comment') return `search-comment-${slug(option.label)}`;
   return `search-tag-${slug(option.label)}`;
 }
 
@@ -255,7 +256,11 @@ export function SearchMenu() {
     if (!term) return;
     setOpen(true);
     setMode({ kind: 'edit', index });
-    setQuery(term.kind === 'text' ? term.text : formatTerm(term));
+    // Text-bearing terms seed the words alone: the suggestions match against
+    // comment text and titles, and `comment=` punctuation is found in neither.
+    setQuery(
+      term.kind === 'text' ? term.text : term.kind === 'comment' ? (term.text ?? '') : formatTerm(term),
+    );
     setActive(0);
     setWindowStart(0);
   };

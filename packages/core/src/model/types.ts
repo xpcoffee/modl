@@ -111,6 +111,20 @@ export interface Model {
   elements: Record<Id, Element>;
 }
 
+/**
+ * A remark about one or more elements: a question, an objection, a note for
+ * the next reader. It discusses the model rather than describing the domain,
+ * so it lives in its own map beside `model` — a consumer reading structure
+ * ignores it, and a discussion never pollutes the elements it is about.
+ */
+export interface Comment {
+  id: Id;
+  text: string;
+  /** Elements this comment discusses. At least one; a comment losing its
+   * last target is deleted with it. */
+  targets: Id[];
+}
+
 export interface EntityLayout {
   x: number;
   y: number;
@@ -152,6 +166,9 @@ export interface Document {
   id: Id;
   title: string;
   model: Model;
+  /** Discussion about the model, keyed by comment id. Not part of `model`:
+   * iterating on a diagram is not describing the domain. */
+  comments: Record<Id, Comment>;
   layout: Record<Id, ElementLayout>;
   view: View;
 }
@@ -170,10 +187,14 @@ export interface Document {
  * 5 -> 6: a connection node carries `labels`, one per connection touching it.
  *         Same reasoning as the last bump: an older build would drop the
  *         reasons someone wrote against each branch on the next save.
+ * 6 -> 7: the document carries `comments`, discussion attached to elements
+ *         but kept beside the model. Additive, and the bump exists for the
+ *         same reason as the last two: a version 6 build would silently drop
+ *         every comment on save.
  *
  * Older documents still load: the reader migrates them.
  */
-export const FORMAT_VERSION = 6;
+export const FORMAT_VERSION = 7;
 export const OLDEST_READABLE_VERSION = 1;
 
 export const DEFAULT_ENTITY_SIZE = { width: 180, height: 72 } as const;

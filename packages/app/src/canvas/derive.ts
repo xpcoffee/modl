@@ -1,5 +1,6 @@
 import {
   boardEmphasis,
+  commentsOn,
   connectionAnchors,
   isConnection,
   isEntity,
@@ -8,6 +9,7 @@ import {
   isRendered,
   membersOf,
   type AppState,
+  type Comment,
   type ConnectionType,
   type Connection,
   type Direction,
@@ -21,7 +23,33 @@ import {
 } from '@modl/core';
 import type { Edge, Node } from '@xyflow/react';
 
-export interface EntityNodeData extends Record<string, unknown> {
+/** A remark drawn on the board, next to the element it discusses. */
+export interface BoardComment {
+  id: Id;
+  text: string;
+}
+
+/**
+ * The comments attached to one element, and whether their text is being read.
+ * The text shows only while the element, or one of its comments, is selected:
+ * a board where every remark is always open is a board nobody can read.
+ */
+export interface CommentView {
+  comments: BoardComment[];
+  readComments: boolean;
+}
+
+function commentViewOf(state: AppState, selected: ReadonlySet<Id>, id: Id): CommentView {
+  const attached = commentsOn(state.document.comments, id);
+  return {
+    comments: attached.map((comment: Comment) => ({ id: comment.id, text: comment.text })),
+    readComments:
+      attached.length > 0 &&
+      (selected.has(id) || attached.some((comment) => selected.has(comment.id))),
+  };
+}
+
+export interface EntityNodeData extends Record<string, unknown>, CommentView {
   id: Id;
   title: string;
   description: string;
@@ -47,7 +75,7 @@ export interface EntityNodeData extends Record<string, unknown> {
 }
 
 /** A node is a junction, so it carries no type and no members. */
-export interface ConnectionNodeData extends Record<string, unknown> {
+export interface ConnectionNodeData extends Record<string, unknown>, CommentView {
   id: Id;
   title: string;
   description: string;
@@ -75,7 +103,7 @@ export interface EndLabel {
   read: boolean;
 }
 
-export interface ConnectionEdgeData extends Record<string, unknown> {
+export interface ConnectionEdgeData extends Record<string, unknown>, CommentView {
   connectionId: Id;
   title: string;
   description: string;
@@ -227,6 +255,7 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Board
           soleSelection: soleSelection === node.id,
           parentOrigin,
           origin: { x: rect.x, y: rect.y },
+          ...commentViewOf(state, selected, node.id),
           ...(node.style === undefined ? {} : { style: node.style }),
         },
       };
@@ -276,6 +305,7 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Board
         parentOrigin,
         origin: { x: rect.x, y: rect.y },
         isContainer,
+        ...commentViewOf(state, selected, entity.id),
         ...(entity.style === undefined ? {} : { style: entity.style }),
       },
     };
@@ -413,6 +443,8 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           rolledUp: ids,
           // A roll-up stands in for several lines, so no one answer is its own.
           endLabels: [],
+          comments: [],
+          readComments: false,
         },
       });
       continue;
@@ -474,6 +506,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           rank,
           rolledUp: [],
           endLabels: endLabelsFor(elements, element, from, to, selected),
+          ...commentViewOf(state, selected, element.id),
           ...(element.style === undefined ? {} : { style: element.style }),
         },
       });

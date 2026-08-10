@@ -28,6 +28,14 @@ export function serializeDocument(document: Document): string {
     if (element) elements[id] = orderElement(element);
   }
 
+  const comments: Record<string, unknown> = {};
+  for (const id of Object.keys(document.comments).sort()) {
+    const comment = document.comments[id];
+    if (comment) {
+      comments[id] = { id: comment.id, text: comment.text, targets: [...comment.targets].sort() };
+    }
+  }
+
   const layout: Record<string, unknown> = {};
   for (const id of Object.keys(document.layout).sort()) {
     const entry = document.layout[id];
@@ -39,6 +47,7 @@ export function serializeDocument(document: Document): string {
     id: document.id,
     title: document.title,
     model: { elements },
+    comments,
     layout,
     view: {
       pan: { x: document.view.pan.x, y: document.view.pan.y },
@@ -160,6 +169,7 @@ export function loadDocument(raw: unknown): ParseResult {
     id: input.id,
     title: input.title,
     model: { elements: { ...input.model.elements } },
+    comments: { ...(input.comments ?? {}) },
     layout: withDefaultLayout(input.model.elements, input.layout ?? {}),
     view: input.view ?? DEFAULT_VIEW,
   };
@@ -267,6 +277,7 @@ export function emptyDocument(id: Id, title = 'Untitled domain'): Document {
     id,
     title,
     model: { elements: {} },
+    comments: {},
     layout: {},
     view: { pan: { ...DEFAULT_VIEW.pan }, zoom: DEFAULT_VIEW.zoom },
   };

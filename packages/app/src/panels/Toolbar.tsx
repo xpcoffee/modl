@@ -23,7 +23,7 @@ export function Toolbar() {
   const pending = usePending();
   const [picking, setPicking] = useState(false);
 
-  const visible = selectIds(state.document.model.elements, state.filter).size;
+  const visible = selectIds(state.document.model.elements, state.filter, state.document.comments).size;
   const total = Object.keys(state.document.model.elements).length;
 
   /**

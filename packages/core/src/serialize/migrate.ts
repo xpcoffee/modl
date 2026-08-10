@@ -115,12 +115,22 @@ function v5ToV6(document: Loose): Loose {
   return { ...document, formatVersion: 6, model: { ...model, elements: migrated } };
 }
 
+/**
+ * 6 -> 7: the document carries `comments`. An older file has had no
+ * discussion yet, so it arrives with an empty map; the bump stops a version 6
+ * build from silently dropping comments on save.
+ */
+function v6ToV7(document: Loose): Loose {
+  return { ...document, formatVersion: 7, comments: document['comments'] ?? {} };
+}
+
 const MIGRATIONS: Record<number, (document: Loose) => Loose> = {
   1: v1ToV2,
   2: v2ToV3,
   3: v3ToV4,
   4: v4ToV5,
   5: v5ToV6,
+  6: v6ToV7,
 };
 
 export function migrateDocument(raw: unknown): MigrationResult {

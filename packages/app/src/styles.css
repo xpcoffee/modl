@@ -5,6 +5,7 @@
   --text: #e6e8ee;
   --muted: #8b93a7;
   --accent: #5b8def;
+  --comment: #e0a94f;
   color-scheme: dark;
 }
 
@@ -1590,4 +1591,107 @@ select {
 .react-flow__controls-button.is-on {
   color: var(--accent);
   fill: var(--accent);
+}
+
+/* Comments (issue #37): a badge on everything a comment discusses, bubbles
+   holding the text while the element or the comment is selected, and the
+   editing fields inside the element editor. Warm against the blue accent, so
+   discussion reads apart from the model. */
+
+.comment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--comment);
+}
+
+.comment-badge__icon {
+  width: 10px;
+  height: 10px;
+  fill: currentColor;
+}
+
+.comment-badge__count {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.edge-label__title .comment-badge {
+  margin-left: 4px;
+}
+
+.connection-node .comment-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+}
+
+.comment-bubbles {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: max-content;
+  max-width: 260px;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.comment-bubble {
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--comment);
+  border-radius: 10px 10px 10px 2px;
+  background: var(--panel);
+  font-size: 12px;
+  text-align: left;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.element-editor__comments {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.comment-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+}
+
+.comment-field textarea {
+  font-size: 12px;
+  resize: vertical;
+  border-color: var(--comment);
+}
+
+.element-editor__add-comment {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.comment-composer {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.comment-composer textarea {
+  font-size: 12px;
+  resize: vertical;
 }

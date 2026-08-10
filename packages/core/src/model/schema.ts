@@ -131,11 +131,19 @@ export const modelSchema = z.object({
   elements: z.record(idSchema, elementSchema),
 });
 
+export const commentSchema = z.object({
+  id: idSchema,
+  text: z.string(),
+  /** A comment discusses something: detached from everything it is noise. */
+  targets: z.array(idSchema).min(1),
+});
+
 export const documentSchema = z.object({
   formatVersion: z.number().int(),
   id: idSchema,
   title: z.string(),
   model: modelSchema,
+  comments: z.record(idSchema, commentSchema).default({}),
   layout: z.record(idSchema, elementLayoutSchema).default({}),
   view: viewSchema.default({ pan: { x: 0, y: 0 }, zoom: 1 }),
 });

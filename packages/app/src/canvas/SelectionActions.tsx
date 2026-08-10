@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { ViewportPortal, type Node } from '@xyflow/react';
-import { isConnection } from '@modl/core';
+import { isConnection, type Id } from '@modl/core';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 import { DeleteButton } from './DeleteButton.js';
@@ -28,6 +29,9 @@ export function SelectionActions({ nodes }: { nodes: Node<BoardNodeData>[] }) {
     return element && !isConnection(element) && !hiddenSet.has(id);
   });
   const showable = selection.filter((id) => hiddenSet.has(id));
+  // A comment attaches to elements; comment ids riding in the selection are
+  // not something a new comment can discuss.
+  const commentable = selection.filter((id) => elements[id] !== undefined);
 
   const chosen = new Set(selection);
   const boxes = nodes
@@ -60,6 +64,7 @@ export function SelectionActions({ nodes }: { nodes: Node<BoardNodeData>[] }) {
             components' fill. */}
         <div className="selection-actions__panel">
           <StyleEditor ids={selection} />
+          {commentable.length > 0 && <CommentComposer targets={commentable} />}
           <footer className="element-editor__footer">
             {hideable.length > 0 && (
               <button
@@ -92,5 +97,43 @@ export function SelectionActions({ nodes }: { nodes: Node<BoardNodeData>[] }) {
         </div>
       </div>
     </ViewportPortal>
+  );
+}
+
+/**
+ * One comment across the whole selection, which is what a remark about a
+ * flow rather than a box needs (issue #37). The single-element editor covers
+ * commenting on one thing; this is the only place a multi-target comment can
+ * be written.
+ */
+function CommentComposer({ targets }: { targets: Id[] }) {
+  const [text, setText] = useState('');
+
+  return (
+    <div className="comment-composer nodrag nowheel" onKeyDown={(event) => event.stopPropagation()}>
+      <textarea
+        data-testid="comment-selected-text"
+        placeholder={`Comment on ${targets.length} elements`}
+        rows={2}
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+      />
+      <button
+        type="button"
+        data-testid="comment-selected"
+        disabled={text.trim() === ''}
+        onClick={() => {
+          const result = store.dispatch({
+            type: 'create-comment',
+            id: crypto.randomUUID(),
+            text,
+            targets,
+          });
+          if (result.ok) setText('');
+        }}
+      >
+        Comment
+      </button>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 {
-  "formatVersion": 6,
+  "formatVersion": 7,
   "id": "00000000-0000-4000-8000-000000000000",
   "title": "Checkout domain",
   "model": {
@@ -100,6 +100,16 @@
         "sources": [],
         "groupId": null
       }
+    }
+  },
+  "comments": {
+    "99999999-9999-4999-8999-999999999999": {
+      "id": "99999999-9999-4999-8999-999999999999",
+      "text": "Does the gateway retry on timeout? The checkout flow assumes it does.",
+      "targets": [
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222"
+      ]
     }
   },
   "layout": {

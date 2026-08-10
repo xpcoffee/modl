@@ -34,6 +34,8 @@ export interface AppState {
   document: Document;
   /** Active tag filter expression. Empty matches everything. */
   filter: string;
+  /** Ids of elements, and of comments: pointing at a remark and pointing at
+   * a box are the same gesture, so they share one list. */
   selection: Id[];
   /** Groups currently showing their members. Collapsed is the default. */
   expanded: Id[];
@@ -137,6 +139,10 @@ export type Command =
   | { type: 'set-filter'; expression: string }
   | { type: 'set-view'; pan: Point; zoom: number }
   | { type: 'set-sources'; id: Id; sources: SourceRef[] }
+  | { type: 'create-comment'; id: Id; text: string; targets: Id[] }
+  | { type: 'set-comment-text'; id: Id; text: string }
+  | { type: 'set-comment-targets'; id: Id; targets: Id[] }
+  | { type: 'delete-comment'; id: Id }
   | { type: 'load-document'; document: Document }
   | { type: 'merge-document'; document: Document }
   | { type: 'undo' }
@@ -173,6 +179,9 @@ export type DomainEvent =
   | { type: 'element-updated'; id: Id }
   | { type: 'element-moved'; id: Id; position: Point }
   | { type: 'element-deleted'; id: Id }
+  | { type: 'comment-created'; id: Id }
+  | { type: 'comment-updated'; id: Id }
+  | { type: 'comment-deleted'; id: Id }
   | { type: 'group-changed'; id: Id; groupId: Id | null }
   | { type: 'expansion-changed'; id: Id; expanded: boolean }
   | { type: 'visibility-changed'; id: Id; hidden: boolean }
