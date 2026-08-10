@@ -8,7 +8,7 @@ import {
 } from '@xyflow/react';
 import { store } from '../store/store.js';
 import type { EntityNodeData } from './derive.js';
-import { CommentBadge, CommentBubbles } from './CommentMarker.js';
+import { CommentBadge } from './CommentMarker.js';
 import { ElementEditor } from './ElementEditor.js';
 import { ElementHover } from './ElementHover.js';
 import { ElementIcon } from './ElementIcon.js';
@@ -117,7 +117,7 @@ export function GroupNode({
           <span className="group-node__empty">drop elements here</span>
         )}
 
-        <CommentBadge id={data.id} count={data.comments.length} />
+        <CommentBadge id={data.id} count={data.commentCount} />
       </header>
 
       {data.soleSelection ? (
@@ -129,7 +129,6 @@ export function GroupNode({
               elementType={data.elementType}
               description={data.description}
               tags={data.tags}
-              comments={data.comments}
             />
           </div>
         ) : (
@@ -142,11 +141,6 @@ export function GroupNode({
           </div>
         )}
 
-        <CommentBubbles
-          id={data.id}
-          comments={data.comments}
-          open={data.readComments && !data.soleSelection}
-        />
       </div>
     </>
   );

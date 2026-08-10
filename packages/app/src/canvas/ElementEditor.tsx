@@ -9,7 +9,6 @@ import {
 } from '@modl/core';
 import { store } from '../store/store.js';
 import { DeleteButton } from './DeleteButton.js';
-import type { BoardComment } from './derive.js';
 import { ElementIcon, type JunctionLabel } from './ElementIcon.js';
 import { StyleEditor } from './StyleEditor.js';
 
@@ -28,7 +27,6 @@ export function ElementEditor({
   description,
   tags,
   direction,
-  comments,
 }: {
   id: Id;
   kind: 'entity' | 'connection' | 'node';
@@ -43,13 +41,9 @@ export function ElementEditor({
   tags: Record<string, string[]>;
   /** Present for connections: which way the connection reads. */
   direction?: Direction;
-  /** Comments attached to this element, edited in place. */
-  comments: BoardComment[];
 }) {
   const [addingTag, setAddingTag] = useState(false);
   const [pickingType, setPickingType] = useState(false);
-  /** The comment just added, so its box gets focus once it renders. */
-  const [freshCommentId, setFreshCommentId] = useState<Id | null>(null);
   /**
    * What this element could be instead.
    *
@@ -209,34 +203,6 @@ export function ElementEditor({
         </li>
       </ul>
 
-      <div className="element-editor__comments" data-testid={`editor-comments-${id}`}>
-        {comments.map((comment) => (
-          <CommentField
-            key={comment.id}
-            comment={comment}
-            fresh={comment.id === freshCommentId}
-          />
-        ))}
-        <button
-          type="button"
-          className="element-editor__add-comment"
-          data-testid={`editor-add-comment-${id}`}
-          onClick={() => {
-            const commentId = crypto.randomUUID();
-            const result = store.dispatch({
-              type: 'create-comment',
-              id: commentId,
-              text: '',
-              targets: [id],
-              createdAt: new Date().toISOString(),
-            });
-            if (result.ok) setFreshCommentId(commentId);
-          }}
-        >
-          + comment
-        </button>
-      </div>
-
       <footer className="element-editor__footer">
         {/* Hiding mutes the element and takes its connections off the board;
             the element stays selectable so this same button brings it back.
@@ -255,48 +221,6 @@ export function ElementEditor({
         )}
         <DeleteButton count={1} />
       </footer>
-    </div>
-  );
-}
-
-/**
- * One comment, edited where it is read. Leaving an emptied comment deletes
- * it: a remark with no words left is resolved, and there is no other way a
- * blank one disappears without hunting for a delete control.
- */
-function CommentField({ comment, fresh }: { comment: BoardComment; fresh: boolean }) {
-  return (
-    <div className="comment-field">
-      <textarea
-        data-testid={`editor-comment-${comment.id}`}
-        placeholder="Write a comment"
-        rows={2}
-        autoFocus={fresh}
-        value={comment.text}
-        onChange={(event) =>
-          store.dispatch({ type: 'set-comment-text', id: comment.id, text: event.target.value })
-        }
-        onBlur={(event) => {
-          if (event.target.value.trim() === '') {
-            store.dispatch({ type: 'delete-comment', id: comment.id });
-          }
-        }}
-      />
-      {/* One instance shared across elements: without saying so, an edit here
-          showing up on another element reads as a bug. */}
-      {comment.targetCount > 1 && (
-        <span className="comment-field__span" data-testid={`editor-comment-span-${comment.id}`}>
-          one comment across {comment.targetCount} elements; edits show on all of them
-        </span>
-      )}
-      <button
-        type="button"
-        aria-label="Delete this comment"
-        data-testid={`editor-delete-comment-${comment.id}`}
-        onClick={() => store.dispatch({ type: 'delete-comment', id: comment.id })}
-      >
-        ×
-      </button>
     </div>
   );
 }

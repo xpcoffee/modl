@@ -11,7 +11,7 @@ import { Position } from '@xyflow/react';
 import type { Point } from '@modl/core';
 import { store } from '../store/store.js';
 import type { ConnectionEdgeData } from './derive.js';
-import { CommentBadge, CommentBubbles } from './CommentMarker.js';
+import { CommentBadge } from './CommentMarker.js';
 import { ElementEditor } from './ElementEditor.js';
 import { ElementHover } from './ElementHover.js';
 import { ElementIcon } from './ElementIcon.js';
@@ -395,7 +395,7 @@ export function ConnectionEdge({
             <span className="edge-label__title">
               {data ? <ElementIcon elementType={data.elementType} className="edge-label__icon" /> : null}
               {data?.title}
-              <CommentBadge id={connectionId} count={data?.comments.length ?? 0} />
+              <CommentBadge id={connectionId} count={data?.commentCount ?? 0} />
             </span>
           )}
 
@@ -409,7 +409,6 @@ export function ConnectionEdge({
                 description={data.description}
                 tags={data.tags}
                 direction={data.direction}
-                comments={data.comments}
               />
             </div>
           ) : (
@@ -421,12 +420,6 @@ export function ConnectionEdge({
               />
             </div>
           )}
-
-          <CommentBubbles
-            id={connectionId}
-            comments={data?.comments ?? []}
-            open={(data?.readComments ?? false) && !data?.soleSelection}
-          />
         </div>
       </EdgeLabelRenderer>
     </>

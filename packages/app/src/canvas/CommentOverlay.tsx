@@ -15,14 +15,15 @@ import { startCommentEdit, useCommentEdit } from './commentEditing.js';
 import { CommentTextBox } from './CommentTextBox.js';
 
 /**
- * The discussion overlay (issue #37, PR #39 review): a temporary way of
- * looking at the board where the model dims to a blueprint and the comments
- * draw at full strength, each as one card pinned near what it discusses.
+ * Comments drawn as movable cards (issue #37, PR #39 review). The card is
+ * the one rendering a comment has: in model mode it shows while the comment
+ * or one of its targets is selected, and the discussion overlay shows them
+ * all over a blueprint of the board.
  *
- * `c` opens it, Escape (with nothing selected) or the mode toggle leaves it,
- * and the up/down keys walk the discussion in the order it was written. The
- * mode itself is session state on the bus (`set-comment-overlay`), so traces
- * and tests see it like any other viewing tool.
+ * `c` opens the overlay, and with elements selected it also opens a fresh
+ * card on them, which is the quick way to write. Escape deselects first and
+ * leaves the overlay second. The up/down keys, the wheel over the timeline,
+ * and clicks on its entries walk the discussion in the order it was written.
  */
 
 /** Where a card sits when the reader has not pinned it: under its targets. */
@@ -82,6 +83,12 @@ function soleSelectedComment(state: AppState): Id | null {
   return id !== undefined && state.document.comments[id] ? id : null;
 }
 
+/** Whether this card is being read: its comment or one of its targets is selected. */
+function isRead(state: AppState, comment: Comment): boolean {
+  const selected = new Set(state.selection);
+  return selected.has(comment.id) || comment.targets.some((target) => selected.has(target));
+}
+
 function isTyping(target: EventTarget | null): boolean {
   return Boolean((target as HTMLElement | null)?.closest('input, textarea, [contenteditable]'));
 }
@@ -136,14 +143,24 @@ export function CommentOverlay() {
 
       if (isTyping(event.target)) return;
 
-      if (event.key === 'c' && !current.commentOverlay) {
+      // `c` is the way to write: it opens the overlay, and with elements
+      // selected it opens a fresh card on them in the same stroke.
+      if (event.key === 'c') {
         event.preventDefault();
-        store.dispatch({ type: 'set-comment-overlay', open: true });
+        if (!current.commentOverlay) {
+          store.dispatch({ type: 'set-comment-overlay', open: true });
+        }
+        const elements = current.document.model.elements;
+        const targets = current.selection.filter((id) => elements[id]);
+        if (targets.length > 0) quickAddComment(targets);
         return;
       }
 
       if (event.key === 'Escape') {
-        if (current.commentOverlay && current.selection.length === 0) {
+        // Deselect first, leave second: two presses back out of anything.
+        if (current.selection.length > 0) {
+          store.dispatch({ type: 'set-selection', ids: [] });
+        } else if (current.commentOverlay) {
           store.dispatch({ type: 'set-comment-overlay', open: false });
         }
         return;
@@ -173,9 +190,7 @@ export function CommentOverlay() {
       // comment never pulls the reader into the overlay.
       if (event.key === 'Enter') {
         event.preventDefault();
-        const comment = current.document.comments[selected];
-        const host = current.commentOverlay ? 'overlay' : (comment?.targets[0] ?? 'overlay');
-        startCommentEdit(selected, host);
+        startCommentEdit(selected, 'overlay');
       } else if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
         store.dispatch({ type: 'delete-comment', id: selected });
@@ -213,10 +228,11 @@ export function CommentOverlay() {
     [screenToFlowPosition],
   );
 
-  if (!open) return null;
-
-  const pinned = cards.filter((card) => card.at !== undefined);
-  const docked = cards.filter((card) => card.at === undefined);
+  // The card is the one rendering a comment has. The overlay shows every
+  // card; model mode shows the ones being read.
+  const shown = open ? cards : cards.filter((card) => isRead(state, card.comment));
+  const pinned = shown.filter((card) => card.at !== undefined);
+  const docked = shown.filter((card) => card.at === undefined);
 
   return (
     <>
@@ -246,7 +262,7 @@ export function CommentOverlay() {
             key={card.comment.id}
             card={card}
             selected={selectedComment === card.comment.id}
-            editing={edit?.commentId === card.comment.id && edit.hostId === 'overlay'}
+            editing={edit?.commentId === card.comment.id}
             onDragStart={dragCard(card.comment.id, card.at!)}
           />
         ))}
@@ -261,14 +277,14 @@ export function CommentOverlay() {
               key={card.comment.id}
               card={card}
               selected={selectedComment === card.comment.id}
-              editing={edit?.commentId === card.comment.id && edit.hostId === 'overlay'}
+              editing={edit?.commentId === card.comment.id}
               docked
             />
           ))}
         </div>
       )}
 
-      <Timeline cards={cards} selected={selectedComment} onPick={goTo} />
+      {open && <Timeline cards={cards} selected={selectedComment} onPick={goTo} />}
     </>
   );
 }
@@ -331,7 +347,25 @@ function CommentCard({
   );
 }
 
-/** The discussion in writing order, notch by notch down the right edge. */
+/** Vertical room one timeline entry takes, centre to centre. */
+const TIMELINE_SPACING = 64;
+/** How much dimmer each step away from the current entry draws. */
+const TIMELINE_FADE = 0.28;
+
+/** A comment's time as the timeline shows it. Empty for untimed comments. */
+function timeLabel(comment: Comment): string {
+  if (comment.createdAt === undefined) return '';
+  const written = new Date(comment.createdAt);
+  if (Number.isNaN(written.getTime())) return '';
+  return written.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+/**
+ * The discussion down the right edge, in writing order. The current comment
+ * sits vertically centred with its neighbours above and below, and entries
+ * fade with distance, so what is bright is what is being read. Click an
+ * entry, roll the wheel, or use the arrow keys; there are no buttons.
+ */
 function Timeline({
   cards,
   selected,
@@ -341,24 +375,52 @@ function Timeline({
   selected: Id | null;
   onPick: (card: CardPlace) => void;
 }) {
+  const current = Math.max(
+    0,
+    cards.findIndex((card) => card.comment.id === selected),
+  );
+
+  const step = (by: number): void => {
+    const next = cards[Math.min(cards.length - 1, Math.max(0, current + by))];
+    if (next && next.comment.id !== selected) onPick(next);
+  };
+
+  // The wheel lives on the entries rather than the rail: the rail spans the
+  // whole edge but stays transparent to the pointer, so the board and the
+  // controls beneath it keep working.
+  const onWheel = (event: React.WheelEvent): void => {
+    if (cards.length === 0 || event.deltaY === 0) return;
+    event.stopPropagation();
+    step(event.deltaY > 0 ? 1 : -1);
+  };
+
   return (
-    <div className="comment-timeline nodrag nopan" data-testid="comment-timeline">
-      <span className="comment-timeline__label">↑</span>
-      <div className="comment-timeline__track">
-        {cards.map((card) => (
+    <div className="comment-timeline nowheel nodrag nopan" data-testid="comment-timeline">
+      {cards.map((card, index) => {
+        const offset = index - current;
+        const opacity = Math.max(0, 1 - Math.abs(offset) * TIMELINE_FADE);
+        return (
           <button
             key={card.comment.id}
             type="button"
-            className={`comment-timeline__notch${selected === card.comment.id ? ' is-active' : ''}`}
-            data-testid={`timeline-notch-${card.comment.id}`}
-            aria-label={`Go to comment: ${card.comment.text.slice(0, 40) || 'empty comment'}`}
-            title={card.comment.text.slice(0, 80)}
+            className={`comment-timeline__entry${offset === 0 && selected !== null ? ' is-active' : ''}`}
+            data-testid={`timeline-entry-${card.comment.id}`}
+            style={{
+              transform: `translateY(calc(-50% + ${offset * TIMELINE_SPACING}px))`,
+              opacity,
+              ...(opacity === 0 ? { pointerEvents: 'none' as const } : {}),
+            }}
             onClick={() => onPick(card)}
-          />
-        ))}
-        {cards.length === 0 && <span className="comment-timeline__empty">no comments yet</span>}
-      </div>
-      <span className="comment-timeline__label">↓</span>
+            onWheel={onWheel}
+          >
+            <span className="comment-timeline__time">{timeLabel(card.comment)}</span>
+            <span className="comment-timeline__snippet">
+              {card.comment.text.slice(0, 48) || 'empty comment'}
+            </span>
+          </button>
+        );
+      })}
+      {cards.length === 0 && <span className="comment-timeline__empty">no comments yet</span>}
     </div>
   );
 }

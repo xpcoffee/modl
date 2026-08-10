@@ -9,7 +9,6 @@ import {
   isRendered,
   membersOf,
   type AppState,
-  type Comment,
   type ConnectionType,
   type Connection,
   type Direction,
@@ -23,37 +22,17 @@ import {
 } from '@modl/core';
 import type { Edge, Node } from '@xyflow/react';
 
-/** A remark drawn on the board, next to the element it discusses. */
-export interface BoardComment {
-  id: Id;
-  text: string;
-  /** How many elements share this one comment. Above 1, the board says so:
-   * the same text on several elements otherwise reads as copies. */
-  targetCount: number;
-}
-
 /**
- * The comments attached to one element, and whether their text is being read.
- * The text shows only while the element, or one of its comments, is selected:
- * a board where every remark is always open is a board nobody can read.
+ * How many comments discuss this element, drawn as a badge. The text itself
+ * renders as a card (CommentOverlay) while the element or the comment is
+ * selected, never on the element.
  */
 export interface CommentView {
-  comments: BoardComment[];
-  readComments: boolean;
+  commentCount: number;
 }
 
-function commentViewOf(state: AppState, selected: ReadonlySet<Id>, id: Id): CommentView {
-  const attached = commentsOn(state.document.comments, id);
-  return {
-    comments: attached.map((comment: Comment) => ({
-      id: comment.id,
-      text: comment.text,
-      targetCount: comment.targets.length,
-    })),
-    readComments:
-      attached.length > 0 &&
-      (selected.has(id) || attached.some((comment) => selected.has(comment.id))),
-  };
+function commentViewOf(state: AppState, id: Id): CommentView {
+  return { commentCount: commentsOn(state.document.comments, id).length };
 }
 
 export interface EntityNodeData extends Record<string, unknown>, CommentView {
@@ -262,7 +241,7 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Board
           soleSelection: soleSelection === node.id,
           parentOrigin,
           origin: { x: rect.x, y: rect.y },
-          ...commentViewOf(state, selected, node.id),
+          ...commentViewOf(state, node.id),
           ...(node.style === undefined ? {} : { style: node.style }),
         },
       };
@@ -312,7 +291,7 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Board
         parentOrigin,
         origin: { x: rect.x, y: rect.y },
         isContainer,
-        ...commentViewOf(state, selected, entity.id),
+        ...commentViewOf(state, entity.id),
         ...(entity.style === undefined ? {} : { style: entity.style }),
       },
     };
@@ -450,8 +429,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           rolledUp: ids,
           // A roll-up stands in for several lines, so no one answer is its own.
           endLabels: [],
-          comments: [],
-          readComments: false,
+          commentCount: 0,
         },
       });
       continue;
@@ -513,7 +491,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           rank,
           rolledUp: [],
           endLabels: endLabelsFor(elements, element, from, to, selected),
-          ...commentViewOf(state, selected, element.id),
+          ...commentViewOf(state, element.id),
           ...(element.style === undefined ? {} : { style: element.style }),
         },
       });

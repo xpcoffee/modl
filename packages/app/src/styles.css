@@ -1626,95 +1626,6 @@ select {
   right: -4px;
 }
 
-.comment-bubbles {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: max-content;
-  max-width: 260px;
-  z-index: 20;
-}
-
-.comment-bubble {
-  margin: 0;
-  padding: 6px 10px;
-  border: 1px solid var(--comment);
-  border-radius: 10px 10px 10px 2px;
-  background: var(--panel);
-  font-size: 12px;
-  text-align: left;
-  color: var(--text);
-  white-space: pre-wrap;
-  cursor: pointer;
-}
-
-.comment-bubble.is-selected {
-  outline: 2px solid var(--comment);
-}
-
-.element-editor__comments {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
-}
-
-.comment-field {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 4px;
-  width: 100%;
-}
-
-/* The shared-across-elements note sits under the text, full width. */
-.comment-field__span {
-  order: 4;
-  width: 100%;
-  font-size: 10px;
-  color: var(--comment);
-}
-
-.comment-bubble__span {
-  display: block;
-  margin-top: 4px;
-  font-size: 10px;
-  color: var(--comment);
-}
-
-.comment-field textarea {
-  font-size: 12px;
-  resize: vertical;
-  border-color: var(--comment);
-}
-
-.element-editor__add-comment {
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.comment-composer {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
-}
-
-.comment-composer textarea {
-  font-size: 12px;
-  resize: vertical;
-}
 
 /* The discussion overlay: the model dims to a blueprint, comments draw at
    full strength as cards, and a vertical timeline walks the discussion in
@@ -1761,6 +1672,15 @@ select {
 .comment-overlay__arc.is-selected {
   stroke-width: 1.6;
   opacity: 1;
+}
+
+/* Cards paint above the board, selected elements and their editors
+   included: a remark being read outranks the boxes it is about. React Flow
+   raises a selected node by 1000 on top of the 1000 the derive sets, so the
+   portal has to clear 2000. */
+.react-flow__viewport-portal {
+  position: absolute;
+  z-index: 2001;
 }
 
 .comment-card {
@@ -1828,54 +1748,78 @@ select {
   text-transform: uppercase;
 }
 
+/* Spans the board's height, no chrome of its own: the current entry sits
+   centred, neighbours fade with distance, and the fades animate as the
+   selection walks the discussion. */
 .comment-timeline {
   position: absolute;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 6px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--panel);
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 220px;
+  overflow: hidden;
   z-index: 6;
+  /* The rail spans the board's height; only its entries take the pointer,
+     so the controls sharing this edge stay clickable. */
+  pointer-events: none;
 }
 
-.comment-timeline__label {
+.comment-timeline__entry {
+  pointer-events: auto;
+}
+
+.comment-timeline__entry {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  width: 188px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.comment-timeline__entry:hover:enabled {
+  background: rgb(224 169 79 / 10%);
+  border: none;
+}
+
+.comment-timeline__entry.is-active .comment-timeline__snippet {
+  color: var(--text);
+}
+
+.comment-timeline__entry.is-active .comment-timeline__time {
+  color: var(--comment);
+}
+
+.comment-timeline__time {
   font-size: 10px;
+  font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
 
-.comment-timeline__track {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  max-height: 50vh;
-  overflow-y: auto;
-}
-
-.comment-timeline__notch {
-  width: 12px;
-  height: 12px;
-  padding: 0;
-  border: 1.5px solid var(--comment);
-  border-radius: 3px;
-  transform: rotate(45deg);
-  background: var(--panel);
-}
-
-.comment-timeline__notch.is-active {
-  background: var(--comment);
+.comment-timeline__snippet {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .comment-timeline__empty {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%);
   font-size: 10px;
   color: var(--muted);
-  writing-mode: vertical-rl;
 }
 
 .overlay-toggle {

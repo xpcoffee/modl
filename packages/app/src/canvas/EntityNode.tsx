@@ -1,7 +1,7 @@
 import { Handle, NodeResizer, Position, type Node, type NodeProps } from '@xyflow/react';
 import { store } from '../store/store.js';
 import type { EntityNodeData } from './derive.js';
-import { CommentBadge, CommentBubbles } from './CommentMarker.js';
+import { CommentBadge } from './CommentMarker.js';
 import { ElementEditor } from './ElementEditor.js';
 import { ElementHover } from './ElementHover.js';
 import { ElementIcon } from './ElementIcon.js';
@@ -71,7 +71,7 @@ export function EntityNode({ data, selected }: NodeProps<Node<EntityNodeData>>) 
               {data.matchCount}
             </span>
           )}
-          <CommentBadge id={data.id} count={data.comments.length} />
+          <CommentBadge id={data.id} count={data.commentCount} />
           <ElementIcon elementType={data.elementType} className="entity-node__icon" />
         </div>
 
@@ -95,7 +95,6 @@ export function EntityNode({ data, selected }: NodeProps<Node<EntityNodeData>>) 
               elementType={data.elementType}
               description={data.description}
               tags={data.tags}
-              comments={data.comments}
             />
           </div>
         ) : (
@@ -108,13 +107,6 @@ export function EntityNode({ data, selected }: NodeProps<Node<EntityNodeData>>) 
           </div>
         )}
 
-        {/* The editor already lays the text out for editing, so the bubbles
-            only carry it while no editor is open. */}
-        <CommentBubbles
-          id={data.id}
-          comments={data.comments}
-          open={data.readComments && !data.soleSelection}
-        />
       </div>
     </>
   );

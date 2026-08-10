@@ -4109,18 +4109,16 @@ test.describe('comments', () => {
     await dispatch(page, commentedDomain());
     await fit(page);
 
-    await expect(page.getByTestId(`comment-bubble-${NOTE}`)).toHaveCount(0);
+    await expect(page.getByTestId(`comment-card-${NOTE}`)).toHaveCount(0);
 
-    // Two elements selected: no editor opens, so the bubbles carry the text.
+    // Selecting a target shows the one movable card, in model mode.
     await dispatch(page, [{ type: 'set-selection', ids: [IDS.ui, IDS.gateway] }]);
-    await expect(
-      page.getByTestId(`comment-bubbles-${IDS.ui}`).getByTestId(`comment-bubble-${NOTE}`),
-    ).toBeVisible();
-
+    const card = page.getByTestId(`comment-card-${NOTE}`);
+    await expect(card).toBeVisible();
     // One comment on two elements says so, or it reads as two copies.
-    await expect(
-      page.getByTestId(`comment-bubbles-${IDS.ui}`).getByTestId(`comment-span-${NOTE}`),
-    ).toHaveText('one comment across 2 elements');
+    await expect(card.locator('.comment-card__meta')).toHaveText(
+      'one comment across 2 elements',
+    );
   });
 
   test('selecting the comment itself shows its text and highlights its targets', async ({ page }) => {
@@ -4134,38 +4132,22 @@ test.describe('comments', () => {
     await fit(page);
 
     await dispatch(page, [{ type: 'set-selection', ids: [NOTE] }]);
-    await expect(
-      page.getByTestId(`comment-bubbles-${IDS.ui}`).getByTestId(`comment-bubble-${NOTE}`),
-    ).toBeVisible();
+    await expect(page.getByTestId(`comment-card-${NOTE}`)).toBeVisible();
     await expect(page.getByTestId(`entity-${APART}`)).toHaveClass(/is-dimmed/);
     await expect(page.getByTestId(`entity-${IDS.gateway}`)).not.toHaveClass(/is-dimmed/);
   });
 
-  test('the element editor writes, edits, and deletes a comment', async ({ page }) => {
-    await dispatch(page, sampleDomain());
-    await fit(page);
-
-    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ui] }]);
-    await page.getByTestId(`editor-add-comment-${IDS.ui}`).click();
-
-    const field = page.locator('[data-testid^="editor-comment-"]');
-    await field.fill('needs a source');
-
-    const document = await getDocument(page);
-    const written = Object.values(document.comments)[0];
-    expect(written).toMatchObject({ text: 'needs a source', targets: [IDS.ui] });
-
-    await page.getByTestId(`editor-delete-comment-${written!.id}`).click();
-    expect(Object.keys((await getDocument(page)).comments)).toHaveLength(0);
-  });
-
-  test('one comment lands across a whole selection', async ({ page }) => {
+  test('pressing c with a selection opens the overlay and a card for it', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await fit(page);
 
     await dispatch(page, [{ type: 'set-selection', ids: [IDS.ui, IDS.gateway] }]);
-    await page.getByTestId('comment-selected-text').fill('this pair is provisional');
-    await page.getByTestId('comment-selected').click();
+    await page.keyboard.press('c');
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-comment-overlay', 'true');
+
+    const editor = page.locator('[data-testid^="comment-text-box-"]');
+    await editor.fill('this pair is provisional');
+    await page.getByTestId('canvas').click({ position: { x: 40, y: 400 } });
 
     const document = await getDocument(page);
     const written = Object.values(document.comments)[0];
@@ -4340,7 +4322,12 @@ test.describe('discussion overlay', () => {
     await fit(page);
     await page.keyboard.press('c');
 
-    await page.getByTestId(`timeline-notch-${FIRST}`).click();
+    // Entries carry the writing time and the words, not an abstract mark.
+    const entry = page.getByTestId(`timeline-entry-${FIRST}`);
+    await expect(entry.locator('.comment-timeline__snippet')).toContainText('retry on timeout');
+    await expect(entry.locator('.comment-timeline__time')).not.toBeEmpty();
+
+    await entry.click();
     expect((await state(page)).selection).toEqual([FIRST]);
 
     await page.keyboard.press('ArrowDown');
@@ -4349,13 +4336,31 @@ test.describe('discussion overlay', () => {
     expect((await state(page)).selection).toEqual([FIRST]);
   });
 
+  test('escape deselects before it leaves the overlay', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+    await page.keyboard.press('c');
+
+    await page.getByTestId(`timeline-entry-${FIRST}`).click();
+    expect((await state(page)).selection).toEqual([FIRST]);
+
+    await page.keyboard.press('Escape');
+    expect((await state(page)).selection).toEqual([]);
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-comment-overlay', 'true');
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-comment-overlay', 'true');
+  });
+
   test('clicking a selected element quick-adds a comment, and clicking off empty cancels', async ({ page }) => {
     await dispatch(page, discussedDomain());
     await fit(page);
     await page.keyboard.press('c');
 
-    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ledger] }]);
-    await page.getByTestId(`entity-${IDS.ledger}`).click();
+    // The UI element: the timeline reserves the board's right edge, and the
+    // ledger sits under it once the camera fits the domain.
+    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ui] }]);
+    await page.getByTestId(`entity-${IDS.ui}`).click();
 
     const editor = page.locator('[data-testid^="comment-text-box-"]');
     await expect(editor).toBeVisible();
@@ -4416,15 +4421,15 @@ test.describe('discussion overlay', () => {
     expect((await state(page)).selection).toEqual([IDS.ui]);
   });
 
-  test('in model mode a bubble selects, edits, and deletes without opening the overlay', async ({ page }) => {
+  test('in model mode the card selects, edits, and deletes without opening the overlay', async ({ page }) => {
     await dispatch(page, discussedDomain());
     await fit(page);
 
-    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ledger, IDS.ui] }]);
-    const bubble = page
-      .getByTestId(`comment-bubbles-${IDS.ledger}`)
-      .getByTestId(`comment-bubble-${SECOND}`);
-    await bubble.click();
+    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ledger] }]);
+    const card = page.getByTestId(`comment-card-${SECOND}`);
+    await expect(card).toBeVisible();
+
+    await card.click();
     expect((await state(page)).selection).toEqual([SECOND]);
     await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-comment-overlay', 'true');
 
