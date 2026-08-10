@@ -253,6 +253,10 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Board
       ...(groupId && parentRect ? { parentId: groupId } : {}),
       style: { width: rect.width, height: rect.height },
       selected: selected.has(entity.id),
+      // An open container drags only once selected. It covers so much board
+      // that a drag meant as a pan kept moving it (issue #36); a drag over a
+      // non-draggable node pans the board instead.
+      ...(isContainer ? { draggable: selected.has(entity.id) } : {}),
       // A selected element lifts above the rest so its editor is not covered.
       ...(selected.has(entity.id) ? { zIndex: 1000 } : {}),
       data: {

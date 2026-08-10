@@ -356,7 +356,7 @@ test.describe('groups', () => {
     await expect(page.getByTestId(`entity-${IDS.gateway}`)).toBeVisible();
   });
 
-  test('dragging an expanded group carries its members', async ({ page }) => {
+  test('dragging a selected expanded group carries its members', async ({ page }) => {
     await groupPaymentsSide(page);
     await page.getByTestId(`expand-${GROUP}`).click();
     await fit(page);
@@ -366,9 +366,17 @@ test.describe('groups', () => {
     await page.getByTestId(`collapse-${GROUP}`).hover();
     await page.mouse.move(0, 0);
     const header = await page.getByTestId(`group-${GROUP}`).boundingBox();
-    await page.mouse.move(header!.x + header!.width - 30, header!.y + 12);
+    const grab = { x: header!.x + header!.width - 30, y: header!.y + 12 };
+
+    // A group only moves once selected, so click it first.
+    await page.mouse.click(grab.x, grab.y);
+    await expect
+      .poll(() => page.evaluate(() => window.__modl.getState().selection))
+      .toContain(GROUP);
+
+    await page.mouse.move(grab.x, grab.y);
     await page.mouse.down();
-    await page.mouse.move(header!.x + header!.width - 30 + 120, header!.y + 12 + 90, { steps: 12 });
+    await page.mouse.move(grab.x + 120, grab.y + 90, { steps: 12 });
     await page.mouse.up();
 
     const after = await getDocument(page);
@@ -376,6 +384,88 @@ test.describe('groups', () => {
     for (const id of [IDS.gateway, IDS.ledger]) {
       expect(after.layout[id]).not.toEqual(before.layout[id]);
     }
+  });
+
+  test('dragging an unselected expanded group pans the board instead of moving it', async ({
+    page,
+  }) => {
+    await groupPaymentsSide(page);
+    await page.getByTestId(`expand-${GROUP}`).click();
+    // The expand click also selected the group; clear that so the drag under
+    // test starts with nothing selected.
+    await dispatch(page, [{ type: 'set-selection', ids: [] }]);
+    await fit(page);
+    const before = await getDocument(page);
+    const boxBefore = await page.getByTestId(`group-${GROUP}`).boundingBox();
+
+    // Same header grab as the move test, but with nothing selected.
+    const header = await page.getByTestId(`group-${GROUP}`).boundingBox();
+    await page.mouse.move(header!.x + header!.width - 30, header!.y + 12);
+    await page.mouse.down();
+    await page.mouse.move(header!.x + header!.width - 30 + 120, header!.y + 12 + 90, { steps: 12 });
+    await page.mouse.up();
+
+    // The document did not change: the drag was a pan.
+    const after = await getDocument(page);
+    expect(after.layout[GROUP]).toEqual(before.layout[GROUP]);
+    const moves = (await getTrace(page)).filter((entry) => entry.command.type === 'move-element');
+    expect(moves).toHaveLength(0);
+
+    // The camera moved, so the group sits elsewhere on screen.
+    const boxAfter = await page.getByTestId(`group-${GROUP}`).boundingBox();
+    expect(boxAfter!.x).not.toBe(boxBefore!.x);
+
+    // The pan gesture also did not select the group on release.
+    const selection = await page.evaluate(() => window.__modl.getState().selection);
+    expect(selection).toEqual([]);
+  });
+
+  test('clicking a group whose boundary is off screen leaves it unselected', async ({ page }) => {
+    // A small window and a large container, so max zoom puts the whole view
+    // inside the group.
+    await page.setViewportSize({ width: 480, height: 360 });
+    await groupPaymentsSide(page);
+    await page.getByTestId(`expand-${GROUP}`).click();
+    await dispatch(page, [
+      { type: 'resize-element', id: GROUP, width: 900, height: 700 },
+      // The expand click also selected the group; the guard under test only
+      // applies to an unselected one.
+      { type: 'set-selection', ids: [] },
+    ]);
+    await fit(page);
+
+    // Zoom towards the group's centre until its edges leave the view.
+    const box = await page.getByTestId(`group-${GROUP}`).boundingBox();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    for (let i = 0; i < 10; i += 1) {
+      await page.mouse.wheel(0, -240);
+    }
+    await expect
+      .poll(async () => {
+        const zoomed = await page.getByTestId(`group-${GROUP}`).boundingBox();
+        return (
+          zoomed!.x < 0 &&
+          zoomed!.y < 0 &&
+          zoomed!.x + zoomed!.width > 480 &&
+          zoomed!.y + zoomed!.height > 360
+        );
+      })
+      .toBe(true);
+
+    // The window centre now shows the group's background, with the members
+    // off screen near its top-left corner.
+    const hit = await page.evaluate(
+      () =>
+        document
+          .elementFromPoint(240, 180)
+          ?.closest<HTMLElement>('.react-flow__node')?.dataset['id'],
+    );
+    expect(hit).toBe(GROUP);
+
+    await page.mouse.click(240, 180);
+
+    const selection = await page.evaluate(() => window.__modl.getState().selection);
+    expect(selection).toEqual([]);
   });
 
   test('dropping an element inside a container makes it a member', async ({ page }) => {
