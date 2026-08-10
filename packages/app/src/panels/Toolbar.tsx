@@ -4,6 +4,7 @@ import { store } from '../store/store.js';
 import { ElementIcon } from '../canvas/ElementIcon.js';
 import { PLACEABLE, arm, usePending } from '../canvas/placement.js';
 import { useAppState } from '../store/useStore.js';
+import { Preferences } from './Preferences.js';
 
 /** Downloads text as a file. */
 function download(filename: string, text: string, type = 'application/json'): void {
@@ -183,6 +184,7 @@ export function Toolbar() {
           {message}
         </span>
       )}
+      <Preferences />
     </header>
   );
 }

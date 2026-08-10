@@ -2,12 +2,12 @@ import { useEffect, useRef } from 'react';
 import { useViewport } from '@xyflow/react';
 import {
   activeRipples,
-  motionReduced,
   ripplesStarted,
   subscribeAnimations,
   RIPPLE_MS,
   type Ripple,
 } from './animations.js';
+import { useMotionReduced } from '../preferences/motion.js';
 
 /** Flow pixels between dots, matching the React Flow grid this replaces. */
 const GAP = 20;
@@ -32,6 +32,7 @@ const GLOW_FLOOR = 0.03;
  */
 export function GravityGrid() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const motionReduced = useMotionReduced();
   const viewport = useViewport();
   const viewportRef = useRef(viewport);
   viewportRef.current = viewport;
@@ -66,6 +67,13 @@ export function GravityGrid() {
       const right = left + width / zoom;
       const bottom = top + height / zoom;
       const ripples = activeRipples(now);
+      // A wave is measured in flow pixels, so zooming out shrinks it on
+      // screen: at 25% a press wave spanned about 30 pixels and moved a dot
+      // by one, which is nothing to see (issue #30). Below 100% the wave is
+      // spread by the inverse of the zoom, holding its size on screen. At or
+      // above 100% it stays pinned to the board, where an element's wave is
+      // meant to be element-sized.
+      const spread = 1 / Math.min(zoom, 1);
 
       const radius = Math.max(0.4, DOT_RADIUS * zoom);
       const lit: { x: number; y: number; glow: number }[] = [];
@@ -78,7 +86,7 @@ export function GravityGrid() {
           let y = gridY;
           let glow = 0;
           for (const ripple of ripples) {
-            const [dx, dy, light] = waveAt(gridX, gridY, ripple, now);
+            const [dx, dy, light] = waveAt(gridX, gridY, ripple, now, spread);
             x += dx;
             y += dy;
             glow = Math.max(glow, light);
@@ -154,7 +162,7 @@ export function GravityGrid() {
       ref={canvasRef}
       className="gravity-grid"
       data-testid="gravity-grid"
-      data-motion={motionReduced() ? 'reduced' : 'full'}
+      data-motion={motionReduced ? 'reduced' : 'full'}
       data-ripples="0"
       data-ripples-started="0"
     />
@@ -168,22 +176,35 @@ export function GravityGrid() {
  * radial line, outward for a wave leaving a new element and inward for the
  * field closing over a deleted one; the light pulse rides the same front
  * with the same damping.
+ *
+ * `spread` scales the whole shape — reach, wavefront width, and displacement
+ * together — so a zoomed-out wave keeps its proportions while it keeps its
+ * size on screen.
  */
-function waveAt(x: number, y: number, ripple: Ripple, now: number): [number, number, number] {
+function waveAt(
+  x: number,
+  y: number,
+  ripple: Ripple,
+  now: number,
+  spread: number,
+): [number, number, number] {
   const t = (now - ripple.start) / RIPPLE_MS;
   if (t <= 0 || t >= 1) return [0, 0, 0];
+
+  const reach = ripple.reach * spread;
+  const width = WAVE_WIDTH * spread;
 
   const dx = x - ripple.centre.x;
   const dy = y - ripple.centre.y;
   const distance = Math.hypot(dx, dy) || 1;
-  if (distance > ripple.reach + WAVE_WIDTH * 3) return [0, 0, 0];
+  if (distance > reach + width * 3) return [0, 0, 0];
 
-  const front = ripple.kind === 'outward' ? ripple.reach * t : ripple.reach * (1 - t);
-  const pulse = Math.exp(-((distance - front) ** 2) / (2 * WAVE_WIDTH ** 2));
+  const front = ripple.kind === 'outward' ? reach * t : reach * (1 - t);
+  const pulse = Math.exp(-((distance - front) ** 2) / (2 * width ** 2));
   const fade = 1 - t;
-  const falloff = Math.exp(-distance / ripple.reach);
+  const falloff = Math.exp(-distance / reach);
   const sign = ripple.kind === 'outward' ? 1 : -1;
-  const strength = sign * ripple.amplitude * pulse * fade * falloff;
+  const strength = sign * ripple.amplitude * spread * pulse * fade * falloff;
   const light = ripple.intensity * pulse * fade * falloff;
   return [(dx / distance) * strength, (dy / distance) * strength, light];
 }

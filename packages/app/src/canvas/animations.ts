@@ -8,6 +8,7 @@ import {
   type Id,
   type Point,
 } from '@modl/core';
+import { motionReduced, subscribeMotion } from '../preferences/motion.js';
 import { store } from '../store/store.js';
 
 /**
@@ -90,10 +91,6 @@ export function useWarpingIds(): ReadonlySet<Id> {
 
 export function useGhosts(): readonly Ghost[] {
   return useSyncExternalStore(subscribeAnimations, () => ghosts, () => ghosts);
-}
-
-export function motionReduced(): boolean {
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 /** Drops finished waves, then returns what is still travelling. */
@@ -224,6 +221,18 @@ function onDomainEvents(events: DomainEvent[], before: AppState, after: AppState
   }
 }
 
+/**
+ * Turning motion off mid-wave stops it there rather than letting the last
+ * one play out: the reader asked for stillness now, not shortly.
+ */
+function onMotionChanged(): void {
+  if (!motionReduced()) return;
+  ripples.length = 0;
+  warping = new Set();
+  ghosts = [];
+  emit();
+}
+
 let installed = false;
 
 /** Connects animation triggers to the command bus. Idempotent. */
@@ -231,4 +240,5 @@ export function installAnimations(): void {
   if (installed) return;
   installed = true;
   store.subscribeEvents(onDomainEvents);
+  subscribeMotion(onMotionChanged);
 }
