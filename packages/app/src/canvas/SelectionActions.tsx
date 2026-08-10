@@ -128,6 +128,7 @@ function CommentComposer({ targets }: { targets: Id[] }) {
             id: crypto.randomUUID(),
             text,
             targets,
+            createdAt: new Date().toISOString(),
           });
           if (result.ok) setText('');
         }}

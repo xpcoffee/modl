@@ -134,8 +134,9 @@ export const modelSchema = z.object({
 export const commentSchema = z.object({
   id: idSchema,
   text: z.string(),
-  /** A comment discusses something: detached from everything it is noise. */
-  targets: z.array(idSchema).min(1),
+  createdAt: z.iso.datetime({ offset: true }).optional(),
+  /** Empty means a general remark about the whole document. */
+  targets: z.array(idSchema),
 });
 
 export const documentSchema = z.object({

@@ -13,9 +13,16 @@ export function commentsOn(comments: Record<Id, Comment>, elementId: Id): Commen
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
-/** Every comment, sorted by id. Drives the list a reader browses. */
+/**
+ * Every comment in the order it was written, for reading a discussion
+ * through. Comments without a `createdAt` (written before the field existed)
+ * sort first, and ids break ties so the order is stable.
+ */
 export function allComments(comments: Record<Id, Comment>): Comment[] {
-  return Object.values(comments).sort((a, b) => a.id.localeCompare(b.id));
+  return Object.values(comments).sort(
+    (a, b) =>
+      (a.createdAt ?? '').localeCompare(b.createdAt ?? '') || a.id.localeCompare(b.id),
+  );
 }
 
 /** Ids of elements with at least one comment attached. */

@@ -27,6 +27,9 @@ import type { Edge, Node } from '@xyflow/react';
 export interface BoardComment {
   id: Id;
   text: string;
+  /** How many elements share this one comment. Above 1, the board says so:
+   * the same text on several elements otherwise reads as copies. */
+  targetCount: number;
 }
 
 /**
@@ -42,7 +45,11 @@ export interface CommentView {
 function commentViewOf(state: AppState, selected: ReadonlySet<Id>, id: Id): CommentView {
   const attached = commentsOn(state.document.comments, id);
   return {
-    comments: attached.map((comment: Comment) => ({ id: comment.id, text: comment.text })),
+    comments: attached.map((comment: Comment) => ({
+      id: comment.id,
+      text: comment.text,
+      targetCount: comment.targets.length,
+    })),
     readComments:
       attached.length > 0 &&
       (selected.has(id) || attached.some((comment) => selected.has(comment.id))),

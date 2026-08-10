@@ -1664,9 +1664,25 @@ select {
 
 .comment-field {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: 4px;
   width: 100%;
+}
+
+/* The shared-across-elements note sits under the text, full width. */
+.comment-field__span {
+  order: 4;
+  width: 100%;
+  font-size: 10px;
+  color: var(--comment);
+}
+
+.comment-bubble__span {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--comment);
 }
 
 .comment-field textarea {

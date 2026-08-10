@@ -228,6 +228,7 @@ export function ElementEditor({
               id: commentId,
               text: '',
               targets: [id],
+              createdAt: new Date().toISOString(),
             });
             if (result.ok) setFreshCommentId(commentId);
           }}
@@ -281,6 +282,13 @@ function CommentField({ comment, fresh }: { comment: BoardComment; fresh: boolea
           }
         }}
       />
+      {/* One instance shared across elements: without saying so, an edit here
+          showing up on another element reads as a bug. */}
+      {comment.targetCount > 1 && (
+        <span className="comment-field__span" data-testid={`editor-comment-span-${comment.id}`}>
+          one comment across {comment.targetCount} elements; edits show on all of them
+        </span>
+      )}
       <button
         type="button"
         aria-label="Delete this comment"

@@ -4116,6 +4116,11 @@ test.describe('comments', () => {
     await expect(
       page.getByTestId(`comment-bubbles-${IDS.ui}`).getByTestId(`comment-bubble-${NOTE}`),
     ).toBeVisible();
+
+    // One comment on two elements says so, or it reads as two copies.
+    await expect(
+      page.getByTestId(`comment-bubbles-${IDS.ui}`).getByTestId(`comment-span-${NOTE}`),
+    ).toHaveText('one comment across 2 elements');
   });
 
   test('selecting the comment itself shows its text and highlights its targets', async ({ page }) => {

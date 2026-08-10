@@ -120,8 +120,17 @@ export interface Model {
 export interface Comment {
   id: Id;
   text: string;
-  /** Elements this comment discusses. At least one; a comment losing its
-   * last target is deleted with it. */
+  /**
+   * When the comment was written, ISO 8601. Carried by the create command
+   * rather than read from a clock, so a trace replays identically. Absent on
+   * comments written before the field existed.
+   */
+  createdAt?: string;
+  /**
+   * Elements this comment discusses. Empty means a general remark about the
+   * whole document. An attached comment whose last target is deleted goes
+   * with it: it was written against that thing, and a general one was not.
+   */
   targets: Id[];
 }
 

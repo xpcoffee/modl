@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { apply, applyAll } from './apply.js';
 import { initialState } from '../state.js';
-import { commentsOn, commentedElementIds } from '../query/comments.js';
+import { allComments, commentsOn, commentedElementIds } from '../query/comments.js';
 import { formatTerm, parseFilter, selectIds } from '../query/filter.js';
 import { commentSuggestions, tagSuggestions } from '../query/search.js';
 import { boardEmphasis } from '../query/view.js';
@@ -77,11 +77,23 @@ describe('create-comment', () => {
     expect(state.document.comments[NOTE]?.targets).toEqual([A]);
   });
 
-  it('empty-endpoints: rejects a comment attached to nothing', () => {
-    const result = apply(base, comment(NOTE, 'floating', []));
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.code).toBe('empty-endpoints');
+  it('a comment with no targets is a general remark about the document', () => {
+    const state = must(base, comment(NOTE, 'should this board split in two?', []));
+    expect(state.document.comments[NOTE]?.targets).toEqual([]);
+    // General remarks belong to no element, so no element matches `comment`.
+    expect(
+      selectIds(state.document.model.elements, 'comment', state.document.comments),
+    ).toEqual(new Set());
+  });
+
+  it('carries the creation time the command names, and orders the feed by it', () => {
+    const state = must(
+      base,
+      { type: 'create-comment', id: NOTE2, text: 'later', targets: [B], createdAt: '2026-08-10T12:00:00Z' },
+      { type: 'create-comment', id: NOTE, text: 'earlier', targets: [A], createdAt: '2026-08-09T12:00:00Z' },
+    );
+    expect(state.document.comments[NOTE]?.createdAt).toBe('2026-08-09T12:00:00Z');
+    expect(allComments(state.document.comments).map((entry) => entry.id)).toEqual([NOTE, NOTE2]);
   });
 
   it('unknown-element: rejects a target that is not in the document', () => {
@@ -129,12 +141,13 @@ describe('set-comment-text and set-comment-targets', () => {
     expect(result.error.code).toBe('unknown-element');
   });
 
-  it('empty-endpoints: refuses to detach a comment from everything', () => {
-    const state = must(base, comment(NOTE, 'anchored', [A]));
-    const result = apply(state, { type: 'set-comment-targets', id: NOTE, targets: [] });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.code).toBe('empty-endpoints');
+  it('detaching every target turns the comment into a general remark', () => {
+    const state = must(
+      base,
+      comment(NOTE, 'anchored', [A]),
+      { type: 'set-comment-targets', id: NOTE, targets: [] },
+    );
+    expect(state.document.comments[NOTE]?.targets).toEqual([]);
   });
 });
 

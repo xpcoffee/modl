@@ -303,12 +303,15 @@ A comment is a remark about one or more elements: a question, an objection, a no
 ```ts
 interface Comment {
   id: Id;
-  text: string;      // free text
-  targets: Id[];     // elements this discusses, at least one
+  text: string;        // free text
+  createdAt?: string;  // ISO 8601, carried by the create command
+  targets: Id[];       // elements this discusses; empty means the whole document
 }
 ```
 
-Targets can be any element, connections included. Deleting an element removes it from every comment's targets, and a comment losing its last target is deleted with it: a remark about nothing is noise. Duplicating elements does not copy their comments, since a remark is about the specific thing it was written against.
+Targets can be any element, connections included. A comment with no targets is a general remark about the whole document. Deleting an element removes it from every attached comment's targets, and an attached comment losing its last target is deleted with it: it was written against that thing, while a general remark was written against nothing in particular. Duplicating elements does not copy their comments, since a remark is about the specific thing it was written against.
+
+`createdAt` orders a discussion for reading through. The create command carries it explicitly rather than the reducer reading a clock, so a trace replays identically; a comment written before the field existed sorts first.
 
 Comment ids share the selection's id space with elements, so selecting a comment is the same gesture as selecting a box, and it highlights the elements the comment discusses. On the board a comment draws as a small badge on each target; its text shows only while the comment or a target is selected.
 

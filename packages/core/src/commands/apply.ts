@@ -1019,6 +1019,7 @@ function reduce(state: AppState, command: Command): CommandResult {
       const comment: Comment = {
         id: command.id,
         text: command.text,
+        ...(command.createdAt === undefined ? {} : { createdAt: command.createdAt }),
         targets: [...new Set(command.targets)],
       };
       return ok(withComment(state, comment), [{ type: 'comment-created', id: command.id }]);
@@ -1085,19 +1086,15 @@ function unknownComment(commandType: CommandType, id: Id): CommandResult {
   return fail(commandType, 'unknown-element', `comment ${id} is not in the document`);
 }
 
-/** A comment discusses elements, so each target has to be one. */
+/**
+ * Each target has to be an element. An empty list is legal: a comment with
+ * no targets is a general remark about the whole document.
+ */
 function checkCommentTargets(
   state: AppState,
   commandType: CommandType,
   targets: Id[],
 ): CommandError | null {
-  if (targets.length === 0) {
-    return {
-      code: 'empty-endpoints',
-      message: 'a comment needs at least one element to attach to',
-      commandType,
-    };
-  }
   for (const ref of targets) {
     if (!state.document.model.elements[ref]) {
       return {

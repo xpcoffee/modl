@@ -32,7 +32,12 @@ export function serializeDocument(document: Document): string {
   for (const id of Object.keys(document.comments).sort()) {
     const comment = document.comments[id];
     if (comment) {
-      comments[id] = { id: comment.id, text: comment.text, targets: [...comment.targets].sort() };
+      comments[id] = {
+        id: comment.id,
+        text: comment.text,
+        ...(comment.createdAt === undefined ? {} : { createdAt: comment.createdAt }),
+        targets: [...comment.targets].sort(),
+      };
     }
   }
 

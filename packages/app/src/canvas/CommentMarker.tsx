@@ -37,6 +37,14 @@ export function CommentBubbles({
       {comments.map((comment) => (
         <p key={comment.id} className="comment-bubble" data-testid={`comment-bubble-${comment.id}`}>
           {comment.text || <em>empty comment</em>}
+          {comment.targetCount > 1 && (
+            <span
+              className="comment-bubble__span"
+              data-testid={`comment-span-${comment.id}`}
+            >
+              one comment across {comment.targetCount} elements
+            </span>
+          )}
         </p>
       ))}
     </div>

@@ -139,7 +139,7 @@ export type Command =
   | { type: 'set-filter'; expression: string }
   | { type: 'set-view'; pan: Point; zoom: number }
   | { type: 'set-sources'; id: Id; sources: SourceRef[] }
-  | { type: 'create-comment'; id: Id; text: string; targets: Id[] }
+  | { type: 'create-comment'; id: Id; text: string; targets: Id[]; createdAt?: string }
   | { type: 'set-comment-text'; id: Id; text: string }
   | { type: 'set-comment-targets'; id: Id; targets: Id[] }
   | { type: 'delete-comment'; id: Id }
