@@ -1,5 +1,16 @@
 import { expect, test } from '@playwright/test';
-import { dispatch, fit, getDocument, getTrace, IDS, open, sampleDomain, serialize } from './support.js';
+import {
+  dispatch,
+  fit,
+  getDocument,
+  getTrace,
+  IDS,
+  open,
+  openSearch,
+  sampleDomain,
+  serialize,
+  setFilter,
+} from './support.js';
 
 test.beforeEach(async ({ page }) => {
   await open(page);
@@ -199,6 +210,7 @@ test.describe('delete keys', () => {
   for (const key of ['Delete', 'Backspace']) {
     test(`${key} removes the selected element`, async ({ page }) => {
       await dispatch(page, sampleDomain());
+      await fit(page);
       await page.getByTestId(`entity-${IDS.ledger}`).click();
 
       await page.keyboard.press(key);
@@ -321,6 +333,7 @@ test.describe('groups', () => {
 
   test('the toolbar groups a selection', async ({ page }) => {
     await dispatch(page, sampleDomain());
+    await fit(page);
     await page.getByTestId(`entity-${IDS.gateway}`).click();
     await page.getByTestId(`entity-${IDS.ledger}`).click({ modifiers: ['ControlOrMeta'] });
 
@@ -593,40 +606,19 @@ test.describe('filtering', () => {
   test('dims elements that do not match', async ({ page }) => {
     await dispatch(page, sampleDomain());
 
-    await page.getByTestId('filter-input').fill('team=payments');
+    await setFilter(page, 'team=payments');
 
     await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveClass(/is-dimmed/);
     await expect(page.getByTestId(`entity-${IDS.gateway}`)).not.toHaveClass(/is-dimmed/);
     await expect(page.getByTestId('element-count')).toContainText('2 of 5');
   });
 
-  test('keeps a half-typed expression on screen and reports it', async ({ page }) => {
+  test('removing the filter restores every element', async ({ page }) => {
     await dispatch(page, sampleDomain());
+    await setFilter(page, 'team=web');
 
-    await page.getByTestId('filter-input').fill('=broken');
-
-    await expect(page.getByTestId('filter-input')).toHaveValue('=broken');
-    await expect(page.getByTestId('filter-error')).toBeVisible();
-    // Everything stays readable while the expression is unparseable.
-    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-dimmed/);
-  });
-
-  test('suggests recorded values for the key being typed', async ({ page }) => {
-    await dispatch(page, sampleDomain());
-
-    await page.getByTestId('filter-input').fill('team=');
-
-    const options = await page
-      .locator('#filter-suggestions option')
-      .evaluateAll((nodes) => nodes.map((node) => (node as HTMLOptionElement).value));
-    expect(options).toContain('team=payments');
-    expect(options).toContain('team=web');
-  });
-
-  test('clearing the filter restores every element', async ({ page }) => {
-    await dispatch(page, sampleDomain());
-    await page.getByTestId('filter-input').fill('team=web');
-    await page.getByTestId('filter-clear').click();
+    await openSearch(page);
+    await page.getByTestId('filter-remove-0').click();
 
     await expect(page.getByTestId('element-count')).toContainText('5 elements');
   });
@@ -647,7 +639,7 @@ test.describe('filtering', () => {
       { type: 'set-group', id: IDS.ledger, groupId: GROUP },
     ]);
 
-    await page.getByTestId('filter-input').fill('team=payments');
+    await setFilter(page, 'team=payments');
 
     // The ledger matches inside the collapsed group: the group stays readable
     // and shows the count, while the unrelated UI mutes.
@@ -662,6 +654,243 @@ test.describe('filtering', () => {
 
     await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
     await expect(page.getByTestId(`match-count-${GROUP}`)).toHaveCount(0);
+  });
+});
+
+test.describe('search menu', () => {
+  test('Ctrl+F opens the bar and Escape closes it', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await expect(page.getByTestId('search-open')).toBeVisible();
+    await openSearch(page);
+    await expect(page.getByTestId('search-open')).toHaveCount(0);
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('search-bar')).toHaveCount(0);
+    await expect(page.getByTestId('search-open')).toBeVisible();
+  });
+
+  test('the button opens the bar too', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.getByTestId('search-open').click();
+
+    await expect(page.getByTestId('search-input')).toBeVisible();
+  });
+
+  test('clicking off the menu closes it', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await openSearch(page);
+
+    await page.locator('.react-flow__pane').click({ position: { x: 40, y: 300 } });
+
+    await expect(page.getByTestId('search-bar')).toHaveCount(0);
+  });
+
+  test('typing narrows the board without committing a filter', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await openSearch(page);
+
+    await page.getByTestId('search-input').fill('ent');
+
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveClass(/is-dimmed/);
+    // The preview is not the filter: nothing has been applied yet.
+    expect(await page.evaluate(() => window.__modl.getState().filter)).toBe('');
+  });
+
+  test('closing the menu drops the preview', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await openSearch(page);
+    await page.getByTestId('search-input').fill('ent');
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveClass(/is-dimmed/);
+
+    await page.keyboard.press('Escape');
+
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
+  });
+
+  test('the first option makes the narrowing permanent', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await openSearch(page);
+    await page.getByTestId('search-input').fill('ent');
+
+    const options = page.getByTestId('search-options').getByRole('button');
+    await expect(options.first()).toHaveAttribute('data-testid', 'search-text-ent');
+
+    await options.first().click();
+
+    expect(await page.evaluate(() => window.__modl.getState().filter)).toBe('"ent"');
+    await expect(page.getByTestId('filter-chip-0')).toContainText('"ent"');
+    await expect(page.getByTestId('element-count')).toContainText('2 of 5');
+  });
+
+  test('Enter takes the active option', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await openSearch(page);
+
+    await page.getByTestId('search-input').fill('ent');
+    await page.keyboard.press('Enter');
+
+    expect(await page.evaluate(() => window.__modl.getState().filter)).toBe('"ent"');
+  });
+
+  test('the arrow keys cycle the options', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await openSearch(page);
+    await page.getByTestId('search-input').fill('ent');
+
+    const options = page.getByTestId('search-options').getByRole('button');
+    await expect(options.first()).toHaveClass(/is-active/);
+
+    await page.keyboard.press('ArrowDown');
+
+    await expect(options.first()).not.toHaveClass(/is-active/);
+    await expect(options.nth(1)).toHaveClass(/is-active/);
+  });
+
+  test('one match leaves only the element to go to', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await openSearch(page);
+
+    await page.getByTestId('search-input').fill('ledger');
+
+    const options = page.getByTestId('search-options').getByRole('button');
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toHaveAttribute(
+      'data-testid',
+      `search-element-${IDS.ledger}`,
+    );
+  });
+
+  test('choosing an element selects it and moves the camera', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await openSearch(page);
+    await page.getByTestId('search-input').fill('ledger');
+
+    await page.getByTestId(`search-element-${IDS.ledger}`).click();
+
+    await expect
+      .poll(() => page.evaluate(() => window.__modl.getState().selection))
+      .toEqual([IDS.ledger]);
+    const trace = await getTrace(page);
+    expect(trace.some((entry) => entry.command.type === 'set-view')).toBe(true);
+    // Going somewhere is the end of the search.
+    await expect(page.getByTestId('search-bar')).toHaveCount(0);
+  });
+
+  test('finds an element by scattered characters', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await openSearch(page);
+
+    await page.getByTestId('search-input').fill('chkui');
+
+    await expect(page.getByTestId(`search-element-${IDS.ui}`)).toBeVisible();
+  });
+
+  test('offers the tag filters as well as the text one', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await openSearch(page);
+
+    await page.getByTestId('search-input').fill('team');
+
+    await expect(page.getByTestId('search-tag-team-payments')).toBeVisible();
+  });
+
+  test('the closed button counts the active filters', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await setFilter(page, 'team=web "ent"');
+
+    await expect(page.getByTestId('filter-count')).toContainText('2');
+  });
+
+  test('a chip edits its filter, and the change lands at once', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await setFilter(page, 'team=web');
+    await openSearch(page);
+
+    await page.getByTestId('filter-chip-0').click();
+    await page.getByTestId('search-input').fill('team=pay');
+    await page.getByTestId('search-tag-team-payments').click();
+
+    expect(await page.evaluate(() => window.__modl.getState().filter)).toBe('team=payments');
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveClass(/is-dimmed/);
+  });
+
+  test('the editor offers filters and never elements', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await setFilter(page, 'team=web');
+    await openSearch(page);
+
+    await page.getByTestId('filter-chip-0').click();
+    await page.getByTestId('search-input').fill('ledger');
+
+    await expect(page.getByTestId(`search-element-${IDS.ledger}`)).toHaveCount(0);
+  });
+
+  test('emptying a filter removes it', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await setFilter(page, 'team=web');
+    await openSearch(page);
+
+    await page.getByTestId('filter-chip-0').click();
+    await page.getByTestId('search-input').fill('');
+
+    expect(await page.evaluate(() => window.__modl.getState().filter)).toBe('');
+    await expect(page.getByTestId('active-filters')).toHaveCount(0);
+  });
+
+  test('several filters stack up, and each one is its own chip', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await openSearch(page);
+
+    await page.getByTestId('search-input').fill('ent');
+    await page.keyboard.press('Enter');
+    await page.getByTestId('search-input').fill('team');
+    await page.getByTestId('search-tag-team').click();
+
+    expect(await page.evaluate(() => window.__modl.getState().filter)).toBe('"ent" team');
+    await expect(page.getByTestId('filter-chip-0')).toContainText('"ent"');
+    await expect(page.getByTestId('filter-chip-1')).toContainText('team');
+  });
+
+  test('five filters is the limit', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await setFilter(page, 'one two three four five');
+    await openSearch(page);
+
+    await page.getByTestId('search-input').fill('ent');
+
+    await expect(page.getByTestId('filter-cap')).toBeVisible();
+    // Only the elements are left to choose from.
+    await expect(page.getByTestId('search-text-ent')).toHaveCount(0);
+    await expect(page.getByTestId(`search-element-${IDS.gateway}`)).toBeVisible();
+  });
+
+  test('the filter travels through the command bus', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await openSearch(page);
+
+    await page.getByTestId('search-input').fill('ent');
+    await page.keyboard.press('Enter');
+
+    const trace = await getTrace(page);
+    expect(
+      trace.some(
+        (entry) => entry.command.type === 'set-filter' && entry.command.expression === '"ent"',
+      ),
+    ).toBe(true);
+  });
+
+  test('a preview leaves nothing in the trace', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await openSearch(page);
+
+    await page.getByTestId('search-input').fill('ent');
+    await page.keyboard.press('Escape');
+
+    const trace = await getTrace(page);
+    expect(trace.some((entry) => entry.command.type === 'set-filter')).toBe(false);
   });
 });
 
@@ -782,6 +1011,7 @@ test.describe('selection actions', () => {
 
   test('delete follows a dragged selection before the drop', async ({ page }) => {
     await dispatch(page, sampleDomain());
+    await fit(page);
     await page.getByTestId(`entity-${IDS.gateway}`).click();
     await page.getByTestId(`entity-${IDS.ledger}`).click({ modifiers: ['ControlOrMeta'] });
 
@@ -798,6 +1028,7 @@ test.describe('selection actions', () => {
 
   test('deletes a single selection', async ({ page }) => {
     await dispatch(page, sampleDomain());
+    await fit(page);
     await page.getByTestId(`entity-${IDS.ledger}`).click();
 
     await page.getByTestId('delete-selected').click();
@@ -807,6 +1038,7 @@ test.describe('selection actions', () => {
 
   test('deletes a multi-selection and says how many', async ({ page }) => {
     await dispatch(page, sampleDomain());
+    await fit(page);
     await page.getByTestId(`entity-${IDS.gateway}`).click();
     await page.getByTestId(`entity-${IDS.ledger}`).click({ modifiers: ['ControlOrMeta'] });
 
@@ -823,6 +1055,7 @@ test.describe('selection actions', () => {
 
   test('a multi-selection opens no element editor', async ({ page }) => {
     await dispatch(page, sampleDomain());
+    await fit(page);
     await page.getByTestId(`entity-${IDS.gateway}`).click();
     await expect(page.getByTestId(`editor-${IDS.gateway}`)).toBeVisible();
 
@@ -972,6 +1205,7 @@ test.describe('entity sizing and creation type', () => {
 
   test('an entity can be resized', async ({ page }) => {
     await dispatch(page, sampleDomain());
+    await fit(page);
     await page.getByTestId(`entity-${IDS.ledger}`).click();
 
     const before = (await getDocument(page)).layout[IDS.ledger] as { width: number };
@@ -1258,7 +1492,7 @@ test.describe('readable ids and multi-valued tags', () => {
       { type: 'set-tag', id: IDS.ui, key: 'flow', values: ['checkout', 'refund'] },
     ]);
 
-    await page.getByTestId('filter-input').fill('flow=refund');
+    await setFilter(page, 'flow=refund');
 
     await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-dimmed/);
     await expect(page.getByTestId(`entity-${IDS.gateway}`)).toHaveClass(/is-dimmed/);
@@ -2218,6 +2452,7 @@ test.describe('hiding elements', () => {
   test('a mixed selection offers Hide for the visible and Show for the hidden', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await dispatch(page, [{ type: 'set-hidden', id: IDS.ui, hidden: true }]);
+    await fit(page);
 
     await page.getByTestId(`entity-${IDS.ui}`).click();
     await page.getByTestId(`entity-${IDS.gateway}`).click({ modifiers: ['ControlOrMeta'] });
@@ -2259,6 +2494,7 @@ test.describe('selection highlight', () => {
 
   test('a multi-selection unions the neighbourhoods', async ({ page }) => {
     await dispatch(page, sampleDomain());
+    await fit(page);
 
     await page.getByTestId(`entity-${IDS.ui}`).click();
     await page.getByTestId(`entity-${IDS.ledger}`).click({ modifiers: ['ControlOrMeta'] });
@@ -2288,21 +2524,29 @@ test.describe('selection highlight', () => {
     await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
   });
 
-  test('the filter-bar toggle turns the highlight off and on', async ({ page }) => {
+  test('the board-settings toggle turns the highlight off and on', async ({ page }) => {
     await dispatch(page, sampleDomain());
 
-    await page.getByTestId('highlight-toggle').uncheck();
+    await page.getByTestId('highlight-toggle').click();
     await page.getByTestId(`entity-${IDS.ui}`).click();
     await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
 
-    await page.getByTestId('highlight-toggle').check();
+    await page.getByTestId('highlight-toggle').click();
     await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveClass(/is-dimmed/);
+  });
+
+  test('the toggle sits with the other board controls', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await expect(
+      page.locator('.react-flow__controls').getByTestId('highlight-toggle'),
+    ).toBeVisible();
   });
 
   test('the preference travels through the command bus', async ({ page }) => {
     await dispatch(page, sampleDomain());
 
-    await page.getByTestId('highlight-toggle').uncheck();
+    await page.getByTestId('highlight-toggle').click();
 
     const trace = await getTrace(page);
     expect(
@@ -2908,7 +3152,7 @@ test.describe('undo and redo', () => {
     await dispatch(page, sampleDomain());
     const before = await serialize(page);
 
-    await page.getByTestId('filter-input').click();
+    await openSearch(page);
     await page.keyboard.press('Control+z');
 
     expect(await serialize(page)).toBe(before);
@@ -3171,7 +3415,7 @@ test.describe('selection gestures', () => {
   test('ctrl+a inside a text field stays with the field', async ({ page }) => {
     await dispatch(page, [...sampleDomain(), { type: 'set-selection', ids: [IDS.ledger] }]);
 
-    await page.getByTestId('filter-input').click();
+    await openSearch(page);
     await page.keyboard.press('Control+a');
 
     expect(await selection(page)).toEqual([IDS.ledger]);
@@ -3489,7 +3733,7 @@ test.describe('duplication', () => {
   test('ctrl+c inside a text field stays with the field', async ({ page }) => {
     await dispatch(page, [...sampleDomain(), { type: 'set-selection', ids: [IDS.ledger] }]);
 
-    await page.getByTestId('filter-input').click();
+    await openSearch(page);
     await page.keyboard.press('Control+c');
     // The board's clipboard never saw it, so there is nothing to paste.
     await page.mouse.move(300, 400);

@@ -20,5 +20,6 @@ A decision earns a file when reversing it later would be expensive: it shapes th
 | [012](012-selection-gestures.md) | Selection gestures compute the next selection, then dispatch one set-selection |
 | [013](013-duplication.md) | A copy covers a self-contained set of elements, and arrives as one duplicate-elements |
 | [014](014-connection-labels.md) | A junction labels its branches, and the labels live on the junction |
+| [015](015-search-and-filter-menu.md) | One menu searches and filters, and a filter is a term in one expression |
 
 The build order these decisions were first applied in lives in [the bootstrap spec](../specs/001-bootstrap.md).
