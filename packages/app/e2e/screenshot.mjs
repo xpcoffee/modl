@@ -35,7 +35,12 @@ await page.evaluate(
   [ui, gateway, ledger],
 );
 
-if (filter) await page.getByTestId('filter-input').fill(filter);
+if (filter) {
+  await page.evaluate(
+    (expression) => window.__modl.dispatchAll([{ type: 'set-filter', expression }]),
+    filter,
+  );
+}
 
 if (process.env.GROUPED) {
   const group = '77777777-7777-4777-8777-777777777777';

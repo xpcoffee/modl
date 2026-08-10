@@ -1,0 +1,414 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useReactFlow, useStore as useFlowStore } from '@xyflow/react';
+import {
+  MAX_FILTERS,
+  activeFilterTerms,
+  addTerm,
+  formatTerm,
+  replaceTerm,
+  searchOptions,
+  visibleAnchor,
+  type AppState,
+  type FilterTerm,
+  type Id,
+  type SearchOption,
+} from '@modl/core';
+import { setSearchPreview } from '../canvas/searchPreview.js';
+import { store } from '../store/store.js';
+import { useAppState } from '../store/useStore.js';
+
+/** How many options are on screen at once. The rest are reached by cycling. */
+const VISIBLE_OPTIONS = 10;
+
+/** What the bar is doing: finding things, or changing one active filter. */
+type Mode = { kind: 'search' } | { kind: 'edit'; index: number };
+
+/** The board rectangle a pan should centre on. */
+function rectOf(state: AppState, id: Id): { x: number; y: number; width: number; height: number } {
+  const entry = state.document.layout[id];
+  if (!entry || !('x' in entry)) return { x: 0, y: 0, width: 180, height: 72 };
+  const container = state.expanded.includes(id) ? entry.expanded : undefined;
+  return {
+    x: entry.x,
+    y: entry.y,
+    width: container?.width ?? entry.width,
+    height: container?.height ?? entry.height,
+  };
+}
+
+/** A stable key for an option, so the list keeps its identity across renders. */
+function keyOf(option: SearchOption): string {
+  return option.kind === 'element' ? `element:${option.id}` : `filter:${option.label}`;
+}
+
+/** A filter's label as a test id: quotes and '=' do not belong in one. */
+function slug(label: string): string {
+  return label.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
+}
+
+/**
+ * How an option is addressed from a test. The kind is part of the id because
+ * the text filter "team" and the tag filter team read the same once the
+ * punctuation is stripped, and they are different acts.
+ */
+function testIdOf(option: SearchOption): string {
+  if (option.kind === 'element') return `search-element-${option.id}`;
+  if (option.term.kind === 'text') return `search-text-${slug(option.term.text)}`;
+  return `search-tag-${slug(option.label)}`;
+}
+
+/**
+ * The board's search and filter menu: a button top-centre that opens into a
+ * search bar. See docs/decisions/015-search-and-filter-menu.md.
+ *
+ * Typing narrows the board as a preview. The first option makes that narrowing
+ * permanent as a filter; the elements below it are places to go. Filters
+ * already applied sit under the bar as chips, each one editable through the
+ * same bar with the elements left out.
+ */
+export function SearchMenu() {
+  const state = useAppState();
+  const { getViewport } = useReactFlow();
+  const paneWidth = useFlowStore((flow) => flow.width);
+  const paneHeight = useFlowStore((flow) => flow.height);
+
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<Mode>({ kind: 'search' });
+  const [query, setQuery] = useState('');
+  const [active, setActive] = useState(0);
+  const [windowStart, setWindowStart] = useState(0);
+
+  const container = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+
+  const terms = useMemo(() => activeFilterTerms(state.filter), [state.filter]);
+  const editing = mode.kind === 'edit';
+
+  const options = useMemo(
+    () =>
+      searchOptions(state, query, {
+        filtersOnly: editing,
+        // An edit replaces a term rather than adding one, so the cap only
+        // closes the door on a brand new filter.
+        allowNewFilter: editing || terms.length < MAX_FILTERS,
+      }),
+    [state, query, editing, terms.length],
+  );
+
+  const close = useCallback(() => {
+    setOpen(false);
+    setMode({ kind: 'search' });
+    setQuery('');
+    setActive(0);
+    setWindowStart(0);
+    setSearchPreview(null);
+  }, []);
+
+  /** Opens the bar for a plain search, focusing whatever it already holds. */
+  const openSearch = useCallback(() => {
+    setOpen(true);
+    setMode({ kind: 'search' });
+    setQuery('');
+    setActive(0);
+    setWindowStart(0);
+  }, []);
+
+  // Ctrl+F reaches the menu from anywhere on the board.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+      if (event.key.toLowerCase() !== 'f') return;
+      event.preventDefault();
+      // The focus follows in an effect: the input does not exist until the
+      // state change that opens the bar has rendered.
+      openSearch();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [openSearch]);
+
+  // Clicking anywhere else shuts the menu, which is the other way out of it.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (container.current?.contains(event.target as globalThis.Node)) return;
+      close();
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => window.removeEventListener('pointerdown', onPointerDown);
+  }, [open, close]);
+
+  useEffect(() => {
+    if (open) input.current?.focus();
+  }, [open, mode]);
+
+  // The options change under the cursor as the query narrows, so the active
+  // slot returns to the top rather than pointing at whatever took its place.
+  const optionKeys = options.map(keyOf).join(' ');
+  useEffect(() => {
+    setActive(0);
+    setWindowStart(0);
+  }, [optionKeys]);
+
+  /**
+   * What the board shows while the menu is open: the committed filter, plus
+   * the term the active option would add. An element option previews the text
+   * the reader typed, since that is what narrowed the list down to it.
+   */
+  const previewTerm = useMemo((): FilterTerm | null => {
+    // Nothing typed is not a narrowing: opening the menu must leave the board
+    // exactly as it was, whatever option happens to sit first in the list.
+    if (!open || editing || query.trim() === '') return null;
+    const option = options[active];
+    if (option?.kind === 'filter') return option.term;
+    return { kind: 'text', negated: false, text: query.trim() };
+  }, [open, editing, options, active, query]);
+
+  useEffect(() => {
+    setSearchPreview(previewTerm === null ? null : addTerm(state.filter, previewTerm));
+  }, [previewTerm, state.filter]);
+
+  // Nothing previewed once the menu is gone, whatever took it away.
+  useEffect(() => () => setSearchPreview(null), []);
+
+  const step = (by: number): void => {
+    if (options.length === 0) return;
+    const next = (active + by + options.length) % options.length;
+    setActive(next);
+    setWindowStart((start) => {
+      if (next < start) return next;
+      if (next >= start + VISIBLE_OPTIONS) return next - VISIBLE_OPTIONS + 1;
+      // Wrapping to the top of a long list has to bring the window with it.
+      if (next >= options.length - 1 && by > 0) return Math.max(0, options.length - VISIBLE_OPTIONS);
+      return start;
+    });
+  };
+
+  /** Goes to an element: the camera moves, and the selection follows it. */
+  const goTo = (id: Id): void => {
+    const current = store.getState();
+    const anchor = visibleAnchor(current.document.model.elements, id, new Set(current.expanded));
+    const target = rectOf(current, anchor);
+    const zoom = getViewport().zoom;
+    store.dispatch({
+      type: 'set-view',
+      pan: {
+        x: paneWidth / 2 - (target.x + target.width / 2) * zoom,
+        y: paneHeight / 2 - (target.y + target.height / 2) * zoom,
+      },
+      zoom,
+    });
+    store.dispatch({ type: 'set-selection', ids: [anchor] });
+    close();
+  };
+
+  const applyTerm = (term: FilterTerm): void => {
+    const expression =
+      mode.kind === 'edit'
+        ? replaceTerm(state.filter, mode.index, term)
+        : addTerm(state.filter, term);
+    store.dispatch({ type: 'set-filter', expression });
+    // The filter is in place, so the query that described it has done its job.
+    setQuery('');
+    setMode({ kind: 'search' });
+  };
+
+  const choose = (option: SearchOption): void => {
+    if (option.kind === 'element') goTo(option.id);
+    else applyTerm(option.term);
+  };
+
+  const removeTermAt = (index: number): void => {
+    store.dispatch({ type: 'set-filter', expression: replaceTerm(state.filter, index, null) });
+    setMode({ kind: 'search' });
+    setQuery('');
+  };
+
+  /** Opens the editor for one chip, seeded with how that filter reads. */
+  const editTermAt = (index: number): void => {
+    const term = terms[index];
+    if (!term) return;
+    setOpen(true);
+    setMode({ kind: 'edit', index });
+    setQuery(term.kind === 'text' ? term.text : formatTerm(term));
+    setActive(0);
+    setWindowStart(0);
+  };
+
+  const onQueryChange = (value: string): void => {
+    setQuery(value);
+    // Emptying a filter is how it is deleted, and it takes effect at once.
+    if (mode.kind === 'edit' && value.trim() === '') removeTermAt(mode.index);
+  };
+
+  const shown = options.slice(windowStart, windowStart + VISIBLE_OPTIONS);
+
+  return (
+    <div
+      className={`search-menu nodrag nopan nowheel${open ? ' is-open' : ''}`}
+      data-testid="search-menu"
+      ref={container}
+      onWheel={(event) => {
+        if (!open || event.deltaY === 0) return;
+        event.stopPropagation();
+        step(event.deltaY > 0 ? 1 : -1);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'ArrowDown') step(1);
+        else if (event.key === 'ArrowUp') step(-1);
+        else if (event.key === 'Enter') {
+          const option = options[active];
+          if (option) choose(option);
+        } else if (event.key === 'Escape') close();
+        else return;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+    >
+      {!open && (
+        <button
+          type="button"
+          className="search-menu__entrance"
+          data-testid="search-open"
+          aria-label={
+            terms.length === 0
+              ? 'Search the board (Ctrl+F)'
+              : `Search the board (Ctrl+F), ${terms.length} filters active`
+          }
+          onClick={openSearch}
+        >
+          <SearchIcon />
+          <span>Search</span>
+          {terms.length > 0 && (
+            <span className="search-menu__count" data-testid="filter-count">
+              <FilterIcon />
+              {terms.length}
+            </span>
+          )}
+        </button>
+      )}
+
+      {open && (
+        <div className="search-menu__bar" data-testid="search-bar">
+          <div className="search-menu__field">
+            {editing ? <FilterIcon /> : <SearchIcon />}
+            <input
+              ref={input}
+              data-testid="search-input"
+              autoComplete="off"
+              placeholder={editing ? 'change this filter, or empty it to remove' : 'find anything on the board'}
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+            />
+            <button
+              type="button"
+              className="search-menu__close"
+              data-testid="search-close"
+              aria-label="Close search"
+              onClick={close}
+            >
+              ×
+            </button>
+          </div>
+
+          {terms.length > 0 && (
+            <ul className="search-menu__filters" data-testid="active-filters">
+              {terms.map((term, index) => (
+                <li key={`${formatTerm(term)}-${index}`}>
+                  <button
+                    type="button"
+                    className={`search-menu__chip${editing && mode.index === index ? ' is-editing' : ''}`}
+                    data-testid={`filter-chip-${index}`}
+                    title="Edit this filter"
+                    onClick={() => editTermAt(index)}
+                  >
+                    <FilterIcon />
+                    {formatTerm(term)}
+                  </button>
+                  <button
+                    type="button"
+                    className="search-menu__chip-remove"
+                    data-testid={`filter-remove-${index}`}
+                    aria-label={`Remove filter ${formatTerm(term)}`}
+                    onClick={() => removeTermAt(index)}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {terms.length >= MAX_FILTERS && !editing && (
+            <p className="search-menu__note" data-testid="filter-cap">
+              {MAX_FILTERS} filters is the limit. Remove one to add another.
+            </p>
+          )}
+
+          <ul className="search-menu__options" data-testid="search-options">
+            {shown.map((option) => {
+              const index = options.indexOf(option);
+              return (
+                <li key={keyOf(option)}>
+                  <button
+                    type="button"
+                    className={`search-menu__option${index === active ? ' is-active' : ''}`}
+                    data-testid={testIdOf(option)}
+                    onMouseEnter={() => setActive(index)}
+                    onClick={() => choose(option)}
+                  >
+                    {option.kind === 'filter' ? <FilterIcon /> : <GoToIcon />}
+                    <span className="search-menu__option-label">{option.label}</span>
+                    <span className="search-menu__option-kind">
+                      {option.kind === 'filter'
+                        ? editing
+                          ? 'change filter'
+                          : 'filter the board'
+                        : option.sublabel}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+            {options.length === 0 && (
+              <li className="search-menu__empty" data-testid="search-empty">
+                nothing matches “{query}”
+              </li>
+            )}
+          </ul>
+
+          {options.length > VISIBLE_OPTIONS && (
+            <p className="search-menu__note" data-testid="search-more">
+              {windowStart + 1}–{Math.min(windowStart + VISIBLE_OPTIONS, options.length)} of{' '}
+              {options.length} · arrow keys or the wheel to cycle
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="search-menu__icon">
+      <path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
+    </svg>
+  );
+}
+
+function FilterIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="search-menu__icon">
+      <path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z" />
+    </svg>
+  );
+}
+
+function GoToIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="search-menu__icon">
+      <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm0-12a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" />
+    </svg>
+  );
+}

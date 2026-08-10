@@ -4,6 +4,7 @@ import {
   Controls,
   ConnectionMode,
   MiniMap,
+  Panel,
   ReactFlow,
   useReactFlow,
   useStoreApi,
@@ -52,7 +53,11 @@ import {
   type CopyRect,
 } from './duplication.js';
 import { arm, disarm, getPending, usePending } from './placement.js';
+import { BoardSettings } from './BoardSettings.js';
 import { HistoryControls } from './HistoryControls.js';
+import { SearchMenu } from '../panels/SearchMenu.js';
+import { HiddenStrip } from '../panels/HiddenStrip.js';
+import { useSearchPreview } from './searchPreview.js';
 import { ExpansionMenu } from './ExpansionMenu.js';
 import { RelationsMenu } from './RelationsMenu.js';
 import { SelectionActions } from './SelectionActions.js';
@@ -189,14 +194,28 @@ export function Canvas() {
     () => ({ editingId, boxSelecting, highlightId }),
     [editingId, boxSelecting, highlightId],
   );
+  /**
+   * What the board draws while someone types in the search menu: the same
+   * session, filtered by the expression they are trying out. The selection
+   * highlight stands down for the duration, because it otherwise outranks the
+   * filter (decision 009) and the preview would show nothing while anything
+   * was selected, which is most of the time someone reaches for search. The
+   * selection itself is untouched, so what is chosen stays chosen.
+   */
+  const preview = useSearchPreview();
+  const shown = useMemo(
+    () => (preview === null ? state : { ...state, filter: preview, selectionHighlight: false }),
+    [state, preview],
+  );
+
   const derived = useMemo(
     () =>
-      deriveNodes(state, options).map((node) =>
+      deriveNodes(shown, options).map((node) =>
         warping.has(node.id) ? { ...node, className: 'is-warping-in' } : node,
       ),
-    [state, options, warping],
+    [shown, options, warping],
   );
-  const edges = useMemo(() => deriveEdges(state, options), [state, options]);
+  const edges = useMemo(() => deriveEdges(shown, options), [shown, options]);
 
   /**
    * React Flow owns node positions while a drag is in flight, so the node
@@ -447,6 +466,10 @@ export function Canvas() {
 
       // A double-click on the minimap is aimed at the camera, not the board.
       if (hit?.closest('.react-flow__minimap')) return;
+
+      // Nor is one inside an overlay: double-clicking a word in the search
+      // box would otherwise drop a component behind the box.
+      if (hit?.closest('.search-menu, .hidden-strip')) return;
 
       const node = hit?.closest<HTMLElement>('.react-flow__node');
       if (node?.dataset['id']) {
@@ -907,8 +930,15 @@ export function Canvas() {
       >
         <GravityGrid />
         <WarpGhosts />
+        <Panel position="top-center">
+          <SearchMenu />
+        </Panel>
+        <Panel position="top-left">
+          <HiddenStrip />
+        </Panel>
         <Controls>
           <HistoryControls />
+          <BoardSettings />
         </Controls>
         <MiniMap
           pannable

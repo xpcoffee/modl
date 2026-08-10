@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { dispatch, getDocument, IDS, open, sampleDomain } from './support.js';
+import { dispatch, getDocument, IDS, open, openSearch, sampleDomain } from './support.js';
 
 /**
  * Gravity-wave animations: warp in/out on the element, ripples through the
@@ -248,6 +248,13 @@ test.describe('reduced motion', () => {
     await open(page);
   });
 
+  test('replaces the search button with the bar rather than growing one', async ({ page }) => {
+    await openSearch(page);
+
+    const bar = page.getByTestId('search-bar');
+    expect(await bar.evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
+  });
+
   test('disables ripples, warps, and ghosts', async ({ page }) => {
     const grid = page.getByTestId('gravity-grid');
     await expect(grid).toHaveAttribute('data-motion', 'reduced');
@@ -308,6 +315,14 @@ test.describe('reduced motion', () => {
 
 test.describe('turning motion off', () => {
   test.use({ contextOptions: { reducedMotion: 'no-preference' } });
+
+  test('the search button grows into the bar while motion is on', async ({ page }) => {
+    await open(page);
+    await openSearch(page);
+
+    const bar = page.getByTestId('search-bar');
+    expect(await bar.evaluate((el) => getComputedStyle(el).animationName)).toBe('search-open');
+  });
 
   test('stills the board, and stops a wave already in flight', async ({ page }) => {
     await open(page);

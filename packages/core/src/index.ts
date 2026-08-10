@@ -11,6 +11,8 @@ export * from './commands/apply.js';
 export * from './commands/undo.js';
 export * from './query/duplication.js';
 export * from './query/filter.js';
+export * from './query/fuzzy.js';
+export * from './query/search.js';
 export * from './query/expansion.js';
 export * from './query/groups.js';
 export * from './query/labels.js';

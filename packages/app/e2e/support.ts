@@ -29,6 +29,20 @@ export async function fit(page: Page): Promise<void> {
   await page.waitForTimeout(300);
 }
 
+/**
+ * Applies a filter through the command bus, for tests about what the board
+ * then draws. Tests about the search menu itself drive the menu.
+ */
+export async function setFilter(page: Page, expression: string): Promise<void> {
+  await dispatch(page, [{ type: 'set-filter', expression }]);
+}
+
+/** Opens the search menu and waits for its input. */
+export async function openSearch(page: Page): Promise<void> {
+  await page.keyboard.press('Control+f');
+  await page.getByTestId('search-input').waitFor();
+}
+
 export async function getDocument(page: Page): Promise<Document> {
   return page.evaluate(() => window.__modl.getDocument());
 }
