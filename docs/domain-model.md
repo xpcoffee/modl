@@ -312,7 +312,7 @@ Targets can be any element, connections included. Deleting an element removes it
 
 Comment ids share the selection's id space with elements, so selecting a comment is the same gesture as selecting a box, and it highlights the elements the comment discusses. On the board a comment draws as a small badge on each target; its text shows only while the comment or a target is selected.
 
-The filter key `comment` is reserved: `comment` matches every element a comment is attached to, `comment=text` narrows to comments whose text contains `text` (case-insensitive substring), and quotes keep a space inside one term (`comment="fix this"`). A tag key literally named "comment" cannot be filtered on.
+The filter key `comment` is reserved: `comment` matches every element a comment is attached to, `comment=text` narrows to comments whose text contains `text` (case-insensitive substring), and quotes keep a space inside one term (`comment="fix this"`). A tag key literally named "comment" stays reachable by quoting the key: `"comment"=todo` filters on the tag and `"comment"=*` matches any value of it, so the tag filter and the comment filter coexist in one expression.
 
 ## Coverage
 

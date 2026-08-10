@@ -4208,6 +4208,31 @@ test.describe('comments', () => {
     await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveClass(/is-dimmed/);
   });
 
+  test('a tag named "comment" shows in search beside the comment filter', async ({ page }) => {
+    await dispatch(page, [
+      ...commentedDomain(),
+      { type: 'set-tag', id: IDS.ledger, key: 'comment', values: ['todo'] },
+    ]);
+    await fit(page);
+
+    await openSearch(page);
+    await page.getByTestId('search-input').fill('comment');
+
+    // Both filters are offered: the tag through its quoted key, the comment
+    // filter through the reserved word, each marked with its kind.
+    await expect(page.getByTestId('search-tag-comment-todo')).toBeVisible();
+    await expect(page.getByTestId('search-comment-comment')).toBeVisible();
+    await expect(
+      page.getByTestId('search-tag-comment-todo').locator('.search-menu__option-kind'),
+    ).toHaveText('filter by tag');
+
+    // Choosing the tag narrows to the tagged element, so the reserved word
+    // did not swallow the tag filter.
+    await page.getByTestId('search-tag-comment-todo').click();
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveClass(/is-dimmed/);
+  });
+
   test('a comment survives a save and a load', async ({ page }) => {
     await dispatch(page, commentedDomain());
 

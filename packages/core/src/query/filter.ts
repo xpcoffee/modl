@@ -19,9 +19,10 @@ import { fuzzyMatches } from './fuzzy.js';
  *
  * The key `comment` is reserved: `comment` matches every element a comment
  * is attached to, and `comment=text` narrows to comments containing `text`.
- * A tag key literally named "comment" cannot be filtered on; the reservation
- * is the price of comments being searchable with the grammar people already
- * know (issue #37).
+ * A tag key literally named "comment" stays reachable by quoting the key:
+ * `"comment"=todo` filters on the tag, and `"comment"=*` matches any value
+ * of it. A quoted key is always read literally as a tag, never as the
+ * reserved word, so both filters coexist (issue #37).
  */
 export interface TagTerm {
   kind: 'tag';
@@ -119,6 +120,18 @@ export function parseFilter(expression: string): FilterParseResult {
     if (!key) {
       return { ok: false, message: `filter term "${token}" has no tag key` };
     }
+    // A quoted key is a literal tag key, which is how a tag named "comment"
+    // stays reachable past the reserved word.
+    const literalKey = /^"(.+)"$/.exec(key)?.[1];
+    if (literalKey !== undefined) {
+      terms.push({
+        kind: 'tag',
+        negated: negation === '-',
+        ...(value === undefined || value === '*' ? {} : { value }),
+        key: literalKey,
+      });
+      continue;
+    }
     if (key === 'comment') {
       // Comment text is prose, so `comment="fix this"` keeps a space inside
       // one term. The quotes are the tokenizer's, not part of the text.
@@ -151,6 +164,11 @@ export function formatTerm(term: FilterTerm): string {
     if (term.text === undefined) return `${negation}comment`;
     const text = /\s/.test(term.text) ? `"${term.text}"` : term.text;
     return `${negation}comment=${text}`;
+  }
+  // The tag key that collides with the reserved word is written quoted, and
+  // with an explicit value: a bare quoted key would read back as a text term.
+  if (term.key === 'comment') {
+    return `${negation}"comment"=${term.value ?? '*'}`;
   }
   return `${negation}${term.key}${term.value === undefined ? '' : `=${term.value}`}`;
 }

@@ -74,10 +74,6 @@ export function tagSuggestions(
   };
 
   for (const key of tagKeys(elements)) {
-    // The reserved key cannot be written as a tag term: the grammar reads
-    // `comment=x` back as a comment filter, so offering it here would apply
-    // a different filter than the one chosen.
-    if (key === 'comment') continue;
     consider({ kind: 'tag', negated: false, key });
     for (const value of tagValues(elements, key)) {
       consider({ kind: 'tag', negated: false, key, value });

@@ -252,10 +252,31 @@ describe('filtering by comment', () => {
     expect(options.map((option) => option.label)).toContain('comment=retry');
   });
 
-  it('never offers a tag named "comment", whose term the grammar reads as a comment filter', () => {
-    const state = must(base, { type: 'set-tag', id: A, key: 'comment', values: ['todo'] });
-    const options = tagSuggestions(state.document.model.elements, 'comment');
-    expect(options).toEqual([]);
+  it('a tag named "comment" filters through a quoted key, beside the comment filter', () => {
+    const state = must(
+      base,
+      { type: 'set-tag', id: A, key: 'comment', values: ['todo'] },
+      comment(NOTE, 'still open', [B]),
+    );
+
+    // Search offers both: the tag written with a quoted key, and the comment filter.
+    const tags = tagSuggestions(state.document.model.elements, 'comment');
+    expect(tags.map((option) => option.label)).toEqual(['"comment"=*', '"comment"=todo']);
+    const commentOptions = commentSuggestions(state.document.comments, 'comment');
+    expect(commentOptions.map((option) => option.label)).toContain('comment');
+
+    // The quoted key round-trips as a tag term and matches the tagged element.
+    const parsed = parseFilter('"comment"=todo');
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.terms).toEqual([{ kind: 'tag', negated: false, key: 'comment', value: 'todo' }]);
+    expect(formatTerm(parsed.terms[0]!)).toBe('"comment"=todo');
+    expect(
+      selectIds(state.document.model.elements, '"comment"=*', state.document.comments),
+    ).toEqual(new Set([A]));
+    expect(
+      selectIds(state.document.model.elements, 'comment', state.document.comments),
+    ).toEqual(new Set([B]));
   });
 });
 
