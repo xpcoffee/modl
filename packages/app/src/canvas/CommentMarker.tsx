@@ -1,4 +1,8 @@
 import type { Id } from '@modl/core';
+import { store } from '../store/store.js';
+import { useAppState } from '../store/useStore.js';
+import { startCommentEdit, useCommentEdit } from './commentEditing.js';
+import { CommentTextBox } from './CommentTextBox.js';
 import type { BoardComment } from './derive.js';
 
 /**
@@ -6,6 +10,10 @@ import type { BoardComment } from './derive.js';
  * it discusses, and the text only while the element or the comment itself is
  * selected. A remark has to be noticeable without competing with the model
  * it is about.
+ *
+ * A bubble is live in model mode too: clicking it selects the comment, a
+ * second click (or Enter) opens its text box, and Delete removes it, all
+ * without entering the discussion overlay.
  */
 
 export function CommentBadge({ id, count }: { id: Id; count: number }) {
@@ -31,22 +39,43 @@ export function CommentBubbles({
   comments: BoardComment[];
   open: boolean;
 }) {
+  const state = useAppState();
+  const edit = useCommentEdit();
   if (!open || comments.length === 0) return null;
+
+  const selected = new Set(state.selection);
   return (
-    <div className="comment-bubbles nodrag" data-testid={`comment-bubbles-${id}`}>
-      {comments.map((comment) => (
-        <p key={comment.id} className="comment-bubble" data-testid={`comment-bubble-${comment.id}`}>
-          {comment.text || <em>empty comment</em>}
-          {comment.targetCount > 1 && (
-            <span
-              className="comment-bubble__span"
-              data-testid={`comment-span-${comment.id}`}
-            >
-              one comment across {comment.targetCount} elements
-            </span>
-          )}
-        </p>
-      ))}
+    <div className="comment-bubbles nodrag nopan" data-testid={`comment-bubbles-${id}`}>
+      {comments.map((comment) => {
+        const editing = edit?.commentId === comment.id && edit.hostId === id;
+        return (
+          <p
+            key={comment.id}
+            className={`comment-bubble${selected.has(comment.id) ? ' is-selected' : ''}`}
+            data-testid={`comment-bubble-${comment.id}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (editing) return;
+              if (selected.has(comment.id)) startCommentEdit(comment.id, id);
+              else store.dispatch({ type: 'set-selection', ids: [comment.id] });
+            }}
+          >
+            {editing ? (
+              <CommentTextBox commentId={comment.id} text={comment.text} />
+            ) : (
+              comment.text || <em>empty comment</em>
+            )}
+            {comment.targetCount > 1 && (
+              <span
+                className="comment-bubble__span"
+                data-testid={`comment-span-${comment.id}`}
+              >
+                one comment across {comment.targetCount} elements
+              </span>
+            )}
+          </p>
+        );
+      })}
     </div>
   );
 }

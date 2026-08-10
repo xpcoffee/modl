@@ -22,5 +22,6 @@ A decision earns a file when reversing it later would be expensive: it shapes th
 | [014](014-connection-labels.md) | A junction labels its branches, and the labels live on the junction |
 | [015](015-search-and-filter-menu.md) | One menu searches and filters, and a filter is a term in one expression |
 | [016](016-comments.md) | Comments live beside the model, and attach to elements |
+| [017](017-discussion-overlay.md) | Discussion is a temporary overlay, and its cards pin in layout |
 
 The build order these decisions were first applied in lives in [the bootstrap spec](../specs/001-bootstrap.md).

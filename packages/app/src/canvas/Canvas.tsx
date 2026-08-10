@@ -22,6 +22,7 @@ import {
   isConnection,
   isEntity,
   isEntityLayout,
+  selectIds,
   selectionSpanOf,
   type Id,
   type Point,
@@ -61,6 +62,7 @@ import { useSearchPreview } from './searchPreview.js';
 import { ExpansionMenu } from './ExpansionMenu.js';
 import { RelationsMenu } from './RelationsMenu.js';
 import { SelectionActions } from './SelectionActions.js';
+import { CommentOverlay, OverlayToggle, quickAddComment } from './CommentOverlay.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
 import { useHighlightId } from './highlight.js';
 import { lastConnectionStyle, lastEntityStyle } from './styleMemory.js';
@@ -203,9 +205,39 @@ export function Canvas() {
    * selection itself is untouched, so what is chosen stays chosen.
    */
   const preview = useSearchPreview();
-  const shown = useMemo(
-    () => (preview === null ? state : { ...state, filter: preview, selectionHighlight: false }),
-    [state, preview],
+  const overlay = state.commentOverlay;
+  // The discussion overlay suspends the selection highlight too: muting
+  // there follows the filter alone, which is also what gates interaction.
+  const shown = useMemo(() => {
+    if (preview !== null) return { ...state, filter: preview, selectionHighlight: false };
+    if (overlay) return { ...state, selectionHighlight: false };
+    return state;
+  }, [state, preview, overlay]);
+
+  /** What the filter lets the overlay touch. Everything, with no filter. */
+  const interactable = useMemo(
+    () =>
+      selectIds(state.document.model.elements, state.filter, state.document.comments),
+    [state.document.model.elements, state.filter, state.document.comments],
+  );
+  /** The selection as it stood when the press landed. By click time the
+      press itself has changed it: a plain click collapses a multi-selection
+      to the clicked node before onNodeClick runs. */
+  const pressSelection = useRef<Id[]>([]);
+  const pressWasSelected = useRef(false);
+
+  /** In the overlay, a click on an already-selected element writes a comment
+      on it, or on the whole selection it was part of. */
+  const overlayElementClick = useCallback(
+    (id: Id) => {
+      if (!store.getState().commentOverlay || !pressWasSelected.current) return;
+      const elements = store.getState().document.model.elements;
+      const targets = pressSelection.current.includes(id)
+        ? pressSelection.current.filter((candidate) => elements[candidate])
+        : [id];
+      quickAddComment(targets);
+    },
+    [],
   );
 
   const derived = useMemo(
@@ -457,6 +489,9 @@ export function Canvas() {
 
   const onDoubleClick = useCallback(
     (event: React.MouseEvent) => {
+      // The overlay is for discussing, so a double-click must not edit the
+      // model underneath it. The second click already quick-added a comment.
+      if (store.getState().commentOverlay) return;
       // A double-click on or beside the controls is a mis-aimed button press,
       // not a request for a component. Enabled buttons bubble their clicks up
       // to here, so without this a zoom spam-click drops components too.
@@ -784,9 +819,10 @@ export function Canvas() {
   return (
     <div
       ref={canvasRef}
-      className={`canvas${pending ? ' is-placing' : ''}`}
+      className={`canvas${pending ? ' is-placing' : ''}${overlay ? ' is-comment-overlay' : ''}`}
       data-testid="canvas"
       data-placing={pending ?? undefined}
+      data-comment-overlay={overlay ? 'true' : undefined}
       // React Flow starts a node drag on mousedown, so stopping the
       // pointerdown below does not keep the original still by itself.
       onMouseDownCapture={(event) => {
@@ -807,6 +843,24 @@ export function Canvas() {
         // A gesture that ended without its click leaves nothing armed here.
         swallowClick.current = false;
         const target = event.target as HTMLElement;
+
+        // In the overlay only what the filter shows is interactable, and a
+        // press on an already-selected element is the start of a quick-add.
+        const pressedId =
+          target.closest<HTMLElement>('.react-flow__node')?.dataset['id'] ??
+          target.closest<HTMLElement>('.edge-label')?.dataset['connectionId'] ??
+          null;
+        pressSelection.current = [...store.getState().selection];
+        pressWasSelected.current =
+          pressedId !== null && pressSelection.current.includes(pressedId);
+        if (overlay && pressedId !== null && !interactable.has(pressedId)) {
+          // Cancelling the pointerdown does not cancel the click that
+          // follows it, and the click is where React Flow selects.
+          swallowClick.current = true;
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
 
         // Alt+drag copies what it grabs, or the whole selection when it holds
         // that element. The copies follow the pointer as ghosts and land on
@@ -897,6 +951,11 @@ export function Canvas() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onReconnect={onReconnect}
+        onNodeClick={(_, node) => overlayElementClick(node.id)}
+        onEdgeClick={(_, edge) => overlayElementClick(connectionIdFromEdge(edge.id))}
+        // The overlay reads and discusses; the model underneath holds still.
+        nodesDraggable={!overlay}
+        nodesConnectable={!overlay}
         reconnectRadius={16}
         // A junction's contact points are small dots on its vertices, so a
         // line dropped near one still lands on it rather than nowhere.
@@ -911,8 +970,10 @@ export function Canvas() {
         onSelectionEnd={() => setBoxSelecting(false)}
         // Double-click creates an element, so it must not also zoom.
         zoomOnDoubleClick={false}
-        // Both keys delete, matching what either keyboard leads you to expect.
-        deleteKeyCode={['Delete', 'Backspace']}
+        // Both keys delete, matching what either keyboard leads you to
+        // expect. In the overlay they delete the selected comment instead
+        // (CommentOverlay handles that), never the model.
+        deleteKeyCode={overlay ? null : ['Delete', 'Backspace']}
         // React Flow matches key combinations exactly, so plain 'Shift' stops
         // matching the moment ctrl joins it and ctrl+shift+drag would pan.
         // Naming the combinations keeps the box open for subtraction.
@@ -936,6 +997,9 @@ export function Canvas() {
         <Panel position="top-left">
           <HiddenStrip />
         </Panel>
+        <Panel position="top-right">
+          <OverlayToggle />
+        </Panel>
         <Controls>
           <HistoryControls />
           <BoardSettings />
@@ -953,6 +1017,7 @@ export function Canvas() {
         <SelectionActions nodes={nodes} />
         <RelationsMenu nodes={nodes} />
         <ExpansionMenu nodes={nodes} />
+        <CommentOverlay />
       </ReactFlow>
     </div>
   );

@@ -4264,3 +4264,172 @@ test.describe('comments', () => {
     expect(Object.keys((await getDocument(page)).comments)).toHaveLength(0);
   });
 });
+
+test.describe('discussion overlay', () => {
+  const FIRST = 'first-remark';
+  const SECOND = 'second-remark';
+  const GENERAL = 'board-remark';
+
+  /** The sample domain with two attached comments and one general remark. */
+  function discussedDomain() {
+    return [
+      ...sampleDomain(),
+      {
+        type: 'create-comment' as const,
+        id: FIRST,
+        text: 'retry on timeout is assumed here',
+        targets: [IDS.ui, IDS.gateway],
+        createdAt: '2026-08-10T09:00:00Z',
+      },
+      {
+        type: 'create-comment' as const,
+        id: SECOND,
+        text: 'rename the ledger',
+        targets: [IDS.ledger],
+        createdAt: '2026-08-10T10:00:00Z',
+      },
+      {
+        type: 'create-comment' as const,
+        id: GENERAL,
+        text: 'should this board split in two?',
+        targets: [],
+        createdAt: '2026-08-10T11:00:00Z',
+      },
+    ];
+  }
+
+  async function state(page: import('@playwright/test').Page) {
+    return page.evaluate(() => window.__modl.getState());
+  }
+
+  test('c opens the overlay, escape with nothing selected closes it', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+
+    await page.keyboard.press('c');
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-comment-overlay', 'true');
+    await expect(page.getByTestId(`comment-card-${FIRST}`)).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-comment-overlay', 'true');
+    await expect(page.getByTestId(`comment-card-${FIRST}`)).toHaveCount(0);
+  });
+
+  test('the mode toggle is the other way in and out', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+
+    await page.getByTestId('overlay-discussion').click();
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-comment-overlay', 'true');
+    await page.getByTestId('overlay-model').click();
+    await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-comment-overlay', 'true');
+  });
+
+  test('a general remark docks against the board edge', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+    await page.keyboard.press('c');
+
+    await expect(
+      page.getByTestId('comment-dock').getByTestId(`comment-card-${GENERAL}`),
+    ).toBeVisible();
+  });
+
+  test('the timeline walks the discussion in writing order', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+    await page.keyboard.press('c');
+
+    await page.getByTestId(`timeline-notch-${FIRST}`).click();
+    expect((await state(page)).selection).toEqual([FIRST]);
+
+    await page.keyboard.press('ArrowDown');
+    expect((await state(page)).selection).toEqual([SECOND]);
+    await page.keyboard.press('ArrowUp');
+    expect((await state(page)).selection).toEqual([FIRST]);
+  });
+
+  test('clicking a selected element quick-adds a comment, and clicking off empty cancels', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+    await page.keyboard.press('c');
+
+    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ledger] }]);
+    await page.getByTestId(`entity-${IDS.ledger}`).click();
+
+    const editor = page.locator('[data-testid^="comment-text-box-"]');
+    await expect(editor).toBeVisible();
+
+    // Clicking off with nothing written abandons the comment.
+    await page.getByTestId('canvas').click({ position: { x: 40, y: 400 } });
+    await expect(editor).toHaveCount(0);
+    expect(Object.keys((await getDocument(page)).comments)).toHaveLength(3);
+  });
+
+  test('quick-add with words saves on click-off, targeting the whole selection', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+    await page.keyboard.press('c');
+
+    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ui, IDS.gateway] }]);
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+
+    const editor = page.locator('[data-testid^="comment-text-box-"]');
+    await editor.fill('does this pair share a retry budget?');
+    await page.getByTestId('canvas').click({ position: { x: 40, y: 400 } });
+
+    const written = Object.values((await getDocument(page)).comments).find(
+      (comment) => comment.text === 'does this pair share a retry budget?',
+    );
+    expect(written?.targets).toEqual([IDS.ui, IDS.gateway]);
+  });
+
+  test('a dragged card is pinned in the document layout', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+    await page.keyboard.press('c');
+
+    const card = page.getByTestId(`comment-card-${SECOND}`);
+    const box = await card.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + 8);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + box!.width / 2 + 120, box!.y + 88, { steps: 5 });
+    await page.mouse.up();
+
+    const layout = (await getDocument(page)).layout[SECOND];
+    expect(layout).toBeDefined();
+    expect('x' in layout!).toBe(true);
+  });
+
+  test('the filter gates what the overlay can touch', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+    await setFilter(page, 'team=web');
+    await page.keyboard.press('c');
+
+    // The gateway does not match team=web, so clicking it selects nothing.
+    await page.getByTestId(`entity-${IDS.gateway}`).click({ force: true });
+    expect((await state(page)).selection).toEqual([]);
+
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+    expect((await state(page)).selection).toEqual([IDS.ui]);
+  });
+
+  test('in model mode a bubble selects, edits, and deletes without opening the overlay', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+
+    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ledger, IDS.ui] }]);
+    const bubble = page
+      .getByTestId(`comment-bubbles-${IDS.ledger}`)
+      .getByTestId(`comment-bubble-${SECOND}`);
+    await bubble.click();
+    expect((await state(page)).selection).toEqual([SECOND]);
+    await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-comment-overlay', 'true');
+
+    await page.keyboard.press('Delete');
+    expect((await getDocument(page)).comments[SECOND]).toBeUndefined();
+    await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-comment-overlay', 'true');
+  });
+});

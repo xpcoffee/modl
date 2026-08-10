@@ -30,7 +30,7 @@ The tension is between making discussion first-class enough to attach, select, a
 
 **Comment text in `description`, by convention.** No attachment to several elements, no lifecycle, nothing to select or filter, and the first consumer that renders descriptions shows the discussion as if it were the domain.
 
-**A stored board position per comment.** The issue keeps comments out of `layout`, and a position is derivable: a comment shows where its targets are. A stored position would also dangle when targets move or die.
+**A stored board position per comment.** The issue keeps comments out of `layout`, and a position is derivable: a comment shows where its targets are. A stored position would also dangle when targets move or die. *Reversed by [decision 017](017-discussion-overlay.md)*: the discussion overlay lets a reader arrange its cards, and an arranged card's pin is geometry, which is exactly what `layout` holds.
 
 **Fuzzy matching for `comment=text`.** Consistent with how titles are searched, but titles are names and comments are sentences; subsequence matching over a sentence matches almost any short query.
 

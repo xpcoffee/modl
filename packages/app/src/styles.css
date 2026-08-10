@@ -1637,7 +1637,6 @@ select {
   width: max-content;
   max-width: 260px;
   z-index: 20;
-  pointer-events: none;
 }
 
 .comment-bubble {
@@ -1650,6 +1649,11 @@ select {
   text-align: left;
   color: var(--text);
   white-space: pre-wrap;
+  cursor: pointer;
+}
+
+.comment-bubble.is-selected {
+  outline: 2px solid var(--comment);
 }
 
 .element-editor__comments {
@@ -1710,4 +1714,187 @@ select {
 .comment-composer textarea {
   font-size: 12px;
   resize: vertical;
+}
+
+/* The discussion overlay: the model dims to a blueprint, comments draw at
+   full strength as cards, and a vertical timeline walks the discussion in
+   writing order. */
+
+.is-comment-overlay .entity-node,
+.is-comment-overlay .group-node,
+.is-comment-overlay .connection-node__face {
+  border-style: dashed;
+  opacity: 0.55;
+}
+
+.is-comment-overlay .connection-edge {
+  stroke-dasharray: 6 4;
+  opacity: 0.45;
+}
+
+/* What the filter shows is interactable here, and hovering says so. */
+.is-comment-overlay .react-flow__node:hover .entity-node:not(.is-dimmed),
+.is-comment-overlay .react-flow__node:hover .group-node:not(.is-dimmed),
+.is-comment-overlay .react-flow__node:hover .connection-node:not(.is-dimmed) .connection-node__face {
+  outline: 2px solid var(--comment);
+  opacity: 0.9;
+  cursor: pointer;
+}
+
+.is-comment-overlay .react-flow__node .is-dimmed {
+  cursor: default;
+}
+
+.comment-overlay__arcs {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.comment-overlay__arc {
+  stroke: var(--comment);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.55;
+}
+
+.comment-overlay__arc.is-selected {
+  stroke-width: 1.6;
+  opacity: 1;
+}
+
+.comment-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--comment);
+  border-radius: 10px;
+  background: var(--panel);
+  cursor: grab;
+  /* The viewport portal is transparent to the pointer; the cards are not. */
+  pointer-events: all;
+}
+
+.comment-card.is-selected {
+  outline: 2px solid var(--comment);
+  z-index: 10;
+}
+
+.comment-card__meta {
+  font-size: 10px;
+  color: var(--comment);
+  min-height: 0;
+}
+
+.comment-card__meta:empty {
+  display: none;
+}
+
+.comment-card__text {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.comment-text-box {
+  margin-top: 4px;
+  font-size: 12px;
+  resize: vertical;
+  border-color: var(--comment);
+  min-width: 180px;
+}
+
+.comment-overlay__dock {
+  position: absolute;
+  top: 64px;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 240px;
+  z-index: 6;
+}
+
+.comment-overlay__dock .comment-card {
+  position: static;
+}
+
+.comment-overlay__dock-title {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--comment);
+  text-transform: uppercase;
+}
+
+.comment-timeline {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  z-index: 6;
+}
+
+.comment-timeline__label {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.comment-timeline__track {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.comment-timeline__notch {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 1.5px solid var(--comment);
+  border-radius: 3px;
+  transform: rotate(45deg);
+  background: var(--panel);
+}
+
+.comment-timeline__notch.is-active {
+  background: var(--comment);
+}
+
+.comment-timeline__empty {
+  font-size: 10px;
+  color: var(--muted);
+  writing-mode: vertical-rl;
+}
+
+.overlay-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.overlay-toggle button {
+  padding: 4px 12px;
+  border: none;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.overlay-toggle button.is-active {
+  background: var(--comment);
+  color: var(--bg);
 }

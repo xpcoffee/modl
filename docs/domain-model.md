@@ -313,6 +313,8 @@ Targets can be any element, connections included. A comment with no targets is a
 
 `createdAt` orders a discussion for reading through. The create command carries it explicitly rather than the reducer reading a clock, so a trace replays identically; a comment written before the field existed sorts first.
 
+A comment the reader has arranged on the board keeps a pin in `layout` under its own id, `{x, y, width, height}`, written by `move-comment` and deleted with the comment. Absent means the renderer places the card near the comment's targets. The whiteboard reads the discussion through a temporary overlay whose mode is session state (`set-comment-overlay`); see [decision 017](decisions/017-discussion-overlay.md).
+
 Comment ids share the selection's id space with elements, so selecting a comment is the same gesture as selecting a box, and it highlights the elements the comment discusses. On the board a comment draws as a small badge on each target; its text shows only while the comment or a target is selected.
 
 The filter key `comment` is reserved: `comment` matches every element a comment is attached to, `comment=text` narrows to comments whose text contains `text` (case-insensitive substring), and quotes keep a space inside one term (`comment="fix this"`). A tag key literally named "comment" stays reachable by quoting the key: `"comment"=todo` filters on the tag and `"comment"=*` matches any value of it, so the tag filter and the comment filter coexist in one expression.

@@ -207,6 +207,8 @@ export const FORMAT_VERSION = 7;
 export const OLDEST_READABLE_VERSION = 1;
 
 export const DEFAULT_ENTITY_SIZE = { width: 180, height: 72 } as const;
+/** The box a comment card reserves in `layout` when a reader pins it. */
+export const COMMENT_CARD_SIZE = { width: 240, height: 88 } as const;
 /** A node is a junction, drawn small so it reads as a point rather than a box. */
 export const CONNECTION_NODE_SIZE = { width: 64, height: 64 } as const;
 export const DEFAULT_VIEW: View = { pan: { x: 0, y: 0 }, zoom: 1 };

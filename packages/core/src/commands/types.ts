@@ -52,6 +52,12 @@ export interface AppState {
    * rather than a view of one document, so a document load keeps it.
    */
   selectionHighlight: boolean;
+  /**
+   * Whether the discussion overlay is open: the model dims to a blueprint and
+   * comments draw at full strength. A temporary way of looking, like
+   * `expanded`, so it never reaches the saved file.
+   */
+  commentOverlay: boolean;
   undo: UndoState;
 }
 
@@ -142,7 +148,10 @@ export type Command =
   | { type: 'create-comment'; id: Id; text: string; targets: Id[]; createdAt?: string }
   | { type: 'set-comment-text'; id: Id; text: string }
   | { type: 'set-comment-targets'; id: Id; targets: Id[] }
+  /** Pins the comment's card at a position of the reader's choosing. */
+  | { type: 'move-comment'; id: Id; position: Point }
   | { type: 'delete-comment'; id: Id }
+  | { type: 'set-comment-overlay'; open: boolean }
   | { type: 'load-document'; document: Document }
   | { type: 'merge-document'; document: Document }
   | { type: 'undo' }
@@ -182,6 +191,7 @@ export type DomainEvent =
   | { type: 'comment-created'; id: Id }
   | { type: 'comment-updated'; id: Id }
   | { type: 'comment-deleted'; id: Id }
+  | { type: 'comment-overlay-changed'; open: boolean }
   | { type: 'group-changed'; id: Id; groupId: Id | null }
   | { type: 'expansion-changed'; id: Id; expanded: boolean }
   | { type: 'visibility-changed'; id: Id; hidden: boolean }

@@ -1,5 +1,6 @@
 import {
   ARROWHEADS,
+  COMMENT_CARD_SIZE,
   DEFAULT_ENTITY_SIZE,
   CONNECTION_NODE_SIZE,
   STROKE_STYLES,
@@ -80,6 +81,7 @@ function moveCursor(state: AppState, cursor: number, commandType: 'undo' | 'redo
     expanded: [],
     hidden: [],
     selectionHighlight: state.selectionHighlight,
+    commentOverlay: state.commentOverlay,
     undo: { ...state.undo, cursor },
   };
   for (const command of state.undo.history.slice(0, cursor)) {
@@ -117,6 +119,7 @@ function moveCursor(state: AppState, cursor: number, commandType: 'undo' | 'redo
       expanded: state.expanded.filter((id) => elements[id] !== undefined),
       hidden: state.hidden.filter((id) => elements[id] !== undefined),
       selectionHighlight: state.selectionHighlight,
+      commentOverlay: state.commentOverlay,
     },
     events,
   );
@@ -712,6 +715,7 @@ function reduce(state: AppState, command: Command): CommandResult {
         if (targets.length === comment.targets.length) continue;
         if (targets.length === 0) {
           delete comments[comment.id];
+          delete layout[comment.id];
           removed.add(comment.id);
           events.push({ type: 'comment-deleted', id: comment.id });
         } else {
@@ -948,6 +952,7 @@ function reduce(state: AppState, command: Command): CommandResult {
           expanded: [],
           hidden: [],
           selectionHighlight: state.selectionHighlight,
+          commentOverlay: false,
         },
         [{ type: 'document-loaded', id: result.document.id }],
       );
@@ -1045,20 +1050,54 @@ function reduce(state: AppState, command: Command): CommandResult {
       );
     }
 
+    case 'move-comment': {
+      const comment = state.document.comments[command.id];
+      if (!comment) return unknownComment(command.type, command.id);
+      if (!Number.isFinite(command.position.x) || !Number.isFinite(command.position.y)) {
+        return fail(command.type, 'schema-invalid', 'a position needs finite coordinates');
+      }
+
+      // The card's pin lives in `layout` like any other geometry: where a
+      // remark is drawn says nothing about what it means.
+      const previous = state.document.layout[command.id];
+      const existing = previous && 'width' in previous ? previous : { ...COMMENT_CARD_SIZE };
+      return ok(
+        {
+          ...state,
+          document: {
+            ...state.document,
+            layout: {
+              ...state.document.layout,
+              [command.id]: { ...existing, x: command.position.x, y: command.position.y },
+            },
+          },
+        },
+        [{ type: 'comment-updated', id: command.id }],
+      );
+    }
+
     case 'delete-comment': {
       const comment = state.document.comments[command.id];
       if (!comment) return unknownComment(command.type, command.id);
 
       const comments = { ...state.document.comments };
       delete comments[command.id];
+      const layout = { ...state.document.layout };
+      delete layout[command.id];
       return ok(
         {
           ...state,
-          document: { ...state.document, comments },
+          document: { ...state.document, comments, layout },
           selection: state.selection.filter((id) => id !== command.id),
         },
         [{ type: 'comment-deleted', id: command.id }],
       );
+    }
+
+    case 'set-comment-overlay': {
+      return ok({ ...state, commentOverlay: command.open }, [
+        { type: 'comment-overlay-changed', open: command.open },
+      ]);
     }
 
     default: {

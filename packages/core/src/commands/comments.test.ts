@@ -194,6 +194,61 @@ describe('deleting elements a comment discusses', () => {
   });
 });
 
+describe('the discussion overlay and pinned cards', () => {
+  it('set-comment-overlay flips the mode and stays out of the undo history', () => {
+    const open = must(base, comment(NOTE, 'hm', [A]), { type: 'set-comment-overlay', open: true });
+    expect(open.commentOverlay).toBe(true);
+    // Ctrl+Z after opening the overlay should undo the comment, not the mode.
+    const undone = must(open, { type: 'undo' });
+    expect(undone.commentOverlay).toBe(true);
+    expect(undone.document.comments[NOTE]).toBeUndefined();
+  });
+
+  it('move-comment pins the card in layout, and the pin dies with the comment', () => {
+    const pinned = must(
+      base,
+      comment(NOTE, 'park me here', [A]),
+      { type: 'move-comment', id: NOTE, position: { x: 300, y: 200 } },
+    );
+    expect(pinned.document.layout[NOTE]).toMatchObject({ x: 300, y: 200 });
+
+    const gone = must(pinned, { type: 'delete-comment', id: NOTE });
+    expect(gone.document.layout[NOTE]).toBeUndefined();
+  });
+
+  it('a pinned comment deleted by cascade takes its pin along', () => {
+    const state = must(
+      base,
+      comment(NOTE, 'only on A', [A]),
+      { type: 'move-comment', id: NOTE, position: { x: 10, y: 10 } },
+      { type: 'delete-element', id: A },
+    );
+    expect(state.document.comments[NOTE]).toBeUndefined();
+    expect(state.document.layout[NOTE]).toBeUndefined();
+  });
+
+  it('a pinned card round-trips through the file', () => {
+    const state = must(
+      base,
+      comment(NOTE, 'pinned', [A]),
+      { type: 'move-comment', id: NOTE, position: { x: 120, y: 80 } },
+    );
+    const text = serializeDocument(state.document);
+    const parsed = parseDocument(text);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.document.layout[NOTE]).toMatchObject({ x: 120, y: 80 });
+    expect(serializeDocument(parsed.document)).toBe(text);
+  });
+
+  it('move-comment refuses an unknown comment', () => {
+    const result = apply(base, { type: 'move-comment', id: MISSING, position: { x: 0, y: 0 } });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('unknown-element');
+  });
+});
+
 describe('selecting a comment', () => {
   it('set-selection accepts a comment id', () => {
     const state = must(base, comment(NOTE, 'look here', [A]), {
