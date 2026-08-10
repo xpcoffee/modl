@@ -1,4 +1,11 @@
-import { Handle, NodeResizer, Position, type Node, type NodeProps } from '@xyflow/react';
+import {
+  Handle,
+  NodeResizer,
+  Position,
+  useStoreApi,
+  type Node,
+  type NodeProps,
+} from '@xyflow/react';
 import { store } from '../store/store.js';
 import type { EntityNodeData } from './derive.js';
 import { ElementEditor } from './ElementEditor.js';
@@ -16,7 +23,41 @@ import { boxCss } from './styling.js';
  *
  * It is resizable, so a container can be opened up before anything joins it.
  */
-export function GroupNode({ data, selected }: NodeProps<Node<EntityNodeData>>) {
+export function GroupNode({
+  data,
+  selected,
+  positionAbsoluteX,
+  positionAbsoluteY,
+  width,
+  height,
+}: NodeProps<Node<EntityNodeData>>) {
+  const flow = useStoreApi();
+
+  /**
+   * A click only selects this group while part of its boundary is on screen.
+   * Zoomed in past every edge, the whole view is this group's interior: the
+   * reader is exploring it, and selecting would arm the next drag to move the
+   * group when they meant to pan (issue #36). Stopping propagation here keeps
+   * the click from React Flow's selection handler on the node wrapper.
+   */
+  const guardSelection = (event: React.MouseEvent) => {
+    if (selected) return;
+    const { transform, width: screenWidth, height: screenHeight } = flow.getState();
+    const [panX, panY, zoom] = transform;
+    const view = {
+      x: -panX / zoom,
+      y: -panY / zoom,
+      width: screenWidth / zoom,
+      height: screenHeight / zoom,
+    };
+    const surroundsView =
+      positionAbsoluteX < view.x &&
+      positionAbsoluteY < view.y &&
+      positionAbsoluteX + (width ?? 0) > view.x + view.width &&
+      positionAbsoluteY + (height ?? 0) > view.y + view.height;
+    if (surroundsView) event.stopPropagation();
+  };
+
   return (
     <>
       {/* Outside the visual box: the warp-in scale must not move what React
@@ -45,6 +86,7 @@ export function GroupNode({ data, selected }: NodeProps<Node<EntityNodeData>>) {
         style={boxCss(data.style)}
         data-testid={`group-${data.id}`}
         data-expanded="true"
+        onClick={guardSelection}
       >
       <header className="group-node__header">
         <button
