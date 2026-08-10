@@ -54,8 +54,7 @@ import {
 import { arm, disarm, getPending, usePending } from './placement.js';
 import { HistoryControls } from './HistoryControls.js';
 import { ExpansionMenu } from './ExpansionMenu.js';
-import { PanRelations } from './PanRelations.js';
-import { ConnectionsMenu } from './ConnectionsMenu.js';
+import { RelationsMenu } from './RelationsMenu.js';
 import { SelectionActions } from './SelectionActions.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
 import { useHighlightId } from './highlight.js';
@@ -233,7 +232,7 @@ export function Canvas() {
 
   /**
    * The camera follows set-view commands, so a pan issued through the bus (the
-   * pan-to-relation control, an agent, a replay) actually moves the board.
+   * relations menu, an agent, a replay) actually moves the board.
    * Hand-panning never dispatches set-view, so nothing fights the pointer, and
    * a document load is left to the fitView above.
    */
@@ -923,8 +922,7 @@ export function Canvas() {
           onClick={onMiniMapClick}
         />
         <SelectionActions nodes={nodes} />
-        <PanRelations nodes={nodes} />
-        <ConnectionsMenu nodes={nodes} />
+        <RelationsMenu nodes={nodes} />
         <ExpansionMenu nodes={nodes} />
       </ReactFlow>
     </div>

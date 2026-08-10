@@ -165,8 +165,8 @@ export interface Relation {
 
 /**
  * Where a reader can go from an element: every drawn connection touching it,
- * paired with the element at the other end. Feeds the pan-to-relation
- * control. Ends are resolved to their visible anchors, and suppressed
+ * paired with the element at the other end. Feeds the relations menu. Ends
+ * are resolved to their visible anchors, and suppressed
  * connections are left out, so every relation returned is on the board.
  */
 export function relationsOf(state: AppState, id: Id): Relation[] {

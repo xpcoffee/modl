@@ -111,7 +111,7 @@ function optionsFor(
  * the multi-selection, offering the batch expand and collapse operations.
  * It sits at the selection's top-left corner, beside where the per-group
  * expand and collapse buttons live, leaving the top-right corner to
- * pan-to-relation so both rollers stand apart on one selected group.
+ * the relations menu so both rollers stand apart on one selected group.
  */
 export function ExpansionMenu({ nodes }: { nodes: Node<BoardNodeData>[] }) {
   const state = useAppState();

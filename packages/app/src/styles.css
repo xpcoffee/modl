@@ -385,7 +385,7 @@ select {
   stroke: var(--accent);
 }
 
-/* Pointed at by the pan-to-relation control. */
+/* Pointed at by the relations menu. */
 .connection-edge.is-highlighted {
   stroke: var(--accent);
   stroke-width: 2;
@@ -858,9 +858,10 @@ select {
   border-color: var(--accent);
 }
 
-/* Pan to relation: a roller menu of connected elements. */
+/* Relations menu: a roller of connected elements. Choosing one pans to it, or
+   branches into go-to and label on a junction. */
 
-.pan-relations {
+.relations-menu {
   position: absolute;
   top: 0;
   left: 0;
@@ -873,14 +874,14 @@ select {
 }
 
 /* Expansion tooling: a roller menu of expand and collapse sweeps, left of
-   the selected group(s) while pan-to-relation holds the right. */
+   the selected group(s) while the relations menu holds the right. */
 
 .expansion-menu {
   position: absolute;
   top: 0;
   left: 0;
   transform-origin: top left;
-  /* Same stacking as .pan-relations: above a selected node's 2000. */
+  /* Same stacking as .relations-menu: above a selected node's 2000. */
   z-index: 2500;
   pointer-events: all;
 }
@@ -978,21 +979,7 @@ select {
   border-color: var(--accent);
 }
 
-/* Connections menu: a junction's branches, and the label editor behind them.
-   Left of the junction, opposite pan-to-relation. */
-
-.connections-menu {
-  position: absolute;
-  top: 0;
-  left: 0;
-  transform-origin: top left;
-  /* Same stacking as .pan-relations: above a selected node's 2000. */
-  z-index: 2500;
-  pointer-events: all;
-  /* Reaches the junction's edge while the pill sits clear of it, so the
-     pointer crossing the gap keeps the hover that opened the menu. */
-  padding-right: 10px;
-}
+/* The label editor, which takes the roller's place when a branch is chosen. */
 
 .connection-label-editor {
   display: flex;

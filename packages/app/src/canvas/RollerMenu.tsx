@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export interface RollerOption<T> {
   /** Stable key among this menu's options. */
@@ -18,6 +18,15 @@ const TALL_SLOT_HEIGHT = 44;
 const OPACITY_BY_DISTANCE = [1, 0.45, 0.12];
 /** How far past the last visible option a stepper button sits, in pixels. */
 const STEP_GAP = 28;
+/**
+ * How long the list waits before closing once the pointer leaves it.
+ *
+ * Turning the roller slides the options, so a stationary pointer can find
+ * itself over the gap between two pills for as long as that takes. Closing on
+ * the first mouseleave shut the menu out from under a reader who had not
+ * moved, and took the level they were on with it.
+ */
+const CLOSE_DELAY = 250;
 
 /**
  * A roller menu: a pill that expands on hover into a vertical list whose
@@ -35,6 +44,8 @@ export function RollerMenu<T>({
   options,
   onSelect,
   onActiveChange,
+  onOpenChange,
+  startOpen = false,
   steppers = false,
   align = 'centre',
   depth = OPACITY_BY_DISTANCE.length - 1,
@@ -46,6 +57,14 @@ export function RollerMenu<T>({
   onSelect: (value: T) => void;
   /** Fires with the active option while open, and null when shut. */
   onActiveChange?: (value: T | null) => void;
+  /** Fires as the list opens and shuts, for a caller drawing around it. */
+  onOpenChange?: (open: boolean) => void;
+  /**
+   * Opens the list on mount, for a level reached by choosing from the level
+   * above: the pointer is already over it, so asking for a second hover would
+   * be asking twice for the same thing.
+   */
+  startOpen?: boolean;
   /** Buttons above and below the list, for turning it without a wheel. */
   steppers?: boolean;
   /**
@@ -58,16 +77,34 @@ export function RollerMenu<T>({
   depth?: number;
   testId: string;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
   const [active, setActive] = useState(0);
+  const closing = useRef<number | null>(null);
+
+  const holdOpen = (): void => {
+    if (closing.current !== null) window.clearTimeout(closing.current);
+    closing.current = null;
+    setOpen(true);
+  };
+  const closeSoon = (): void => {
+    if (closing.current !== null) window.clearTimeout(closing.current);
+    closing.current = window.setTimeout(() => setOpen(false), CLOSE_DELAY);
+  };
+  useEffect(() => () => {
+    if (closing.current !== null) window.clearTimeout(closing.current);
+  }, []);
 
   // Options changing underneath (a new selection, a hidden peer) restart the
   // roller rather than leaving it pointing at a slot that no longer exists.
   const optionKeys = options.map((option) => option.id).join(' ');
   useEffect(() => {
-    setOpen(false);
+    setOpen(startOpen);
     setActive(0);
-  }, [optionKeys]);
+  }, [optionKeys, startOpen]);
+
+  useEffect(() => {
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
 
   const activeValue = open ? (options[active]?.value ?? null) : null;
   useEffect(() => {
@@ -117,8 +154,8 @@ export function RollerMenu<T>({
     <div
       className="roller-menu nodrag nopan nowheel"
       data-testid={testId}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
+      onMouseEnter={holdOpen}
+      onMouseLeave={closeSoon}
       onWheel={(event) => {
         event.stopPropagation();
         if (event.deltaY !== 0) step(event.deltaY > 0 ? 1 : -1);
@@ -141,7 +178,7 @@ export function RollerMenu<T>({
         aria-expanded={open}
         // Hover already opened the list, so a click closing it again would
         // undo the hover. Leaving closes it; Escape does too.
-        onClick={() => setOpen(true)}
+        onClick={holdOpen}
         // The middle option takes the entrance's place while open. Opacity
         // rather than visibility, so a click on the entrance keeps focus and
         // the arrow keys still reach the menu.

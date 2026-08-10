@@ -20,9 +20,9 @@ The tension is where a label belongs, and what the menu is for. A label is about
 
 **A label is part of the drawing, not something to go looking for.** Every answer is drawn at the junction's end of the line it belongs to. An unlabelled branch and a branch whose answer is hidden look the same, and a reader deciding which way to follow a flow should not have to click first. Selecting the junction, or the line, brings its answers forward rather than revealing them. Labels sit out along the line from the junction they belong to, which is what makes a label at each end of one line readable.
 
-**The connections menu is a roller, and it is generic.** It reuses `RollerMenu`, which gained two-line pills, stepper buttons, an option depth, and right alignment for this. Slots are per connection rather than per connected component: the label belongs to the connection, and a connection reaching two components names both on one pill instead of offering two slots that edit the same sentence. The menu sits on the junction's left, opposite pan-to-relation on the right (decision 011). Components get connection points of their own in issue #6, and the same control will carry them.
+**Labelling extends the relations menu rather than adding a second control.** The roller beside a selected element already lists everything it connects to; on a junction, choosing a relation now branches into *go to* and *label* instead of panning straight away. Everywhere else it still pans, because nothing else has an answer to give. Two rollers beside one element, both listing the same connections and differing only in what choosing one does, is a menu split down the middle. `RollerMenu` gained two-line pills, stepper buttons, an option depth, and an opening level for this, and it stays generic: components get connection points of their own in issue #6, and the same control will carry them.
 
-**The menu appears for a junction the reader is pointing at or has selected.** The issue describes a standing hover point near a connection. A pill that exists for every junction on the board clutters a busy diagram, and one that appears only under the pointer dies as the pointer crosses the gap between the node and the pill, so the menu's box reaches back to the node's edge while the pill sits clear of it, and selection holds it open for a reader driving from the keyboard.
+**The list closes on a delay.** Turning the roller slides its options, so a stationary pointer can find itself over the gap between two pills. Closing on the first mouseleave shut the menu out from under a reader who had not moved, and took the level they were on with it.
 
 ## Rejected
 
@@ -34,7 +34,7 @@ The tension is where a label belongs, and what the menu is for. A label is about
 
 **`unknown-reference` as an error for a stale label.** Refusing to load a whole document because one annotation outlived its line is out of proportion to the damage.
 
-**A slot per connected component.** What the issue's wording suggests, but two slots editing one sentence is a bug waiting to be reported.
+**A second menu of its own beside the junction.** How this was first built: a connections roller on the left, pan-to-relation on the right. It put two lists of the same connections beside one element, and made the reader learn which corner meant which verb.
 
 ## What would reverse this
 

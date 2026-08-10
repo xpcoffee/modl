@@ -2343,18 +2343,18 @@ test.describe('selection highlight', () => {
   });
 });
 
-test.describe('pan to relation', () => {
+test.describe('relations menu', () => {
   test('a selected connected component offers its relations', async ({ page }) => {
     await dispatch(page, sampleDomain());
 
     await page.getByTestId(`entity-${IDS.gateway}`).click();
 
     // The gateway touches both connections.
-    await expect(page.getByTestId('pan-relations-toggle')).toContainText('2');
+    await expect(page.getByTestId('relations-menu-toggle')).toContainText('2');
 
-    await page.getByTestId('pan-relations-toggle').click();
-    await expect(page.getByTestId(`pan-to-${IDS.ui}`)).toBeVisible();
-    await expect(page.getByTestId(`pan-to-${IDS.ledger}`)).toBeVisible();
+    await page.getByTestId('relations-menu-toggle').click();
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toBeVisible();
+    await expect(page.getByTestId(`relation-${IDS.ledger}`)).toBeVisible();
   });
 
   test('an unconnected element offers nothing', async ({ page }) => {
@@ -2371,7 +2371,7 @@ test.describe('pan to relation', () => {
 
     await page.getByTestId('entity-66666666-6666-4666-8666-666666666666').click();
 
-    await expect(page.getByTestId('pan-relations')).toHaveCount(0);
+    await expect(page.getByTestId('relations-menu')).toHaveCount(0);
   });
 
   test('the roller draws in front of the selected and neighbouring components', async ({ page }) => {
@@ -2381,9 +2381,9 @@ test.describe('pan to relation', () => {
     await dispatch(page, [{ type: 'move-element', id: IDS.gateway, position: { x: 230, y: 0 } }]);
 
     await page.getByTestId(`entity-${IDS.ui}`).click();
-    await page.getByTestId('pan-relations-toggle').click();
+    await page.getByTestId('relations-menu-toggle').click();
 
-    const option = (await page.getByTestId(`pan-to-${IDS.gateway}`).boundingBox())!;
+    const option = (await page.getByTestId(`relation-${IDS.gateway}`).boundingBox())!;
     const y = option.y + option.height / 2;
     const rollerWins = ([atX, atY]: (number | undefined)[]) =>
       document.elementFromPoint(atX!, atY!)?.closest('.roller-menu__option') !== null;
@@ -2402,16 +2402,16 @@ test.describe('pan to relation', () => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`entity-${IDS.ui}`).click();
 
-    await page.getByTestId('pan-relations-toggle').click();
-    await page.getByTestId(`pan-to-${IDS.gateway}`).click();
+    await page.getByTestId('relations-menu-toggle').click();
+    await page.getByTestId(`relation-${IDS.gateway}`).click();
 
     // Focus moved with the camera: the destination is selected, the highlight
     // follows it, and its own roller stands ready, closed.
     expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([IDS.gateway]);
     await expect(page.getByTestId(`entity-${IDS.gateway}`)).toHaveClass(/is-selected/);
     await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
-    await expect(page.getByTestId('pan-relations-toggle')).toContainText('2');
-    await expect(page.getByTestId('pan-relations-list')).toHaveCount(0);
+    await expect(page.getByTestId('relations-menu-toggle')).toContainText('2');
+    await expect(page.getByTestId('relations-menu-list')).toHaveCount(0);
   });
 
   test('choosing a relation pans the camera to the peer', async ({ page }) => {
@@ -2420,8 +2420,8 @@ test.describe('pan to relation', () => {
 
     const before = await page.locator('.react-flow__viewport').getAttribute('style');
 
-    await page.getByTestId('pan-relations-toggle').click();
-    await page.getByTestId(`pan-to-${IDS.gateway}`).click();
+    await page.getByTestId('relations-menu-toggle').click();
+    await page.getByTestId(`relation-${IDS.gateway}`).click();
 
     // The pan travels through the command bus, so the trace carries it and
     // the camera follows.
@@ -2443,7 +2443,7 @@ test.describe('pan to relation', () => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`entity-${IDS.gateway}`).click();
 
-    await page.getByTestId('pan-relations-toggle').click();
+    await page.getByTestId('relations-menu-toggle').click();
 
     // The roller opens on its first option; turning it moves the emphasis.
     await expect(page.getByTestId(`connection-${IDS.authorise}`)).toHaveClass(/is-highlighted/);
@@ -2455,30 +2455,30 @@ test.describe('pan to relation', () => {
   test('arrow keys turn the roller, wrapping at the ends', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`entity-${IDS.gateway}`).click();
-    await page.getByTestId('pan-relations-toggle').click();
+    await page.getByTestId('relations-menu-toggle').click();
 
-    await expect(page.getByTestId(`pan-to-${IDS.ui}`)).toHaveClass(/is-active/);
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveClass(/is-active/);
     // Two entries: down, down again wraps back to the first.
     await page.keyboard.press('ArrowDown');
-    await expect(page.getByTestId(`pan-to-${IDS.ledger}`)).toHaveClass(/is-active/);
+    await expect(page.getByTestId(`relation-${IDS.ledger}`)).toHaveClass(/is-active/);
     await page.keyboard.press('ArrowDown');
-    await expect(page.getByTestId(`pan-to-${IDS.ui}`)).toHaveClass(/is-active/);
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveClass(/is-active/);
     await page.keyboard.press('ArrowUp');
-    await expect(page.getByTestId(`pan-to-${IDS.ledger}`)).toHaveClass(/is-active/);
+    await expect(page.getByTestId(`relation-${IDS.ledger}`)).toHaveClass(/is-active/);
   });
 
   test('the mouse wheel turns the roller', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`entity-${IDS.gateway}`).click();
 
-    await page.getByTestId('pan-relations-toggle').hover();
+    await page.getByTestId('relations-menu-toggle').hover();
     // The container itself has no box; the options carry the size.
-    await expect(page.getByTestId(`pan-to-${IDS.ui}`)).toBeVisible();
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toBeVisible();
 
     await page.mouse.wheel(0, 120);
-    await expect(page.getByTestId(`pan-to-${IDS.ledger}`)).toHaveClass(/is-active/);
+    await expect(page.getByTestId(`relation-${IDS.ledger}`)).toHaveClass(/is-active/);
     await page.mouse.wheel(0, -120);
-    await expect(page.getByTestId(`pan-to-${IDS.ui}`)).toHaveClass(/is-active/);
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveClass(/is-active/);
   });
 
   test('clicking a faded option turns the roller to it instead of acting', async ({ page }) => {
@@ -2486,15 +2486,15 @@ test.describe('pan to relation', () => {
     await page.getByTestId(`entity-${IDS.gateway}`).click();
     const before = await page.locator('.react-flow__viewport').getAttribute('style');
 
-    await page.getByTestId('pan-relations-toggle').click();
-    await page.getByTestId(`pan-to-${IDS.ledger}`).click();
+    await page.getByTestId('relations-menu-toggle').click();
+    await page.getByTestId(`relation-${IDS.ledger}`).click();
 
     // The click chose a slot, so the camera holds still until the middle
     // option is clicked.
-    await expect(page.getByTestId(`pan-to-${IDS.ledger}`)).toHaveClass(/is-active/);
+    await expect(page.getByTestId(`relation-${IDS.ledger}`)).toHaveClass(/is-active/);
     expect(await page.locator('.react-flow__viewport').getAttribute('style')).toBe(before);
 
-    await page.getByTestId(`pan-to-${IDS.ledger}`).click();
+    await page.getByTestId(`relation-${IDS.ledger}`).click();
     await expect(async () => {
       expect(await page.locator('.react-flow__viewport').getAttribute('style')).not.toBe(before);
     }).toPass();
@@ -2630,7 +2630,7 @@ test.describe('expansion tooling', () => {
     await expect(page.getByTestId(`entity-${DEEP}`)).toBeVisible();
   });
 
-  test('the expansion roller and pan-to-relation stand apart on one group', async ({ page }) => {
+  test('the expansion roller and the relations menu stand apart on one group', async ({ page }) => {
     await dispatch(page, [
       ...nestedDomain(),
       { type: 'create-entity', id: 'client', entityType: 'component', title: 'Client', position: { x: -320, y: 0 } },
@@ -2640,10 +2640,10 @@ test.describe('expansion tooling', () => {
     await fit(page);
 
     const expansion = (await page.getByTestId('expansion-menu-toggle').boundingBox())!;
-    const pan = (await page.getByTestId('pan-relations-toggle').boundingBox())!;
+    const pan = (await page.getByTestId('relations-menu-toggle').boundingBox())!;
     const node = (await page.getByTestId(`entity-${OUTER}`).boundingBox())!;
 
-    // Expansion holds the left corner and pan-to-relation the right, with
+    // Expansion holds the left corner and the relations menu the right, with
     // the selected group between them.
     expect(expansion.x + expansion.width).toBeLessThanOrEqual(node.x);
     expect(pan.x).toBeGreaterThanOrEqual(node.x + node.width);
@@ -3514,22 +3514,36 @@ test.describe('decision labels', () => {
     ];
   }
 
-  /** Opens the connections roller on a decision that is already selected. */
+  /** Opens the relations roller on a decision that is already selected. */
   async function openMenu(page: import('@playwright/test').Page): Promise<void> {
-    await page.getByTestId('connections-menu-toggle').click();
+    await page.getByTestId('relations-menu-toggle').click();
+  }
+
+  /**
+   * Walks the roller to one branch and chooses it, which opens the actions
+   * level. The first click turns the roller to a neighbouring pill, the
+   * second chooses it, so both are sent.
+   */
+  async function chooseBranch(
+    page: import('@playwright/test').Page,
+    peerId: string,
+  ): Promise<void> {
+    await openMenu(page);
+    await page.getByTestId(`relation-${peerId}`).click();
+    await page.getByTestId(`relation-${peerId}`).click();
   }
 
   test('a decision offers a pill per connection, named for what it reaches', async ({ page }) => {
     await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [DECISION] }]);
     await fit(page);
 
-    await expect(page.getByTestId('connections-menu-toggle')).toContainText('3');
+    await expect(page.getByTestId('relations-menu-toggle')).toContainText('3');
     await openMenu(page);
 
-    await expect(page.getByTestId(`connection-pill-${YES}`)).toContainText('Paid');
-    await expect(page.getByTestId(`connection-pill-${NO}`)).toContainText('Refused');
+    await expect(page.getByTestId(`relation-${PAID}`)).toContainText('Paid');
+    await expect(page.getByTestId(`relation-${REFUSED}`)).toContainText('Refused');
     // The connector's own title reads as the pill's second line.
-    await expect(page.getByTestId(`connection-pill-${ASKS}`)).toContainText('authorise');
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toContainText('authorise');
   });
 
   test('a junction with no connections offers no menu', async ({ page }) => {
@@ -3539,19 +3553,51 @@ test.describe('decision labels', () => {
     ]);
     await fit(page);
 
-    await expect(page.getByTestId('connections-menu')).toHaveCount(0);
+    await expect(page.getByTestId('relations-menu')).toHaveCount(0);
+  });
+
+  test('a branch offers going there or labelling it, and a component only pans', async ({ page }) => {
+    await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [DECISION] }]);
+    await fit(page);
+
+    await chooseBranch(page, REFUSED);
+
+    // The roller branched rather than panning: both actions are on offer.
+    await expect(page.getByTestId(`relation-go-${REFUSED}`)).toBeVisible();
+    await expect(page.getByTestId(`relation-label-${NO}`)).toBeVisible();
+  });
+
+  test('a component has no answer to give, so choosing a relation still pans', async ({ page }) => {
+    await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [PAID] }]);
+    await fit(page);
+
+    await openMenu(page);
+    await page.getByTestId(`relation-${DECISION}`).click();
+
+    await expect(page.getByTestId('relation-actions')).toHaveCount(0);
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([DECISION]);
+  });
+
+  test('going to the peer from the branch menu pans the camera', async ({ page }) => {
+    await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [DECISION] }]);
+    await fit(page);
+
+    await chooseBranch(page, REFUSED);
+    await page.getByTestId(`relation-go-${REFUSED}`).click();
+
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([REFUSED]);
+    const trace = await getTrace(page);
+    expect(trace.some((entry) => entry.command.type === 'set-view')).toBe(true);
   });
 
   test('choosing a pill opens the label editor and the answer lands in the document', async ({ page }) => {
     await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [DECISION] }]);
     await fit(page);
 
-    await openMenu(page);
-    // The roller opens on the first branch (its options run in id order, so
-    // "asks" leads); a click on a neighbour turns to it, and the second click
-    // chooses it.
-    await page.getByTestId(`connection-pill-${NO}`).click();
-    await page.getByTestId(`connection-pill-${NO}`).click();
+    await chooseBranch(page, REFUSED);
+    // "go to" leads, so the label action takes a turn of its own.
+    await page.getByTestId(`relation-label-${NO}`).click();
+    await page.getByTestId(`relation-label-${NO}`).click();
 
     await page.getByTestId(`connection-label-input-${NO}`).fill('declined');
     await page.keyboard.press('Enter');
@@ -3583,9 +3629,9 @@ test.describe('decision labels', () => {
     ]);
     await fit(page);
 
-    await openMenu(page);
-    await page.getByTestId(`connection-pill-${NO}`).click();
-    await page.getByTestId(`connection-pill-${NO}`).click();
+    await chooseBranch(page, REFUSED);
+    await page.getByTestId(`relation-label-${NO}`).click();
+    await page.getByTestId(`relation-label-${NO}`).click();
     await page.getByTestId(`connection-label-input-${NO}`).fill('');
     await page.keyboard.press('Enter');
 
@@ -3661,27 +3707,15 @@ test.describe('decision labels', () => {
     await fit(page);
 
     await openMenu(page);
-    await expect(page.getByTestId(`connection-pill-${ASKS}`)).toHaveClass(/is-active/);
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveClass(/is-active/);
 
-    await page.getByTestId('connections-menu-down').click();
-    await expect(page.getByTestId(`connection-pill-${NO}`)).toHaveClass(/is-active/);
+    await page.getByTestId('relations-menu-down').click();
+    await expect(page.getByTestId(`relation-${REFUSED}`)).toHaveClass(/is-active/);
 
-    await page.getByTestId('connections-menu-up').click();
-    await page.getByTestId('connections-menu-up').click();
+    await page.getByTestId('relations-menu-up').click();
+    await page.getByTestId('relations-menu-up').click();
     // Up from the first wraps round to the last.
-    await expect(page.getByTestId(`connection-pill-${YES}`)).toHaveClass(/is-active/);
-  });
-
-  test('the connections menu and pan-to-relation stand apart on one decision', async ({ page }) => {
-    await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [DECISION] }]);
-    await fit(page);
-
-    const connections = (await page.getByTestId('connections-menu-toggle').boundingBox())!;
-    const pan = (await page.getByTestId('pan-relations-toggle').boundingBox())!;
-    const node = (await page.getByTestId(`node-${DECISION}`).boundingBox())!;
-
-    expect(connections.x + connections.width).toBeLessThanOrEqual(node.x);
-    expect(pan.x).toBeGreaterThanOrEqual(node.x + node.width);
+    await expect(page.getByTestId(`relation-${PAID}`)).toHaveClass(/is-active/);
   });
 
   test('a label survives a save and a load', async ({ page }) => {

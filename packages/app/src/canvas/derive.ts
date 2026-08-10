@@ -82,7 +82,7 @@ export interface ConnectionEdgeData extends Record<string, unknown> {
   elementType: ConnectionType;
   tags: Record<string, string[]>;
   dimmed: boolean;
-  /** True while the pan-to-relation control points at this connection. */
+  /** True while the relations menu points at this connection. */
   highlighted: boolean;
   editing: boolean;
   soleSelection: boolean;
@@ -105,7 +105,7 @@ export interface DeriveOptions {
   editingId: Id | null;
   /** A selection box is being dragged, so element editors stay shut. */
   boxSelecting: boolean;
-  /** Connection the pan-to-relation control is pointing at, drawn emphasised. */
+  /** Connection the relations menu is pointing at, drawn emphasised. */
   highlightId: Id | null;
 }
 
