@@ -181,6 +181,7 @@ function Steps({
         entranceAriaLabel={`What to do with ${nameOf(state, relation.peerId)}`}
         options={actions}
         onSelect={(act) => act()}
+        align="left"
         // Already chosen from the level above, so it opens under the pointer
         // rather than asking for a second hover. Leaving it steps back.
         startOpen
@@ -220,6 +221,9 @@ function Steps({
       onSelect={(relation) => (branches ? setStep({ at: 'actions', relation }) : onPan(relation))}
       onActiveChange={emphasise}
       steppers
+      // The menu sits at the element's right corner, so the pills open away
+      // from it: over a junction they would otherwise cover the shape.
+      align="left"
       // Three pills at a time: a two-line pill is tall, and a stack of five
       // covers the board around a small element.
       depth={1}

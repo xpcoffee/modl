@@ -912,8 +912,12 @@ select {
   left: 50%;
 }
 
-/* Hung off the entrance's right edge instead, for a menu beside a small
+/* Hung off one edge of the entrance instead, for a menu beside a small
    element: the options grow away from it rather than across it. */
+.roller-menu__viewport.is-left {
+  left: 0;
+}
+
 .roller-menu__viewport.is-right {
   left: auto;
   right: 0;
@@ -1120,24 +1124,19 @@ select {
   display: block;
 }
 
-/* A connection node has one contact point, at its middle. The four handles
-   stacked there differ only in the direction they face, so a line's tangent
-   turns with it. */
-.handle--centre {
-  left: 50% !important;
-  top: 50% !important;
-  right: auto;
-  bottom: auto;
-  transform: translate(-50%, -50%);
-  width: 14px;
-  height: 14px;
+/* A contact point at each vertex of the junction, which for a diamond drawn
+   in this box is the middle of each of its sides. Out of the way until the
+   reader is working with the junction, so a small shape stays a small shape. */
+.handle--vertex {
+  width: 12px;
+  height: 12px;
   background: var(--panel);
   border: 1.5px solid var(--muted);
   opacity: 0;
 }
 
-.connection-node:hover .handle--centre,
-.connection-node.is-selected .handle--centre {
+.react-flow__node:hover .handle--vertex,
+.react-flow__node.selected .handle--vertex {
   opacity: 1;
 }
 

@@ -69,10 +69,10 @@ export function RollerMenu<T>({
   steppers?: boolean;
   /**
    * Where the options sit against the entrance. `centre` puts them over it;
-   * `right` hangs them off its right edge, so a menu placed beside a small
-   * element grows away from it rather than across it.
+   * `left` and `right` hang them off one of its edges, so a menu placed beside
+   * a small element grows away from it rather than across it.
    */
-  align?: 'centre' | 'right';
+  align?: 'centre' | 'left' | 'right';
   /** How many options sit either side of the active one before they fade out. */
   depth?: number;
   testId: string;
@@ -80,6 +80,7 @@ export function RollerMenu<T>({
   const [open, setOpen] = useState(startOpen);
   const [active, setActive] = useState(0);
   const closing = useRef<number | null>(null);
+  const menu = useRef<HTMLDivElement>(null);
 
   const holdOpen = (): void => {
     if (closing.current !== null) window.clearTimeout(closing.current);
@@ -88,7 +89,13 @@ export function RollerMenu<T>({
   };
   const closeSoon = (): void => {
     if (closing.current !== null) window.clearTimeout(closing.current);
-    closing.current = window.setTimeout(() => setOpen(false), CLOSE_DELAY);
+    closing.current = window.setTimeout(() => {
+      // The pointer may never have left: choosing an option replaces the
+      // pills under it, and a removed element reports a mouseleave on its way
+      // out. Asking the browser where the pointer actually is settles it.
+      if (menu.current?.querySelector(':hover')) return;
+      setOpen(false);
+    }, CLOSE_DELAY);
   };
   useEffect(() => () => {
     if (closing.current !== null) window.clearTimeout(closing.current);
@@ -98,6 +105,10 @@ export function RollerMenu<T>({
   // roller rather than leaving it pointing at a slot that no longer exists.
   const optionKeys = options.map((option) => option.id).join(' ');
   useEffect(() => {
+    // A close waiting out its delay belongs to the options that were showing.
+    // Left running, it shut the level the reader had just stepped into.
+    if (closing.current !== null) window.clearTimeout(closing.current);
+    closing.current = null;
     setOpen(startOpen);
     setActive(0);
   }, [optionKeys, startOpen]);
@@ -116,7 +127,7 @@ export function RollerMenu<T>({
 
   const tall = options.some((option) => option.sublabel !== undefined);
   const slot = tall ? TALL_SLOT_HEIGHT : SLOT_HEIGHT;
-  const acrossBy = align === 'right' ? '-100%' : '-50%';
+  const acrossBy = align === 'right' ? '-100%' : align === 'left' ? '0' : '-50%';
 
   const step = (by: number): void => {
     if (!open) {
@@ -152,6 +163,7 @@ export function RollerMenu<T>({
 
   return (
     <div
+      ref={menu}
       className="roller-menu nodrag nopan nowheel"
       data-testid={testId}
       onMouseEnter={holdOpen}
@@ -189,7 +201,7 @@ export function RollerMenu<T>({
 
       {open && (
         <div
-          className={`roller-menu__viewport${align === 'right' ? ' is-right' : ''}`}
+          className={`roller-menu__viewport${align === 'centre' ? '' : ` is-${align}`}`}
           data-testid={`${testId}-list`}
         >
           {steppers && options.length > 1 && (

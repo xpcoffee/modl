@@ -55,14 +55,15 @@ test.describe('gravity waves', () => {
     expect(Math.abs(startX! - (ui.x + ui.width))).toBeLessThanOrEqual(8);
     expect(Math.abs(startY! - (ui.y + ui.height / 2))).toBeLessThanOrEqual(8);
 
-    // A junction anchors lines at its centre.
+    // A junction anchors lines on the vertex facing where the line comes
+    // from: the fork sits below the UI, so the line arrives at its top.
     const toFork = (await page
       .locator(`.react-flow__edge[data-id^="to-fork"] .react-flow__edge-path`)
       .getAttribute('d'))!;
     const coords = toFork.replace(/[MC]/g, ' ').trim().split(/[ ,]+/).map(Number);
     const [endX, endY] = coords.slice(-2);
     expect(Math.abs(endX! - (fork.x + fork.width / 2))).toBeLessThanOrEqual(8);
-    expect(Math.abs(endY! - (fork.y + fork.height / 2))).toBeLessThanOrEqual(8);
+    expect(Math.abs(endY! - fork.y)).toBeLessThanOrEqual(8);
   });
 
   test('a new element warps in, and its wave follows', async ({ page }) => {

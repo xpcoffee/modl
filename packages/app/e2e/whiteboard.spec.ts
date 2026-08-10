@@ -1644,7 +1644,7 @@ test.describe('connection nodes', () => {
     expect(after.width).toBeGreaterThan(before.width);
   });
 
-  test('a round one keeps handles to drag from, and anchors lines at its middle', async ({ page }) => {
+  test('a junction offers a contact point at each of its four vertices', async ({ page }) => {
     await dispatch(page, [
       { type: 'create-connection-node', id: 'junction', shape: 'circle', title: '', position: { x: 0, y: 0 } },
       { type: 'create-entity', id: 'target', entityType: 'component', title: 'T', position: { x: 400, y: 0 } },
@@ -1652,21 +1652,20 @@ test.describe('connection nodes', () => {
     ]);
     await fit(page);
 
-    // One contact point, at the middle. The four handles stacked there differ
-    // only in the direction they face, so a line's tangent turns with it.
+    // Four contact points, one per vertex, so branches leave from their own
+    // point rather than piling up on a single anchor at the middle.
     const node = page.locator('.react-flow__node[data-id="junction"]');
-    await expect(node.locator('.react-flow__handle:not(.handle--centre)')).toHaveCount(0);
-    await expect(node.locator('.handle--centre')).toHaveCount(4);
+    await expect(node.locator('.handle--vertex')).toHaveCount(4);
 
-    const centres = await node.locator('.handle--centre').evaluateAll((handles) =>
+    const centres = await node.locator('.handle--vertex').evaluateAll((handles) =>
       handles.map((handle) => {
         const box = handle.getBoundingClientRect();
         return `${Math.round(box.x + box.width / 2)},${Math.round(box.y + box.height / 2)}`;
       }),
     );
-    expect(new Set(centres).size).toBe(1);
+    expect(new Set(centres).size).toBe(4);
 
-    // The line leaves from the middle of the circle, not one of its sides.
+    // The line leaves from the vertex facing where it is going, not the middle.
     const box = (await page.evaluate(
       () => window.__modl.getDocument().layout['junction'],
     )) as { x: number; y: number; width: number; height: number };
@@ -1674,8 +1673,8 @@ test.describe('connection nodes', () => {
       .locator('.react-flow__edge[data-id^="out"] .react-flow__edge-path')
       .getAttribute('d'))!;
     const numbers = [...d.matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
-    // Within a handle's width of the middle, and nowhere near a side.
-    expect(Math.abs(numbers[0]! - (box.x + box.width / 2))).toBeLessThan(8);
+    expect(Math.abs(numbers[0]! - (box.x + box.width))).toBeLessThan(8);
+    expect(Math.abs(numbers[1]! - (box.y + box.height / 2))).toBeLessThan(8);
   });
 
   test('a connection can be dragged from a round node', async ({ page }) => {
@@ -2374,9 +2373,9 @@ test.describe('relations menu', () => {
     await expect(page.getByTestId('relations-menu')).toHaveCount(0);
   });
 
-  test('the roller draws in front of the selected and neighbouring components', async ({ page }) => {
+  test('the roller opens clear of its own element and in front of its neighbours', async ({ page }) => {
     // The gateway sits right where the UI's roller expands, so the option
-    // pill overlaps both the selected UI and its neighbour.
+    // pill overlaps the neighbour.
     await dispatch(page, sampleDomain());
     await dispatch(page, [{ type: 'move-element', id: IDS.gateway, position: { x: 230, y: 0 } }]);
 
@@ -2385,17 +2384,25 @@ test.describe('relations menu', () => {
 
     const option = (await page.getByTestId(`relation-${IDS.gateway}`).boundingBox())!;
     const y = option.y + option.height / 2;
-    const rollerWins = ([atX, atY]: (number | undefined)[]) =>
-      document.elementFromPoint(atX!, atY!)?.closest('.roller-menu__option') !== null;
 
-    // Over the neighbour, and over the selected element itself: React Flow
-    // lifts a selected node by another 1000, which used to bury the roller.
-    for (const testId of [`entity-${IDS.gateway}`, `entity-${IDS.ui}`]) {
-      const behind = (await page.getByTestId(testId).boundingBox())!;
-      const x = Math.max(option.x, behind.x) + 4;
-      expect(x).toBeLessThan(Math.min(option.x + option.width, behind.x + behind.width));
-      expect(await page.evaluate(rollerWins, [x, y]), `roller behind ${testId}`).toBe(true);
-    }
+    // The pills hang off the menu's left edge, which sits past the selected
+    // element, so they never cover the thing they belong to.
+    const own = (await page.getByTestId(`entity-${IDS.ui}`).boundingBox())!;
+    expect(option.x).toBeGreaterThanOrEqual(own.x + own.width);
+
+    // Over the neighbour they draw in front: React Flow lifts a selected node
+    // by another 1000, which used to bury the roller behind the board.
+    const behind = (await page.getByTestId(`entity-${IDS.gateway}`).boundingBox())!;
+    const x = Math.max(option.x, behind.x) + 4;
+    expect(x).toBeLessThan(Math.min(option.x + option.width, behind.x + behind.width));
+    expect(
+      await page.evaluate(
+        ([atX, atY]: (number | undefined)[]) =>
+          document.elementFromPoint(atX!, atY!)?.closest('.roller-menu__option') !== null,
+        [x, y],
+      ),
+      'roller behind the gateway',
+    ).toBe(true);
   });
 
   test('choosing a relation selects the component it pans to', async ({ page }) => {

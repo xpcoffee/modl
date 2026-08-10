@@ -875,9 +875,8 @@ export function Canvas() {
         onConnect={onConnect}
         onReconnect={onReconnect}
         reconnectRadius={16}
-        // A connection node's contact point is a dot at its middle. Snapping
-        // from further out means a reader drops a line on the node rather
-        // than pinpointing its centre.
+        // A junction's contact points are small dots on its vertices, so a
+        // line dropped near one still lands on it rather than nowhere.
         connectionRadius={45}
         // While the picker is armed the drag sizes an element, so the board
         // has to hold still: panning with it kept the flow position under the

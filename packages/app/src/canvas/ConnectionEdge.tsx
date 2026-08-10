@@ -50,12 +50,17 @@ const FURTHEST = 250;
  * and one facing straight back gets the whole detour. Two lines placed a
  * degree apart come out a hair apart, rather than one taking a detour the
  * other does not.
+ *
+ * The 2.3 is the smallest that keeps a line clear of its own box when the
+ * other end is a junction: a junction anchors on the vertex facing the line,
+ * which is half its width nearer than the middle it used to anchor at, and
+ * that much less room to turn in.
  */
 function standoff(normal: Point, at: Point, towards: Point): Point {
   const away = turnedAway(normal, at, towards);
   if (away === 0) return { x: 0, y: 0 };
   const span = Math.hypot(towards.x - at.x, towards.y - at.y);
-  const reach = Math.min(away * away * span * 2, FURTHEST);
+  const reach = Math.min(away * away * span * 2.3, FURTHEST);
   return { x: normal.x * reach, y: normal.y * reach };
 }
 
@@ -100,8 +105,6 @@ function reshaped(path: string, atSource: Point, atTarget: Point): string {
  * more in a bundle. The line already on the board is rank 0 and never moves.
  */
 const SEPARATION = 26;
-
-const ZERO: Point = { x: 0, y: 0 };
 
 /** Sideways from the straight run between two points, always the same way. */
 function aside(from: Point, to: Point, by: number): Point {
@@ -222,10 +225,6 @@ export function ConnectionEdge({
     targetX,
     targetY,
     targetPosition,
-    // Two junctions anchor at points, so the line between them runs straight.
-    // With a box at either end the curvature has to stay: it is what carries
-    // the line clear of the box before it turns.
-    ...(data?.centredSource && data?.centredTarget ? { curvature: 0 } : {}),
   });
 
   /*
@@ -234,14 +233,12 @@ export function ConnectionEdge({
    * it is going, and further aside the more lines already run between the same
    * two handles. A line whose side points where it is headed and has the pair
    * to itself is left alone: at nothing to answer for, both come to zero.
-   *
-   * A junction anchors at its centre and has no side to be turned away from.
    */
   const rank = data?.rank ?? 0;
   const sideways = aside(source, target, rank * SEPARATION);
   const out = {
-    source: data?.centredSource ? ZERO : standoff(outward(sourcePosition), source, target),
-    target: data?.centredTarget ? ZERO : standoff(outward(targetPosition), target, source),
+    source: standoff(outward(sourcePosition), source, target),
+    target: standoff(outward(targetPosition), target, source),
   };
 
   const routed = waypoints.length > 0;

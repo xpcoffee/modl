@@ -222,7 +222,7 @@ A diamond-shaped one is a **decision**; a round one is a plain junction. The sha
 
 The name went `fork` → "connection point" → **connection node**. "Fork" described the drawing rather than the thing, and "connection point" read as the handles on the sides of a component. The format follows the interface: two names for one idea cost more than a migration.
 
-A connection node anchors its lines at its middle, whichever shape it is, so a line meets it at a point rather than a side. That is why it draws straight rather than easing in along an axis.
+A connection node has a contact point at each of its four vertices, which for a diamond drawn in its box are the middles of that box's sides. It anchored every line at its centre at first, so a line met it at a point; one anchor meant a decision's branches all left from the same spot and their answers piled up on each other. A branch now leaves from its own vertex and carries its own label. Which vertex a line uses is layout, like the side of a box: the renderer picks the one facing where the line is going, and a reader can drag it onto another.
 
 ```ts
 interface ConnectionNode extends ElementBase {

@@ -92,9 +92,6 @@ export interface ConnectionEdgeData extends Record<string, unknown> {
   rolledUp: Id[];
   /** How many lines already run between this pair of handles. */
   rank: number;
-  /** True when that end anchors at a point rather than a side. */
-  centredSource: boolean;
-  centredTarget: boolean;
   /** Decision labels to draw on this line, empty unless one is being read. */
   endLabels: EndLabel[];
   style?: ElementStyle;
@@ -393,10 +390,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
         type: 'connection',
         source: first.from,
         target: first.to,
-        ...sidesBetween(rects, first.from, first.to, {}, {
-          from: isCentred(elements, first.from),
-          to: isCentred(elements, first.to),
-        }),
+        ...sidesBetween(rects, first.from, first.to),
         data: {
           connectionId: ids[0] ?? first.from,
           title: `${connections.length} connections`,
@@ -413,8 +407,6 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           direction,
           rank: 0,
           rolledUp: ids,
-          centredSource: isCentred(elements, first.from),
-          centredTarget: isCentred(elements, first.to),
           // A roll-up stands in for several lines, so no one answer is its own.
           endLabels: [],
         },
@@ -431,10 +423,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
     // Sides come from geometry alone, so no line is pushed onto one facing
     // away from where it is going.
     const routes = drawn.map(({ from, to, connection: element }) =>
-      sidesBetween(rects, from, to, layoutOf(state, element.id), {
-        from: isCentred(elements, from),
-        to: isCentred(elements, to),
-      }),
+      sidesBetween(rects, from, to, layoutOf(state, element.id)),
     );
 
     /*
@@ -480,8 +469,6 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           // How many lines already share this pair of handles.
           rank,
           rolledUp: [],
-          centredSource: isCentred(elements, from),
-          centredTarget: isCentred(elements, to),
           endLabels: endLabelsFor(elements, element, from, to, selected),
           ...(element.style === undefined ? {} : { style: element.style }),
         },
@@ -564,12 +551,6 @@ function layoutOf(
   return entry && 'waypoints' in entry ? entry : { waypoints: [] };
 }
 
-/** A connection node has one contact point, at its middle. */
-function isCentred(elements: Record<Id, Element>, id: Id): boolean {
-  const element = elements[id];
-  return element !== undefined && isConnectionNode(element);
-}
-
 /**
  * The sides a line should leave and arrive on, chosen from where the two
  * boxes actually sit. Fixing the source to the right edge and the target to
@@ -581,18 +562,18 @@ function sidesBetween(
   from: Id,
   to: Id,
   chosen: { sourceSide?: Side; targetSide?: Side } = {},
-  round: { from: boolean; to: boolean } = { from: false, to: false },
 ): { sourceHandle: string; targetHandle: string } {
   const a = rects.get(from);
   const b = rects.get(to);
+  // A point the reader dragged the line onto wins. Recomputing it moved the
+  // line off the handle they picked the moment either box shifted. `centre`
+  // is what a junction's one anchor used to be called, and no element draws
+  // one now, so a document still carrying it falls back to the geometry.
+  const pinned = (side: Side | undefined, fallback: string): string =>
+    side === undefined || side === 'centre' ? fallback : side;
   const auto = (source: string, target: string) => ({
-    // A point the reader dragged the line onto wins. Recomputing it moved the
-    // line off the handle they picked the moment either box shifted.
-    //
-    // A connection node always anchors at its centre, and picks the centred
-    // handle facing the way the line travels so the tangent turns with it.
-    sourceHandle: round.from ? `centre-${source}` : (chosen.sourceSide ?? source),
-    targetHandle: round.to ? `centre-${target}` : (chosen.targetSide ?? target),
+    sourceHandle: pinned(chosen.sourceSide, source),
+    targetHandle: pinned(chosen.targetSide, target),
   });
 
   if (!a || !b) return auto('right', 'left');

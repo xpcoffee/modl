@@ -24,6 +24,8 @@ The tension is where a label belongs, and what the menu is for. A label is about
 
 **The list closes on a delay.** Turning the roller slides its options, so a stationary pointer can find itself over the gap between two pills. Closing on the first mouseleave shut the menu out from under a reader who had not moved, and took the level they were on with it.
 
+**A junction anchors its branches at its vertices, not at its centre.** Four contact points instead of one. With every line leaving the same point, two answers to the same question are drawn on top of each other, and there is nowhere for a reader to aim when they want *that* branch. Which vertex a line uses stays layout, chosen by geometry and overridable by dragging, the same rule a box's sides follow.
+
 ## Rejected
 
 **Labels on the connection, keyed by node id.** Symmetric with the choice made, and it puts a decision's answers on elements that know nothing about the question. Reading "what does this decision say" would then mean scanning every connection in the document rather than one lookup.
