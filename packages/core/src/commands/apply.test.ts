@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { apply, applyAll } from './apply.js';
 import { isGroup } from '../query/groups.js';
+import { labelsOfNode, labelsOnConnection } from '../query/labels.js';
 import { initialState } from '../state.js';
 import { parseDocument, serializeDocument } from '../serialize/serialize.js';
 import type { AppState, Command } from './types.js';
@@ -1221,6 +1222,190 @@ describe('connection nodes', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe('not-a-group');
+  });
+});
+
+describe('connection labels', () => {
+  const FORK = 'node-1';
+  const IN = 'in-1';
+  const OUT = 'out-1';
+
+  /** A > fork > B, so the fork has a branch at each end. */
+  function branching(): AppState {
+    return must(
+      base,
+      { type: 'create-connection-node', id: FORK, shape: 'diamond', title: 'ready?', position: { x: 120, y: 0 } },
+      link(IN, [A], [FORK]),
+      link(OUT, [FORK], [B]),
+    );
+  }
+
+  it('starts with no labels', () => {
+    expect(branching().document.model.elements[FORK]).toMatchObject({ labels: {} });
+  });
+
+  it('writes the answer a branch carries', () => {
+    const state = must(branching(), {
+      type: 'set-connection-label',
+      id: FORK,
+      connectionId: OUT,
+      label: 'stock on hand',
+    });
+    expect(state.document.model.elements[FORK]).toMatchObject({
+      labels: { [OUT]: 'stock on hand' },
+    });
+    expect(labelsOfNode(state.document.model.elements, FORK)).toEqual([
+      { nodeId: FORK, connectionId: OUT, label: 'stock on hand' },
+    ]);
+  });
+
+  it('labels an incoming branch too', () => {
+    const state = must(branching(), {
+      type: 'set-connection-label', id: FORK, connectionId: IN, label: 'order placed',
+    });
+    expect(labelsOnConnection(state.document.model.elements, IN)).toEqual([
+      { nodeId: FORK, connectionId: IN, label: 'order placed' },
+    ]);
+  });
+
+  it('an empty label removes the entry rather than storing an empty string', () => {
+    const state = must(
+      branching(),
+      { type: 'set-connection-label', id: FORK, connectionId: OUT, label: 'yes' },
+      { type: 'set-connection-label', id: FORK, connectionId: OUT, label: '' },
+    );
+    expect(state.document.model.elements[FORK]).toMatchObject({ labels: {} });
+  });
+
+  it('emits element-updated for the node holding the label', () => {
+    const result = apply(branching(), {
+      type: 'set-connection-label', id: FORK, connectionId: OUT, label: 'yes',
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.events).toEqual([{ type: 'element-updated', id: FORK }]);
+  });
+
+  it('wrong-kind: only a connection node carries labels', () => {
+    const result = apply(branching(), {
+      type: 'set-connection-label', id: A, connectionId: OUT, label: 'yes',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('wrong-kind');
+  });
+
+  it('invalid-endpoint: refuses a label for a connection that misses the node', () => {
+    const state = must(branching(), link(LINK, [A], [B]));
+    const result = apply(state, {
+      type: 'set-connection-label', id: FORK, connectionId: LINK, label: 'yes',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('invalid-endpoint');
+  });
+
+  it('unknown-element: refuses a label for a connection that is not there', () => {
+    const result = apply(branching(), {
+      type: 'set-connection-label', id: FORK, connectionId: MISSING, label: 'yes',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('unknown-element');
+  });
+
+  it('deleting the connection takes its label with it', () => {
+    const state = must(
+      branching(),
+      { type: 'set-connection-label', id: FORK, connectionId: OUT, label: 'yes' },
+      { type: 'delete-element', id: OUT },
+    );
+    expect(state.document.model.elements[FORK]).toMatchObject({ labels: {} });
+  });
+
+  it('deleting an endpoint that takes the connection with it clears the label', () => {
+    const state = must(
+      branching(),
+      { type: 'set-connection-label', id: FORK, connectionId: OUT, label: 'yes' },
+      { type: 'delete-element', id: B },
+    );
+    expect(state.document.model.elements[FORK]).toMatchObject({ labels: {} });
+  });
+
+  it('re-pointing a connection off the node drops the answer it gave', () => {
+    const state = must(
+      branching(),
+      { type: 'set-connection-label', id: FORK, connectionId: OUT, label: 'yes' },
+      { type: 'set-endpoints', id: OUT, from: [A], to: [B] },
+    );
+    expect(state.document.model.elements[FORK]).toMatchObject({ labels: {} });
+  });
+
+  it('re-pointing the far end keeps the answer', () => {
+    const state = must(
+      branching(),
+      entity(C, 'Ledger', 480),
+      { type: 'set-connection-label', id: FORK, connectionId: OUT, label: 'yes' },
+      { type: 'set-endpoints', id: OUT, from: [FORK], to: [C] },
+    );
+    expect(state.document.model.elements[FORK]).toMatchObject({ labels: { [OUT]: 'yes' } });
+  });
+
+  it('a copy of a decision and its branch carries the label onto the copy', () => {
+    const state = must(branching(), {
+      type: 'set-connection-label', id: FORK, connectionId: OUT, label: 'yes',
+    });
+    const copied = must(state, {
+      type: 'duplicate-elements',
+      idMap: { [FORK]: 'fork-copy', [OUT]: 'out-copy', [B]: 'b-copy' },
+      offset: { x: 40, y: 40 },
+    });
+    expect(copied.document.model.elements['fork-copy']).toMatchObject({
+      labels: { 'out-copy': 'yes' },
+    });
+  });
+
+  it('a copy of the decision alone starts with nothing to answer for', () => {
+    const state = must(branching(), {
+      type: 'set-connection-label', id: FORK, connectionId: OUT, label: 'yes',
+    });
+    const copied = must(state, {
+      type: 'duplicate-elements',
+      idMap: { [FORK]: 'fork-copy' },
+      offset: { x: 40, y: 40 },
+    });
+    expect(copied.document.model.elements['fork-copy']).toMatchObject({ labels: {} });
+  });
+
+  it('converting a decision into an entity leaves no labels behind', () => {
+    const state = must(
+      branching(),
+      { type: 'set-connection-label', id: FORK, connectionId: OUT, label: 'yes' },
+      { type: 'convert-element', id: FORK, to: 'component' },
+    );
+    expect(state.document.model.elements[FORK]).not.toHaveProperty('labels');
+  });
+
+  it('a label survives a save and a load', () => {
+    const state = must(branching(), {
+      type: 'set-connection-label', id: FORK, connectionId: OUT, label: 'stock on hand',
+    });
+    const result = parseDocument(serializeDocument(state.document));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.document.model.elements[FORK]).toMatchObject({
+      labels: { [OUT]: 'stock on hand' },
+    });
+  });
+
+  it('undo puts a label back the way it was', () => {
+    const state = must(
+      branching(),
+      { type: 'set-connection-label', id: FORK, connectionId: OUT, label: 'yes' },
+      { type: 'set-connection-label', id: FORK, connectionId: OUT, label: 'no' },
+      { type: 'undo' },
+    );
+    expect(state.document.model.elements[FORK]).toMatchObject({ labels: { [OUT]: 'yes' } });
   });
 });
 

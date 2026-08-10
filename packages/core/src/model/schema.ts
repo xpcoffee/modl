@@ -85,6 +85,11 @@ export const connectionNodeSchema = z.object({
   ...elementBaseShape,
   kind: z.literal('connection-node'),
   shape: z.enum(['circle', 'diamond']),
+  /**
+   * Keyed by connection id: what each branch leaving this junction answers.
+   * Defaulted, so a producer that has nothing to say about branches omits it.
+   */
+  labels: z.record(idSchema, z.string()).default({}),
   style: entityStyleSchema.optional(),
 });
 

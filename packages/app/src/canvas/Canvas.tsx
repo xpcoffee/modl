@@ -54,7 +54,7 @@ import {
 import { arm, disarm, getPending, usePending } from './placement.js';
 import { HistoryControls } from './HistoryControls.js';
 import { ExpansionMenu } from './ExpansionMenu.js';
-import { PanRelations } from './PanRelations.js';
+import { RelationsMenu } from './RelationsMenu.js';
 import { SelectionActions } from './SelectionActions.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
 import { useHighlightId } from './highlight.js';
@@ -232,7 +232,7 @@ export function Canvas() {
 
   /**
    * The camera follows set-view commands, so a pan issued through the bus (the
-   * pan-to-relation control, an agent, a replay) actually moves the board.
+   * relations menu, an agent, a replay) actually moves the board.
    * Hand-panning never dispatches set-view, so nothing fights the pointer, and
    * a document load is left to the fitView above.
    */
@@ -875,9 +875,8 @@ export function Canvas() {
         onConnect={onConnect}
         onReconnect={onReconnect}
         reconnectRadius={16}
-        // A connection node's contact point is a dot at its middle. Snapping
-        // from further out means a reader drops a line on the node rather
-        // than pinpointing its centre.
+        // A junction's contact points are small dots on its vertices, so a
+        // line dropped near one still lands on it rather than nowhere.
         connectionRadius={45}
         // While the picker is armed the drag sizes an element, so the board
         // has to hold still: panning with it kept the flow position under the
@@ -922,7 +921,7 @@ export function Canvas() {
           onClick={onMiniMapClick}
         />
         <SelectionActions nodes={nodes} />
-        <PanRelations nodes={nodes} />
+        <RelationsMenu nodes={nodes} />
         <ExpansionMenu nodes={nodes} />
       </ReactFlow>
     </div>

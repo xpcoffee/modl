@@ -77,7 +77,17 @@ function orderElement(element: Element): Record<string, unknown> {
       ...tail,
     };
   }
-  return { ...base, shape: element.shape, ...tail };
+  return { ...base, shape: element.shape, labels: orderLabels(element.labels), ...tail };
+}
+
+/** Sorted by connection id, so two documents saying the same thing match. */
+function orderLabels(labels: Record<Id, string>): Record<Id, string> {
+  const ordered: Record<Id, string> = {};
+  for (const id of Object.keys(labels).sort()) {
+    const label = labels[id];
+    if (label !== undefined) ordered[id] = label;
+  }
+  return ordered;
 }
 
 function orderStyle(style: NonNullable<Element['style']>): Record<string, unknown> {

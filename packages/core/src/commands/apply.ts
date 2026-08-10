@@ -161,6 +161,7 @@ function reduce(state: AppState, command: Command): CommandResult {
         id: command.id,
         kind: 'connection-node',
         shape: command.shape,
+        labels: {},
         title: command.title,
         description: '',
         tags: {},
@@ -184,6 +185,41 @@ function reduce(state: AppState, command: Command): CommandResult {
         return fail(command.type, 'wrong-kind', `element ${command.id} is not a node`);
       }
       return ok(withElement(state, { ...element, shape: command.shape }, state.document.layout), [
+        { type: 'element-updated', id: command.id },
+      ]);
+    }
+
+    case 'set-connection-label': {
+      const element = state.document.model.elements[command.id];
+      if (!element) return unknown(command.type, command.id);
+      if (!isConnectionNode(element)) {
+        return fail(command.type, 'wrong-kind', `element ${command.id} is not a node`);
+      }
+
+      const connection = state.document.model.elements[command.connectionId];
+      if (!connection) return unknown(command.type, command.connectionId);
+      if (!isConnection(connection)) {
+        return fail(
+          command.type,
+          'wrong-kind',
+          `element ${command.connectionId} is not a connection`,
+        );
+      }
+      // A label says why this branch is taken, so it only means anything on a
+      // line that actually touches the junction.
+      if (![...connection.from, ...connection.to].includes(command.id)) {
+        return fail(
+          command.type,
+          'invalid-endpoint',
+          `connection ${command.connectionId} does not touch node ${command.id}`,
+        );
+      }
+
+      const labels = { ...element.labels };
+      if (command.label === '') delete labels[command.connectionId];
+      else labels[command.connectionId] = command.label;
+
+      return ok(withElement(state, { ...element, labels }, state.document.layout), [
         { type: 'element-updated', id: command.id },
       ]);
     }
@@ -389,7 +425,14 @@ function reduce(state: AppState, command: Command): CommandResult {
 
       const converted: Element =
         command.to === 'connection-node' || command.to === 'decision'
-          ? { ...shared, kind: 'connection-node', shape: command.to === 'decision' ? 'diamond' : 'circle' }
+          ? {
+              ...shared,
+              kind: 'connection-node',
+              shape: command.to === 'decision' ? 'diamond' : 'circle',
+              // A box that becomes a junction has answered nothing yet, and
+              // one that becomes a box again drops the field with its answers.
+              labels: isConnectionNode(element) ? { ...element.labels } : {},
+            }
           : { ...shared, kind: 'entity', type: command.to };
 
       // A junction is a point; an entity is a box. Size follows the kind
@@ -582,9 +625,26 @@ function reduce(state: AppState, command: Command): CommandResult {
       if (endpointError) return { ok: false, error: endpointError };
 
       const updated: Connection = { ...element, from: [...command.from], to: [...command.to] };
-      return ok(withElement(state, updated, state.document.layout), [
-        { type: 'element-updated', id: command.id },
-      ]);
+      const moved = withElement(state, updated, state.document.layout);
+
+      // A line dragged off a junction takes that junction's answer with it:
+      // the label described a branch that no longer leaves from there.
+      const touching = new Set([...updated.from, ...updated.to]);
+      const elements = { ...moved.document.model.elements };
+      const events: DomainEvent[] = [{ type: 'element-updated', id: command.id }];
+      for (const candidate of Object.values(elements)) {
+        if (!isConnectionNode(candidate)) continue;
+        if (candidate.labels[command.id] === undefined || touching.has(candidate.id)) continue;
+        const labels = { ...candidate.labels };
+        delete labels[command.id];
+        elements[candidate.id] = { ...candidate, labels };
+        events.push({ type: 'element-updated', id: candidate.id });
+      }
+
+      return ok(
+        { ...moved, document: { ...moved.document, model: { elements } } },
+        events,
+      );
     }
 
     case 'delete-element': {
@@ -627,6 +687,19 @@ function reduce(state: AppState, command: Command): CommandResult {
       }
 
       const removed = new Set(events.filter((e) => e.type === 'element-deleted').map((e) => e.id));
+
+      // A junction's answers go with the branches they answer for, so no
+      // label is left naming a line that has gone.
+      for (const candidate of Object.values(elements)) {
+        if (!isConnectionNode(candidate)) continue;
+        const stale = Object.keys(candidate.labels).filter((ref) => removed.has(ref));
+        if (stale.length === 0) continue;
+        const labels = { ...candidate.labels };
+        for (const ref of stale) delete labels[ref];
+        elements[candidate.id] = { ...candidate, labels };
+        events.push({ type: 'element-updated', id: candidate.id });
+      }
+
       return ok(
         {
           ...state,
@@ -1079,7 +1152,20 @@ function copyOf(element: Element, id: Id, idMap: Record<Id, Id>): Element {
     };
   }
   if (isConnectionNode(element)) {
-    return { ...shared, kind: 'connection-node', shape: element.shape };
+    return {
+      ...shared,
+      kind: 'connection-node',
+      shape: element.shape,
+      // A label follows the branch it answers for, and only that branch: a
+      // junction copied without its connections has nothing left to answer
+      // for, so it starts blank rather than pointing at the original's lines.
+      labels: Object.fromEntries(
+        Object.entries(element.labels).flatMap(([ref, label]) => {
+          const copied = idMap[ref];
+          return copied === undefined ? [] : [[copied, label] as const];
+        }),
+      ),
+    };
   }
   return { ...shared, kind: 'entity', type: element.type };
 }

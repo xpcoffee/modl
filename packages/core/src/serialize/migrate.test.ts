@@ -192,10 +192,46 @@ describe('4 -> 5', () => {
     expect((result.document as { formatVersion: number }).formatVersion).toBe(FORMAT_VERSION);
   });
 
-  it('saves a version 4 file at version 5', () => {
+  it('saves a version 4 file at the current version', () => {
     const result = parseDocument(JSON.stringify(V4));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
+    expect(JSON.parse(serializeDocument(result.document)).formatVersion).toBe(FORMAT_VERSION);
+  });
+});
+
+describe('5 -> 6', () => {
+  const V5 = {
+    formatVersion: 5,
+    id: 'doc',
+    title: 'Five',
+    model: {
+      elements: {
+        a: { id:'a', kind:'entity', type:'component', title:'A',
+             description:'', tags:{}, sources:[], groupId:null },
+        j: { id:'j', kind:'connection-node', shape:'diamond', title:'ready?',
+             description:'', tags:{}, sources:[], groupId:null },
+      },
+    },
+    layout: {},
+    view: { pan: { x: 0, y: 0 }, zoom: 1 },
+  };
+
+  it('gives a connection node an empty set of labels', () => {
+    const result = migrateDocument(V5);
+    expect(result).toMatchObject({ ok: true, from: 5, migrated: true });
+    if (!result.ok) return;
+    const elements = (result.document as typeof V5).model.elements as Record<string, any>;
+    expect(elements['j']!['labels']).toEqual({});
+    // Nothing else moves, and an entity has no labels to gain.
+    expect(elements['a']).toEqual(V5.model.elements.a);
+  });
+
+  it('loads and saves a version 5 document at the current version', () => {
+    const result = parseDocument(JSON.stringify(V5));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.document.model.elements['j']).toMatchObject({ labels: {} });
     expect(JSON.parse(serializeDocument(result.document)).formatVersion).toBe(FORMAT_VERSION);
   });
 });

@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { Id } from '@modl/core';
 
 /**
- * Which connection the pan-to-relation control is pointing at.
+ * Which connection the relations menu is pointing at.
  *
  * This is hover feedback rather than domain state, like the rename focus in
  * editing.ts, so it stays out of the document and out of the trace. The pan

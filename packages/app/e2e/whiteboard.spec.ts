@@ -1644,7 +1644,7 @@ test.describe('connection nodes', () => {
     expect(after.width).toBeGreaterThan(before.width);
   });
 
-  test('a round one keeps handles to drag from, and anchors lines at its middle', async ({ page }) => {
+  test('a junction offers a contact point at each of its four vertices', async ({ page }) => {
     await dispatch(page, [
       { type: 'create-connection-node', id: 'junction', shape: 'circle', title: '', position: { x: 0, y: 0 } },
       { type: 'create-entity', id: 'target', entityType: 'component', title: 'T', position: { x: 400, y: 0 } },
@@ -1652,21 +1652,20 @@ test.describe('connection nodes', () => {
     ]);
     await fit(page);
 
-    // One contact point, at the middle. The four handles stacked there differ
-    // only in the direction they face, so a line's tangent turns with it.
+    // Four contact points, one per vertex, so branches leave from their own
+    // point rather than piling up on a single anchor at the middle.
     const node = page.locator('.react-flow__node[data-id="junction"]');
-    await expect(node.locator('.react-flow__handle:not(.handle--centre)')).toHaveCount(0);
-    await expect(node.locator('.handle--centre')).toHaveCount(4);
+    await expect(node.locator('.handle--vertex')).toHaveCount(4);
 
-    const centres = await node.locator('.handle--centre').evaluateAll((handles) =>
+    const centres = await node.locator('.handle--vertex').evaluateAll((handles) =>
       handles.map((handle) => {
         const box = handle.getBoundingClientRect();
         return `${Math.round(box.x + box.width / 2)},${Math.round(box.y + box.height / 2)}`;
       }),
     );
-    expect(new Set(centres).size).toBe(1);
+    expect(new Set(centres).size).toBe(4);
 
-    // The line leaves from the middle of the circle, not one of its sides.
+    // The line leaves from the vertex facing where it is going, not the middle.
     const box = (await page.evaluate(
       () => window.__modl.getDocument().layout['junction'],
     )) as { x: number; y: number; width: number; height: number };
@@ -1674,8 +1673,8 @@ test.describe('connection nodes', () => {
       .locator('.react-flow__edge[data-id^="out"] .react-flow__edge-path')
       .getAttribute('d'))!;
     const numbers = [...d.matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
-    // Within a handle's width of the middle, and nowhere near a side.
-    expect(Math.abs(numbers[0]! - (box.x + box.width / 2))).toBeLessThan(8);
+    expect(Math.abs(numbers[0]! - (box.x + box.width))).toBeLessThan(8);
+    expect(Math.abs(numbers[1]! - (box.y + box.height / 2))).toBeLessThan(8);
   });
 
   test('a connection can be dragged from a round node', async ({ page }) => {
@@ -2343,18 +2342,18 @@ test.describe('selection highlight', () => {
   });
 });
 
-test.describe('pan to relation', () => {
+test.describe('relations menu', () => {
   test('a selected connected component offers its relations', async ({ page }) => {
     await dispatch(page, sampleDomain());
 
     await page.getByTestId(`entity-${IDS.gateway}`).click();
 
     // The gateway touches both connections.
-    await expect(page.getByTestId('pan-relations-toggle')).toContainText('2');
+    await expect(page.getByTestId('relations-menu-toggle')).toContainText('2');
 
-    await page.getByTestId('pan-relations-toggle').click();
-    await expect(page.getByTestId(`pan-to-${IDS.ui}`)).toBeVisible();
-    await expect(page.getByTestId(`pan-to-${IDS.ledger}`)).toBeVisible();
+    await page.getByTestId('relations-menu-toggle').click();
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toBeVisible();
+    await expect(page.getByTestId(`relation-${IDS.ledger}`)).toBeVisible();
   });
 
   test('an unconnected element offers nothing', async ({ page }) => {
@@ -2371,47 +2370,55 @@ test.describe('pan to relation', () => {
 
     await page.getByTestId('entity-66666666-6666-4666-8666-666666666666').click();
 
-    await expect(page.getByTestId('pan-relations')).toHaveCount(0);
+    await expect(page.getByTestId('relations-menu')).toHaveCount(0);
   });
 
-  test('the roller draws in front of the selected and neighbouring components', async ({ page }) => {
+  test('the roller opens clear of its own element and in front of its neighbours', async ({ page }) => {
     // The gateway sits right where the UI's roller expands, so the option
-    // pill overlaps both the selected UI and its neighbour.
+    // pill overlaps the neighbour.
     await dispatch(page, sampleDomain());
     await dispatch(page, [{ type: 'move-element', id: IDS.gateway, position: { x: 230, y: 0 } }]);
 
     await page.getByTestId(`entity-${IDS.ui}`).click();
-    await page.getByTestId('pan-relations-toggle').click();
+    await page.getByTestId('relations-menu-toggle').click();
 
-    const option = (await page.getByTestId(`pan-to-${IDS.gateway}`).boundingBox())!;
+    const option = (await page.getByTestId(`relation-${IDS.gateway}`).boundingBox())!;
     const y = option.y + option.height / 2;
-    const rollerWins = ([atX, atY]: (number | undefined)[]) =>
-      document.elementFromPoint(atX!, atY!)?.closest('.roller-menu__option') !== null;
 
-    // Over the neighbour, and over the selected element itself: React Flow
-    // lifts a selected node by another 1000, which used to bury the roller.
-    for (const testId of [`entity-${IDS.gateway}`, `entity-${IDS.ui}`]) {
-      const behind = (await page.getByTestId(testId).boundingBox())!;
-      const x = Math.max(option.x, behind.x) + 4;
-      expect(x).toBeLessThan(Math.min(option.x + option.width, behind.x + behind.width));
-      expect(await page.evaluate(rollerWins, [x, y]), `roller behind ${testId}`).toBe(true);
-    }
+    // The pills hang off the menu's left edge, which sits past the selected
+    // element, so they never cover the thing they belong to.
+    const own = (await page.getByTestId(`entity-${IDS.ui}`).boundingBox())!;
+    expect(option.x).toBeGreaterThanOrEqual(own.x + own.width);
+
+    // Over the neighbour they draw in front: React Flow lifts a selected node
+    // by another 1000, which used to bury the roller behind the board.
+    const behind = (await page.getByTestId(`entity-${IDS.gateway}`).boundingBox())!;
+    const x = Math.max(option.x, behind.x) + 4;
+    expect(x).toBeLessThan(Math.min(option.x + option.width, behind.x + behind.width));
+    expect(
+      await page.evaluate(
+        ([atX, atY]: (number | undefined)[]) =>
+          document.elementFromPoint(atX!, atY!)?.closest('.roller-menu__option') !== null,
+        [x, y],
+      ),
+      'roller behind the gateway',
+    ).toBe(true);
   });
 
   test('choosing a relation selects the component it pans to', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`entity-${IDS.ui}`).click();
 
-    await page.getByTestId('pan-relations-toggle').click();
-    await page.getByTestId(`pan-to-${IDS.gateway}`).click();
+    await page.getByTestId('relations-menu-toggle').click();
+    await page.getByTestId(`relation-${IDS.gateway}`).click();
 
     // Focus moved with the camera: the destination is selected, the highlight
     // follows it, and its own roller stands ready, closed.
     expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([IDS.gateway]);
     await expect(page.getByTestId(`entity-${IDS.gateway}`)).toHaveClass(/is-selected/);
     await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
-    await expect(page.getByTestId('pan-relations-toggle')).toContainText('2');
-    await expect(page.getByTestId('pan-relations-list')).toHaveCount(0);
+    await expect(page.getByTestId('relations-menu-toggle')).toContainText('2');
+    await expect(page.getByTestId('relations-menu-list')).toHaveCount(0);
   });
 
   test('choosing a relation pans the camera to the peer', async ({ page }) => {
@@ -2420,8 +2427,8 @@ test.describe('pan to relation', () => {
 
     const before = await page.locator('.react-flow__viewport').getAttribute('style');
 
-    await page.getByTestId('pan-relations-toggle').click();
-    await page.getByTestId(`pan-to-${IDS.gateway}`).click();
+    await page.getByTestId('relations-menu-toggle').click();
+    await page.getByTestId(`relation-${IDS.gateway}`).click();
 
     // The pan travels through the command bus, so the trace carries it and
     // the camera follows.
@@ -2443,7 +2450,7 @@ test.describe('pan to relation', () => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`entity-${IDS.gateway}`).click();
 
-    await page.getByTestId('pan-relations-toggle').click();
+    await page.getByTestId('relations-menu-toggle').click();
 
     // The roller opens on its first option; turning it moves the emphasis.
     await expect(page.getByTestId(`connection-${IDS.authorise}`)).toHaveClass(/is-highlighted/);
@@ -2455,30 +2462,30 @@ test.describe('pan to relation', () => {
   test('arrow keys turn the roller, wrapping at the ends', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`entity-${IDS.gateway}`).click();
-    await page.getByTestId('pan-relations-toggle').click();
+    await page.getByTestId('relations-menu-toggle').click();
 
-    await expect(page.getByTestId(`pan-to-${IDS.ui}`)).toHaveClass(/is-active/);
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveClass(/is-active/);
     // Two entries: down, down again wraps back to the first.
     await page.keyboard.press('ArrowDown');
-    await expect(page.getByTestId(`pan-to-${IDS.ledger}`)).toHaveClass(/is-active/);
+    await expect(page.getByTestId(`relation-${IDS.ledger}`)).toHaveClass(/is-active/);
     await page.keyboard.press('ArrowDown');
-    await expect(page.getByTestId(`pan-to-${IDS.ui}`)).toHaveClass(/is-active/);
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveClass(/is-active/);
     await page.keyboard.press('ArrowUp');
-    await expect(page.getByTestId(`pan-to-${IDS.ledger}`)).toHaveClass(/is-active/);
+    await expect(page.getByTestId(`relation-${IDS.ledger}`)).toHaveClass(/is-active/);
   });
 
   test('the mouse wheel turns the roller', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`entity-${IDS.gateway}`).click();
 
-    await page.getByTestId('pan-relations-toggle').hover();
+    await page.getByTestId('relations-menu-toggle').hover();
     // The container itself has no box; the options carry the size.
-    await expect(page.getByTestId(`pan-to-${IDS.ui}`)).toBeVisible();
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toBeVisible();
 
     await page.mouse.wheel(0, 120);
-    await expect(page.getByTestId(`pan-to-${IDS.ledger}`)).toHaveClass(/is-active/);
+    await expect(page.getByTestId(`relation-${IDS.ledger}`)).toHaveClass(/is-active/);
     await page.mouse.wheel(0, -120);
-    await expect(page.getByTestId(`pan-to-${IDS.ui}`)).toHaveClass(/is-active/);
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveClass(/is-active/);
   });
 
   test('clicking a faded option turns the roller to it instead of acting', async ({ page }) => {
@@ -2486,15 +2493,15 @@ test.describe('pan to relation', () => {
     await page.getByTestId(`entity-${IDS.gateway}`).click();
     const before = await page.locator('.react-flow__viewport').getAttribute('style');
 
-    await page.getByTestId('pan-relations-toggle').click();
-    await page.getByTestId(`pan-to-${IDS.ledger}`).click();
+    await page.getByTestId('relations-menu-toggle').click();
+    await page.getByTestId(`relation-${IDS.ledger}`).click();
 
     // The click chose a slot, so the camera holds still until the middle
     // option is clicked.
-    await expect(page.getByTestId(`pan-to-${IDS.ledger}`)).toHaveClass(/is-active/);
+    await expect(page.getByTestId(`relation-${IDS.ledger}`)).toHaveClass(/is-active/);
     expect(await page.locator('.react-flow__viewport').getAttribute('style')).toBe(before);
 
-    await page.getByTestId(`pan-to-${IDS.ledger}`).click();
+    await page.getByTestId(`relation-${IDS.ledger}`).click();
     await expect(async () => {
       expect(await page.locator('.react-flow__viewport').getAttribute('style')).not.toBe(before);
     }).toPass();
@@ -2630,7 +2637,7 @@ test.describe('expansion tooling', () => {
     await expect(page.getByTestId(`entity-${DEEP}`)).toBeVisible();
   });
 
-  test('the expansion roller and pan-to-relation stand apart on one group', async ({ page }) => {
+  test('the expansion roller and the relations menu stand apart on one group', async ({ page }) => {
     await dispatch(page, [
       ...nestedDomain(),
       { type: 'create-entity', id: 'client', entityType: 'component', title: 'Client', position: { x: -320, y: 0 } },
@@ -2640,10 +2647,10 @@ test.describe('expansion tooling', () => {
     await fit(page);
 
     const expansion = (await page.getByTestId('expansion-menu-toggle').boundingBox())!;
-    const pan = (await page.getByTestId('pan-relations-toggle').boundingBox())!;
+    const pan = (await page.getByTestId('relations-menu-toggle').boundingBox())!;
     const node = (await page.getByTestId(`entity-${OUTER}`).boundingBox())!;
 
-    // Expansion holds the left corner and pan-to-relation the right, with
+    // Expansion holds the left corner and the relations menu the right, with
     // the selected group between them.
     expect(expansion.x + expansion.width).toBeLessThanOrEqual(node.x);
     expect(pan.x).toBeGreaterThanOrEqual(node.x + node.width);
@@ -3489,5 +3496,251 @@ test.describe('duplication', () => {
     await page.keyboard.press('Control+v');
 
     expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(5);
+  });
+});
+
+test.describe('decision labels', () => {
+  const DECISION = 'authorised';
+  const SECOND = 'in-stock';
+  const PAID = 'paid';
+  const REFUSED = 'refused';
+  const ASKS = 'asks';
+  const YES = 'yes';
+  const NO = 'no';
+
+  /** Checkout UI -> a decision that branches to paid and refused. */
+  function branchingDomain(): import('@modl/core').Command[] {
+    return [
+      { type: 'create-entity', id: IDS.ui, entityType: 'component', title: 'Checkout UI', position: { x: 0, y: 120 } },
+      { type: 'create-entity', id: PAID, entityType: 'component', title: 'Paid', position: { x: 520, y: 0 } },
+      { type: 'create-entity', id: REFUSED, entityType: 'component', title: 'Refused', position: { x: 520, y: 240 } },
+      { type: 'create-connection-node', id: DECISION, shape: 'diamond', title: 'authorised?', position: { x: 280, y: 130 } },
+      { type: 'create-connection', id: ASKS, connectionType: 'interaction', from: [IDS.ui], to: [DECISION], title: 'authorise' },
+      { type: 'create-connection', id: YES, connectionType: 'interaction', from: [DECISION], to: [PAID], title: '' },
+      { type: 'create-connection', id: NO, connectionType: 'interaction', from: [DECISION], to: [REFUSED], title: '' },
+    ];
+  }
+
+  /** Opens the relations roller on a decision that is already selected. */
+  async function openMenu(page: import('@playwright/test').Page): Promise<void> {
+    await page.getByTestId('relations-menu-toggle').click();
+  }
+
+  /**
+   * Walks the roller to one branch and chooses it, which opens the actions
+   * level. The first click turns the roller to a neighbouring pill, the
+   * second chooses it, so both are sent.
+   */
+  async function chooseBranch(
+    page: import('@playwright/test').Page,
+    peerId: string,
+  ): Promise<void> {
+    await openMenu(page);
+    await page.getByTestId(`relation-${peerId}`).click();
+    await page.getByTestId(`relation-${peerId}`).click();
+  }
+
+  test('a decision offers a pill per connection, named for what it reaches', async ({ page }) => {
+    await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [DECISION] }]);
+    await fit(page);
+
+    await expect(page.getByTestId('relations-menu-toggle')).toContainText('3');
+    await openMenu(page);
+
+    await expect(page.getByTestId(`relation-${PAID}`)).toContainText('Paid');
+    await expect(page.getByTestId(`relation-${REFUSED}`)).toContainText('Refused');
+    // The connector's own title reads as the pill's second line.
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toContainText('authorise');
+  });
+
+  test('a junction with no connections offers no menu', async ({ page }) => {
+    await dispatch(page, [
+      { type: 'create-connection-node', id: DECISION, shape: 'diamond', title: 'lonely?', position: { x: 100, y: 100 } },
+      { type: 'set-selection', ids: [DECISION] },
+    ]);
+    await fit(page);
+
+    await expect(page.getByTestId('relations-menu')).toHaveCount(0);
+  });
+
+  test('a branch offers going there or labelling it, and a component only pans', async ({ page }) => {
+    await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [DECISION] }]);
+    await fit(page);
+
+    await chooseBranch(page, REFUSED);
+
+    // The roller branched rather than panning: both actions are on offer.
+    await expect(page.getByTestId(`relation-go-${REFUSED}`)).toBeVisible();
+    await expect(page.getByTestId(`relation-label-${NO}`)).toBeVisible();
+  });
+
+  test('a component has no answer to give, so choosing a relation still pans', async ({ page }) => {
+    await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [PAID] }]);
+    await fit(page);
+
+    await openMenu(page);
+    await page.getByTestId(`relation-${DECISION}`).click();
+
+    await expect(page.getByTestId('relation-actions')).toHaveCount(0);
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([DECISION]);
+  });
+
+  test('going to the peer from the branch menu pans the camera', async ({ page }) => {
+    await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [DECISION] }]);
+    await fit(page);
+
+    await chooseBranch(page, REFUSED);
+    await page.getByTestId(`relation-go-${REFUSED}`).click();
+
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([REFUSED]);
+    const trace = await getTrace(page);
+    expect(trace.some((entry) => entry.command.type === 'set-view')).toBe(true);
+  });
+
+  test('choosing a pill opens the label editor and the answer lands in the document', async ({ page }) => {
+    await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [DECISION] }]);
+    await fit(page);
+
+    await chooseBranch(page, REFUSED);
+    // "go to" leads, so the label action takes a turn of its own.
+    await page.getByTestId(`relation-label-${NO}`).click();
+    await page.getByTestId(`relation-label-${NO}`).click();
+
+    await page.getByTestId(`connection-label-input-${NO}`).fill('declined');
+    await page.keyboard.press('Enter');
+
+    const document = await getDocument(page);
+    expect(document.model.elements[DECISION]).toMatchObject({ labels: { [NO]: 'declined' } });
+  });
+
+  test('the label travels through the command bus', async ({ page }) => {
+    await dispatch(page, [
+      ...branchingDomain(),
+      { type: 'set-connection-label', id: DECISION, connectionId: YES, label: 'funds held' },
+    ]);
+
+    const trace = await getTrace(page);
+    expect(
+      trace.some(
+        (entry) =>
+          entry.command.type === 'set-connection-label' && entry.command.label === 'funds held',
+      ),
+    ).toBe(true);
+  });
+
+  test('an emptied label clears the answer', async ({ page }) => {
+    await dispatch(page, [
+      ...branchingDomain(),
+      { type: 'set-connection-label', id: DECISION, connectionId: NO, label: 'declined' },
+      { type: 'set-selection', ids: [DECISION] },
+    ]);
+    await fit(page);
+
+    await chooseBranch(page, REFUSED);
+    await page.getByTestId(`relation-label-${NO}`).click();
+    await page.getByTestId(`relation-label-${NO}`).click();
+    await page.getByTestId(`connection-label-input-${NO}`).fill('');
+    await page.keyboard.press('Enter');
+
+    expect((await getDocument(page)).model.elements[DECISION]).toMatchObject({ labels: {} });
+  });
+
+  test('a branch shows what it answers without anything being selected', async ({ page }) => {
+    await dispatch(page, [
+      ...branchingDomain(),
+      { type: 'set-connection-label', id: DECISION, connectionId: YES, label: 'funds held' },
+      { type: 'set-connection-label', id: DECISION, connectionId: NO, label: 'declined' },
+    ]);
+    await fit(page);
+
+    // Part of the drawing: an unlabelled branch and a hidden answer would
+    // otherwise look the same.
+    await expect(page.getByTestId(`decision-label-${DECISION}-${YES}`)).toHaveText('funds held');
+    await expect(page.getByTestId(`decision-label-${DECISION}-${NO}`)).toHaveText('declined');
+    await expect(page.getByTestId(`decision-label-${DECISION}-${YES}`)).not.toHaveClass(/is-read/);
+  });
+
+  test('a branch with no answer written against it draws nothing', async ({ page }) => {
+    await dispatch(page, branchingDomain());
+    await fit(page);
+
+    await expect(page.getByTestId(`decision-label-${DECISION}-${YES}`)).toHaveCount(0);
+  });
+
+  test('selecting the decision brings its answers forward', async ({ page }) => {
+    await dispatch(page, [
+      ...branchingDomain(),
+      { type: 'set-connection-label', id: DECISION, connectionId: YES, label: 'funds held' },
+      { type: 'set-selection', ids: [DECISION] },
+    ]);
+    await fit(page);
+
+    await expect(page.getByTestId(`decision-label-${DECISION}-${YES}`)).toHaveClass(/is-read/);
+  });
+
+  test('selecting a line shows the answer from each decision it touches', async ({ page }) => {
+    // A second decision on the far end of the "paid" line, so the one line
+    // answers to both.
+    await dispatch(page, [
+      ...branchingDomain(),
+      { type: 'create-connection-node', id: SECOND, shape: 'diamond', title: 'in stock?', position: { x: 520, y: 0 } },
+      { type: 'set-endpoints', id: YES, from: [DECISION], to: [SECOND] },
+      { type: 'set-connection-label', id: DECISION, connectionId: YES, label: 'funds held' },
+      { type: 'set-connection-label', id: SECOND, connectionId: YES, label: 'checking stock' },
+      { type: 'set-selection', ids: [YES] },
+    ]);
+    await fit(page);
+
+    await expect(page.getByTestId(`decision-label-${DECISION}-${YES}`)).toHaveClass(/is-read/);
+    await expect(page.getByTestId(`decision-label-${SECOND}-${YES}`)).toHaveClass(/is-read/);
+    // The decision's other branch has no answer written against it.
+    await expect(page.getByTestId(`decision-label-${DECISION}-${NO}`)).toHaveCount(0);
+  });
+
+  test('turning the roller emphasises the connector it points at', async ({ page }) => {
+    await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [DECISION] }]);
+    await fit(page);
+
+    await openMenu(page);
+    await expect(page.getByTestId(`connection-${ASKS}`)).toHaveClass(/is-highlighted/);
+
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId(`connection-${NO}`)).toHaveClass(/is-highlighted/);
+    await expect(page.getByTestId(`connection-${ASKS}`)).not.toHaveClass(/is-highlighted/);
+  });
+
+  test('the stepper buttons turn the roller, wrapping at the ends', async ({ page }) => {
+    await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [DECISION] }]);
+    await fit(page);
+
+    await openMenu(page);
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveClass(/is-active/);
+
+    await page.getByTestId('relations-menu-down').click();
+    await expect(page.getByTestId(`relation-${REFUSED}`)).toHaveClass(/is-active/);
+
+    await page.getByTestId('relations-menu-up').click();
+    await page.getByTestId('relations-menu-up').click();
+    // Up from the first wraps round to the last.
+    await expect(page.getByTestId(`relation-${PAID}`)).toHaveClass(/is-active/);
+  });
+
+  test('a label survives a save and a load', async ({ page }) => {
+    await dispatch(page, [
+      ...branchingDomain(),
+      { type: 'set-connection-label', id: DECISION, connectionId: YES, label: 'funds held' },
+    ]);
+
+    const saved = await serialize(page);
+    expect(JSON.parse(saved).model.elements[DECISION].labels).toEqual({ [YES]: 'funds held' });
+
+    await page.evaluate((text) => {
+      const document = JSON.parse(text);
+      window.__modl.dispatch({ type: 'load-document', document });
+    }, saved);
+
+    expect((await getDocument(page)).model.elements[DECISION]).toMatchObject({
+      labels: { [YES]: 'funds held' },
+    });
   });
 });
