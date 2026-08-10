@@ -3592,17 +3592,7 @@ test.describe('decision labels', () => {
     expect((await getDocument(page)).model.elements[DECISION]).toMatchObject({ labels: {} });
   });
 
-  test('labels stay off the board until a decision or its line is read', async ({ page }) => {
-    await dispatch(page, [
-      ...branchingDomain(),
-      { type: 'set-connection-label', id: DECISION, connectionId: YES, label: 'funds held' },
-    ]);
-    await fit(page);
-
-    await expect(page.getByTestId(`decision-label-${DECISION}-${YES}`)).toHaveCount(0);
-  });
-
-  test('hovering the decision shows what its branches answer', async ({ page }) => {
+  test('a branch shows what it answers without anything being selected', async ({ page }) => {
     await dispatch(page, [
       ...branchingDomain(),
       { type: 'set-connection-label', id: DECISION, connectionId: YES, label: 'funds held' },
@@ -3610,13 +3600,21 @@ test.describe('decision labels', () => {
     ]);
     await fit(page);
 
-    await page.getByTestId(`node-${DECISION}`).hover();
-
+    // Part of the drawing: an unlabelled branch and a hidden answer would
+    // otherwise look the same.
     await expect(page.getByTestId(`decision-label-${DECISION}-${YES}`)).toHaveText('funds held');
     await expect(page.getByTestId(`decision-label-${DECISION}-${NO}`)).toHaveText('declined');
+    await expect(page.getByTestId(`decision-label-${DECISION}-${YES}`)).not.toHaveClass(/is-read/);
   });
 
-  test('selecting the decision shows them too', async ({ page }) => {
+  test('a branch with no answer written against it draws nothing', async ({ page }) => {
+    await dispatch(page, branchingDomain());
+    await fit(page);
+
+    await expect(page.getByTestId(`decision-label-${DECISION}-${YES}`)).toHaveCount(0);
+  });
+
+  test('selecting the decision brings its answers forward', async ({ page }) => {
     await dispatch(page, [
       ...branchingDomain(),
       { type: 'set-connection-label', id: DECISION, connectionId: YES, label: 'funds held' },
@@ -3624,7 +3622,7 @@ test.describe('decision labels', () => {
     ]);
     await fit(page);
 
-    await expect(page.getByTestId(`decision-label-${DECISION}-${YES}`)).toBeVisible();
+    await expect(page.getByTestId(`decision-label-${DECISION}-${YES}`)).toHaveClass(/is-read/);
   });
 
   test('selecting a line shows the answer from each decision it touches', async ({ page }) => {
@@ -3640,9 +3638,9 @@ test.describe('decision labels', () => {
     ]);
     await fit(page);
 
-    await expect(page.getByTestId(`decision-label-${DECISION}-${YES}`)).toHaveText('funds held');
-    await expect(page.getByTestId(`decision-label-${SECOND}-${YES}`)).toHaveText('checking stock');
-    // The other decision's other branch is not being read, so it stays quiet.
+    await expect(page.getByTestId(`decision-label-${DECISION}-${YES}`)).toHaveClass(/is-read/);
+    await expect(page.getByTestId(`decision-label-${SECOND}-${YES}`)).toHaveClass(/is-read/);
+    // The decision's other branch has no answer written against it.
     await expect(page.getByTestId(`decision-label-${DECISION}-${NO}`)).toHaveCount(0);
   });
 

@@ -307,16 +307,16 @@ export function ConnectionEdge({
 
       <EdgeLabelRenderer>
         {/* What a decision's branch answers, drawn at the decision's end of
-            the line. It shows while that decision is being read, or while
-            this line is selected, which is why a line between two decisions
-            can carry one at each end. */}
+            the line, and part of the drawing rather than something to go
+            looking for. Reading the junction or the line brings its answers
+            forward; a line between two decisions carries one at each end. */}
         {(data?.endLabels ?? []).map((label) => {
           const at = label.atSource ? source : target;
           const point = endLabelPoint(at, label.atSource ? target : source);
           return (
             <div
               key={label.nodeId}
-              className={`decision-label${dimmed ? ' is-dimmed' : ''}`}
+              className={`decision-label${dimmed ? ' is-dimmed' : ''}${label.read ? ' is-read' : ''}`}
               data-testid={`decision-label-${label.nodeId}-${connectionId}`}
               style={{
                 transform: `translate(-50%, -50%) translate(${point.x}px, ${point.y}px)`,

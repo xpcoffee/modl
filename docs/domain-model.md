@@ -250,7 +250,7 @@ The answers sit on the junction rather than on the connections because a line ru
 
 A label naming something that is not a connection touching this node is a `label-unattached` warning. The document still loads: a sentence someone wrote outliving its line is worth keeping until they say otherwise. The whiteboard keeps its own house in order instead — deleting a connection, or dragging its end off the junction, takes the label with it.
 
-The interface shows the labels while their junction is hovered or selected, and shows a connection's own labels while it is selected. See [decision 014](decisions/014-connection-labels.md).
+The interface draws a label at the junction's end of the line it belongs to, always: an unlabelled branch and a branch whose answer is hidden would otherwise look the same. Selecting the junction, or the line, brings its answers forward. See [decision 014](decisions/014-connection-labels.md).
 
 ### Direction
 

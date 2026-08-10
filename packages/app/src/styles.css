@@ -1015,20 +1015,27 @@ select {
   font-size: 12px;
 }
 
-/* What a decision's branch answers, drawn at that end of the line. */
+/* What a decision's branch answers, drawn at that end of the line. Always
+   there: an unlabelled branch and a hidden answer look the same otherwise.
+   Reading the junction or the line brings its answers forward. */
 .decision-label {
   position: absolute;
   padding: 1px 6px;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--panel);
   font-size: 10px;
-  color: var(--text);
+  color: var(--muted);
   white-space: nowrap;
   max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
+}
+
+.decision-label.is-read {
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 .decision-label.is-dimmed {

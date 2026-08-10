@@ -71,6 +71,8 @@ export interface EndLabel {
   text: string;
   /** True when that node is this edge's source, so the label sits at that end. */
   atSource: boolean;
+  /** True while its junction or its line is selected, which brings it forward. */
+  read: boolean;
 }
 
 export interface ConnectionEdgeData extends Record<string, unknown> {
@@ -105,8 +107,6 @@ export interface DeriveOptions {
   boxSelecting: boolean;
   /** Connection the pan-to-relation control is pointing at, drawn emphasised. */
   highlightId: Id | null;
-  /** Element the pointer rests on. A decision shows its branch labels. */
-  hoverId: Id | null;
 }
 
 interface Rect {
@@ -482,7 +482,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           rolledUp: [],
           centredSource: isCentred(elements, from),
           centredTarget: isCentred(elements, to),
-          endLabels: endLabelsFor(elements, element, from, to, selected, options.hoverId),
+          endLabels: endLabelsFor(elements, element, from, to, selected),
           ...(element.style === undefined ? {} : { style: element.style }),
         },
       });
@@ -493,12 +493,12 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
 }
 
 /**
- * The decision labels this line should be showing (issue #12).
+ * The decision labels this line carries (issue #12).
  *
- * A label belongs to the junction at one end, so it is drawn when the reader
- * is reading that junction: pointing at it, or holding it selected. Selecting
- * the line itself shows every answer written against it, which is one label
- * per end when it runs between two decisions.
+ * A label is part of the drawing rather than something to go looking for: an
+ * unlabelled branch and a branch whose answer is hidden look the same, and a
+ * reader deciding which way to follow a flow should not have to click first.
+ * Reading the junction, or the line, brings its answers forward instead.
  */
 function endLabelsFor(
   elements: Record<Id, Element>,
@@ -506,7 +506,6 @@ function endLabelsFor(
   from: Id,
   to: Id,
   selected: ReadonlySet<Id>,
-  hoverId: Id | null,
 ): EndLabel[] {
   const readingLine = selected.has(connection.id);
 
@@ -518,8 +517,7 @@ function endLabelsFor(
     if (!node || !isConnectionNode(node)) return [];
     const text = node.labels[connection.id];
     if (text === undefined || text === '') return [];
-    if (!readingLine && !selected.has(anchor) && hoverId !== anchor) return [];
-    return [{ nodeId: anchor, text, atSource }];
+    return [{ nodeId: anchor, text, atSource, read: readingLine || selected.has(anchor) }];
   });
 }
 
