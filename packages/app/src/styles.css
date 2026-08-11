@@ -1667,7 +1667,7 @@ select {
   stroke-width: 1;
   stroke-dasharray: 4 4;
   opacity: 0.55;
-  animation: comment-fade-in 0.3s ease both;
+  animation: comment-fade-in 0.3s ease;
 }
 
 .comment-overlay__arc.is-selected {
@@ -1701,8 +1701,12 @@ select {
   pointer-events: all;
 }
 
+/* No fill on the mount fade: a filling animation owns opacity for good and
+   the dimming transition below never runs (general cards snapped to dim
+   when the overlay closed). */
 .comment-card {
-  animation: comment-fade-in 0.3s ease both;
+  animation: comment-fade-in 0.3s ease;
+  transition: opacity 0.3s ease;
 }
 
 .comment-card.is-out {
@@ -1713,7 +1717,6 @@ select {
    does not compete with the model, and full-strength under the pointer. */
 .comment-card.is-ambient {
   opacity: 0.35;
-  transition: opacity 0.2s ease;
 }
 
 .comment-card.is-ambient:hover,
@@ -1793,7 +1796,7 @@ select {
    Named together with the mount fade, or the pulse would replace it. */
 .comment-card.is-born {
   animation:
-    comment-fade-in 0.3s ease both,
+    comment-fade-in 0.3s ease,
     comment-born-pulse 0.7s ease-out;
 }
 
