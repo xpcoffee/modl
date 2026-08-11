@@ -1,4 +1,4 @@
-# 016: Input bindings are reader preferences, matched through one table
+# 018: Input bindings are reader preferences, matched through one table
 
 **Status**: accepted · **Date**: 2026-08-11 · **Revised**: 2026-08-11 (PR #42 review)
 

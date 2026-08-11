@@ -9,7 +9,7 @@ import { useSyncExternalStore } from 'react';
  * action holds up to two combos, edited one slot at a time, and a drag
  * action can instead run begin+end: one press starts the gesture, a second
  * settles it, and the cancel binding abandons it. See
- * docs/decisions/016-customizable-keybindings.md.
+ * docs/decisions/018-customizable-keybindings.md.
  */
 
 export type ActionId =
