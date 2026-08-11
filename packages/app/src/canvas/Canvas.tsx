@@ -31,12 +31,15 @@ import {
   type Side,
 } from '@modl/core';
 import {
+  beginEndKeyTrigger,
+  beginEndMouseTrigger,
   boxSelectGesture,
   deleteKeyCodes,
   matchesKey,
   matchesMouse,
   panButtons,
   selectionKeyCodes,
+  selectionOnDragEnabled,
   useKeybindingsVersion,
 } from '../preferences/keybindings.js';
 import { store } from '../store/store.js';
@@ -54,6 +57,7 @@ import { ConnectionNodeView } from './ConnectionNodeView.js';
 import { GroupNode } from './GroupNode.js';
 import { ConnectionEdge } from './ConnectionEdge.js';
 import { ArrowMarkers } from './ArrowMarkers.js';
+import { BoxSelectPreview } from './BoxSelectPreview.js';
 import { PlacementPreview } from './PlacementPreview.js';
 import { DuplicatePreview } from './DuplicatePreview.js';
 import {
@@ -174,9 +178,9 @@ interface BoxGesture {
 }
 
 /**
- * An alt+drag in flight. The copies are ghosts until the release, so nothing
- * on the board moves and the gesture settles as one `duplicate-elements`.
- * See docs/decisions/013-duplication.md.
+ * A duplicate gesture in flight. The copies are ghosts until the gesture
+ * settles, so nothing on the board moves and it lands as one
+ * `duplicate-elements`. See docs/decisions/013-duplication.md.
  */
 interface CopyDrag {
   /** What is being copied: the selection when it holds the pressed element, else that element alone. */
@@ -187,6 +191,34 @@ interface CopyDrag {
   from: Point;
   /** How far the pointer has travelled since. */
   offset: Point;
+  /** True for a begin+end run: releases pass by, the next trigger settles it. */
+  untilEnd?: boolean;
+}
+
+/**
+ * A begin+end box selection in flight: begun by the box-select binding,
+ * grown by pointer movement, settled by the next press of the binding, and
+ * abandoned by the cancel binding.
+ */
+interface BoxRun {
+  /** Where the run began, in flow coordinates. */
+  start: Point;
+  /** Where the pointer is now, in flow coordinates. */
+  to: Point;
+  /** The selection when the run began. */
+  prior: ReadonlySet<Id>;
+  /** True when ctrl rode the beginning press: the boxed elements leave. */
+  subtract: boolean;
+}
+
+/** The rectangle two corners span. */
+function rectFrom(a: Point, b: Point): { x: number; y: number; width: number; height: number } {
+  return {
+    x: Math.min(a.x, b.x),
+    y: Math.min(a.y, b.y),
+    width: Math.abs(b.x - a.x),
+    height: Math.abs(b.y - a.y),
+  };
 }
 
 export function Canvas() {
@@ -203,8 +235,10 @@ export function Canvas() {
   // Whether the last press held ctrl or cmd, read when React Flow reports the
   // resulting selection change: a toggle also speaks for a group's members.
   const pressToggles = useRef(false);
-  // An alt+drag in flight, drawn as ghosts where the copies would land.
+  // A duplicate gesture in flight, drawn as ghosts where the copies would land.
   const [copyDrag, setCopyDrag] = useState<CopyDrag | null>(null);
+  // A begin+end box selection in flight, drawn as its own rectangle.
+  const [boxRun, setBoxRun] = useState<BoxRun | null>(null);
   // Last pointer position over the board, so a paste knows where to centre.
   const pointer = useRef<{ x: number; y: number } | null>(null);
   /**
@@ -672,26 +706,19 @@ export function Canvas() {
   }, [flowStore]);
 
   /**
-   * Settles a box gesture on release: the nodes drawn fully inside the box
-   * (the ones React Flow highlighted during the drag) and the connections
+   * Settles a box: the nodes drawn fully inside it and the connections
    * touching them, joined with the selection the gesture opened over, or
-   * removed from it for ctrl+shift. One dispatch per gesture, and none when
-   * the selection would not change.
+   * removed from it when the gesture said subtract. One dispatch per
+   * gesture, and none when the selection would not change. Shared between
+   * the held drag and the begin+end run.
    */
-  const endBoxSelection = useCallback(
-    (event: React.PointerEvent) => {
-      const gesture = boxGesture.current;
-      if (!gesture) return;
-      boxGesture.current = null;
-
-      const end = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-      const rect = {
-        x: Math.min(gesture.start.x, end.x),
-        y: Math.min(gesture.start.y, end.y),
-        width: Math.abs(end.x - gesture.start.x),
-        height: Math.abs(end.y - gesture.start.y),
-      };
-
+  const settleBox = useCallback(
+    (
+      rect: { x: number; y: number; width: number; height: number },
+      prior: ReadonlySet<Id>,
+      subtract: boolean,
+      forComment: Id | null,
+    ) => {
       const boxedNodes = new Set<Id>();
       for (const node of nodes) {
         const origin = node.data.origin;
@@ -720,18 +747,18 @@ export function Canvas() {
       // A box drawn while a card is open gathers targets for the comment;
       // the selection, which the overlay never shows for elements, is left
       // alone. Only what the filter shows joins.
-      if (gesture.forComment !== null) {
+      if (forComment !== null) {
         addCommentTargets(
-          gesture.forComment,
+          forComment,
           [...boxed].filter((id) => interactable.has(id)),
         );
         return;
       }
 
       const state = store.getState();
-      const next = gesture.subtract
-        ? [...gesture.prior].filter((id) => !boxed.has(id))
-        : [...new Set([...gesture.prior, ...boxed])];
+      const next = subtract
+        ? [...prior].filter((id) => !boxed.has(id))
+        : [...new Set([...prior, ...boxed])];
       const ids = next.filter((id) => state.document.model.elements[id]);
 
       const current = new Set(state.selection);
@@ -749,7 +776,20 @@ export function Canvas() {
         ),
       );
     },
-    [nodes, edges, screenToFlowPosition, interactable],
+    [nodes, edges, interactable],
+  );
+
+  /** Settles a held box gesture on release. */
+  const endBoxSelection = useCallback(
+    (event: React.PointerEvent) => {
+      const gesture = boxGesture.current;
+      if (!gesture) return;
+      boxGesture.current = null;
+
+      const end = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      settleBox(rectFrom(gesture.start, end), gesture.prior, gesture.subtract, gesture.forComment);
+    },
+    [screenToFlowPosition, settleBox],
   );
 
   /**
@@ -779,13 +819,14 @@ export function Canvas() {
   }, []);
 
   /**
-   * Settles an alt+drag on release: one duplicate at the distance travelled.
-   * A press that never moved copies nothing, since the copy would land
-   * exactly on top of what it came from.
+   * Settles a held duplicate drag on release: one duplicate at the distance
+   * travelled. A press that never moved copies nothing, since the copy would
+   * land exactly on top of what it came from. A begin+end run passes by:
+   * only its own next trigger settles it.
    */
   const endCopyDrag = useCallback(
     (event: React.PointerEvent) => {
-      if (!copyDrag) return;
+      if (!copyDrag || copyDrag.untilEnd) return;
       setCopyDrag(null);
 
       const at = screenToFlowPosition({ x: event.clientX, y: event.clientY });
@@ -796,6 +837,53 @@ export function Canvas() {
       settleCopies(duplicateElements(copyDrag.ids, offset));
     },
     [copyDrag, screenToFlowPosition, settleCopies],
+  );
+
+  /**
+   * Opens a begin+end duplicate run: the copies are what the pointer is over
+   * (the selection when it holds that element), or the selection when the
+   * pointer is over nothing.
+   */
+  const beginCopyRun = useCallback((at: Point, grabbed: Id | null) => {
+    const state = store.getState();
+    const ids = grabbed
+      ? state.selection.includes(grabbed)
+        ? [...state.selection]
+        : [grabbed]
+      : [...state.selection];
+    if (ids.length === 0) return;
+    setCopyDrag({
+      ids,
+      rects: copyRects(state, ids),
+      from: at,
+      offset: { x: 0, y: 0 },
+      untilEnd: true,
+    });
+  }, []);
+
+  /** Settles a begin+end duplicate run: the copies land where it ended. */
+  const endCopyRun = useCallback(
+    (at: Point) => {
+      if (!copyDrag) return;
+      setCopyDrag(null);
+      const offset = { x: at.x - copyDrag.from.x, y: at.y - copyDrag.from.y };
+      if (Math.hypot(offset.x, offset.y) < COPY_DRAG_MINIMUM) return;
+      settleCopies(duplicateElements(copyDrag.ids, offset));
+    },
+    [copyDrag, settleCopies],
+  );
+
+  /** Begins a box run at a point, or settles the one already in flight. */
+  const toggleBoxRun = useCallback(
+    (at: Point, subtract: boolean) => {
+      if (boxRun) {
+        settleBox(rectFrom(boxRun.start, boxRun.to), boxRun.prior, boxRun.subtract, null);
+        setBoxRun(null);
+        return;
+      }
+      setBoxRun({ start: at, to: at, prior: new Set(store.getState().selection), subtract });
+    },
+    [boxRun, settleBox],
   );
 
   /** Drops a copy of the clipboard, centred on a point in flow coordinates. */
@@ -851,6 +939,48 @@ export function Canvas() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [pasteAt, screenToFlowPosition]);
 
+  /**
+   * Begin+end gestures bound to keys: the first press opens the run at the
+   * pointer, the second settles it there, and the cancel binding abandons
+   * it. Mouse-bound runs go through the pointer handlers below instead.
+   */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      // A focused field keeps its keys for its own text.
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, [contenteditable]')) return;
+
+      if (matchesKey('cancel', event)) {
+        if (!boxRun && !copyDrag?.untilEnd) return;
+        event.preventDefault();
+        setBoxRun(null);
+        setCopyDrag(null);
+        return;
+      }
+
+      const trigger = beginEndKeyTrigger(event);
+      if (!trigger) return;
+      event.preventDefault();
+      const at = screenToFlowPosition(pointer.current ?? centreOf(canvasRef.current));
+      if (trigger.id === 'box-select') {
+        toggleBoxRun(at, trigger.subtract);
+        return;
+      }
+      if (copyDrag?.untilEnd) {
+        endCopyRun(at);
+        return;
+      }
+      const under = pointer.current
+        ? document
+            .elementFromPoint(pointer.current.x, pointer.current.y)
+            ?.closest<HTMLElement>('.react-flow__node')?.dataset['id']
+        : undefined;
+      beginCopyRun(at, under ?? null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [boxRun, copyDrag, screenToFlowPosition, toggleBoxRun, beginCopyRun, endCopyRun]);
+
   /** A press on the minimap recentres the board there, at the zoom it holds. */
   const onMiniMapClick = useCallback(
     (_: unknown, position: { x: number; y: number }) => {
@@ -872,10 +1002,13 @@ export function Canvas() {
       data-testid="canvas"
       data-placing={pending ?? undefined}
       data-comment-overlay={overlay ? 'true' : undefined}
+      // The board owns the right button, so it can be bound to an action
+      // rather than opening the browser's menu.
+      onContextMenuCapture={(event) => event.preventDefault()}
       // React Flow starts a node drag on mousedown, so stopping the
       // pointerdown below does not keep the original still by itself.
       onMouseDownCapture={(event) => {
-        if (duplicateTarget(event)) {
+        if (duplicateTarget(event) || beginEndMouseTrigger(event)) {
           event.preventDefault();
           event.stopPropagation();
         }
@@ -919,10 +1052,29 @@ export function Canvas() {
           return;
         }
 
-        // Shift opens a box over the pane; while a card is open the box
-        // gathers targets for it, and keeping focus keeps the card open.
-        if (overlay && event.shiftKey && getCommentEdit() !== null) {
+        // The box-select binding opens a box over the pane; while a card is
+        // open the box gathers targets for it, and keeping focus keeps the
+        // card open.
+        if (overlay && boxSelectGesture(event) !== null && getCommentEdit() !== null) {
           event.preventDefault();
+        }
+
+        // A begin+end binding on a mouse press: the first press opens the
+        // run, the second settles it, wherever they land on the board.
+        const runTrigger = beginEndMouseTrigger(event);
+        if (runTrigger) {
+          event.preventDefault();
+          event.stopPropagation();
+          swallowClick.current = true;
+          const at = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+          if (runTrigger.id === 'box-select') {
+            toggleBoxRun(at, runTrigger.subtract);
+          } else if (copyDrag?.untilEnd) {
+            endCopyRun(at);
+          } else {
+            beginCopyRun(at, target.closest<HTMLElement>('.react-flow__node')?.dataset['id'] ?? null);
+          }
+          return;
         }
 
         // Alt+drag copies what it grabs, or the whole selection when it holds
@@ -972,6 +1124,9 @@ export function Canvas() {
             offset: { x: at.x - copyDrag.from.x, y: at.y - copyDrag.from.y },
           });
         }
+        if (boxRun) {
+          setBoxRun({ ...boxRun, to: screenToFlowPosition({ x: event.clientX, y: event.clientY }) });
+        }
         if (!draft) return;
         setDraft({ ...draft, to: screenToFlowPosition({ x: event.clientX, y: event.clientY }) });
       }}
@@ -999,7 +1154,7 @@ export function Canvas() {
         });
         setDraft(null);
       }}
-      onKeyDown={(event) => event.key === 'Escape' && disarm()}
+      onKeyDown={(event) => matchesKey('cancel', event) && disarm()}
       tabIndex={-1}
     >
       <ArrowMarkers />
@@ -1007,6 +1162,7 @@ export function Canvas() {
         <PlacementPreview from={draft.from} to={draft.to} />
       )}
       {copyDrag && <DuplicatePreview rects={copyDrag.rects} offset={copyDrag.offset} />}
+      {boxRun && <BoxSelectPreview from={boxRun.start} to={boxRun.to} />}
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -1045,7 +1201,10 @@ export function Canvas() {
         // binding expands to its ctrl and meta variants: plain 'Shift' stops
         // matching the moment ctrl joins it and ctrl+shift+drag would pan.
         // Naming the combinations keeps the box open for subtraction.
-        selectionKeyCode={selectionKeyCodes()}
+        selectionKeyCode={selectionKeyCodes().length > 0 ? selectionKeyCodes() : null}
+        // A box-select binding on the bare left button has no key for React
+        // Flow to match, so the pane itself opens the box on drag.
+        selectionOnDrag={selectionOnDragEnabled()}
         // Pinned so the gesture is the same on every platform.
         multiSelectionKeyCode={['Control', 'Meta']}
         // Any handle can be either end, so a line attaches to whichever side

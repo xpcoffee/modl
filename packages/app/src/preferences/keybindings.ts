@@ -6,9 +6,9 @@ import { useSyncExternalStore } from 'react';
  * Like motion, bindings belong to the reader rather than the board: they say
  * nothing about the domain being drawn, they follow the person across every
  * document they open, and they never reach the document or the trace. Each
- * action holds a list of combos — rebinding replaces the list with the one
- * combo the reader pressed, and the defaults may hold more than one (redo
- * answers both ctrl+y and ctrl+shift+z). See
+ * action holds up to two combos, edited one slot at a time, and a drag
+ * action can instead run begin+end: one press starts the gesture, a second
+ * settles it, and the cancel binding abandons it. See
  * docs/decisions/016-customizable-keybindings.md.
  */
 
@@ -20,9 +20,16 @@ export type ActionId =
   | 'paste'
   | 'search'
   | 'delete'
+  | 'cancel'
   | 'box-select'
   | 'duplicate'
   | 'pan';
+
+/** How a drag action runs: held through a drag, or between two presses. */
+export type GestureMode = 'drag' | 'begin-end';
+
+/** How many combos an action can hold; the panel shows this many slots. */
+export const MAX_COMBOS = 2;
 
 /** `ctrl` stands for ctrl-or-cmd, the reading every handler on the board uses. */
 export interface KeyCombo {
@@ -47,15 +54,17 @@ export type Combo = KeyCombo | MouseCombo;
 export interface ActionSpec {
   id: ActionId;
   label: string;
-  /**
-   * What a capture accepts. 'modifier+button' keeps a modifier on the combo:
-   * a bare left button would swallow the plain drag that moves elements.
-   * 'button' drops modifiers entirely, because React Flow pans by button
-   * alone.
-   */
-  capture: 'key' | 'modifier+button' | 'button';
+  /** What the action binds in drag mode; begin+end widens mouse to both. */
+  kind: 'key' | 'mouse';
   /** Drags read as "Shift+Left drag"; presses as "Ctrl+Z". */
   gesture: 'press' | 'drag';
+  /** Whether the action can run begin+end instead of as a held drag. */
+  beginEnd?: boolean;
+  /**
+   * Whether a drag-mode combo must keep a modifier. A bare left button on
+   * duplicate would swallow the plain drag that moves elements.
+   */
+  needsModifierInDrag?: boolean;
   defaults: Combo[];
 }
 
@@ -83,39 +92,50 @@ function mouse(
 }
 
 export const ACTIONS: ActionSpec[] = [
-  { id: 'undo', label: 'Undo', capture: 'key', gesture: 'press', defaults: [key('z', { ctrl: true })] },
+  { id: 'undo', label: 'Undo', kind: 'key', gesture: 'press', defaults: [key('z', { ctrl: true })] },
   {
     id: 'redo',
     label: 'Redo',
-    capture: 'key',
+    kind: 'key',
     gesture: 'press',
     defaults: [key('y', { ctrl: true }), key('z', { ctrl: true, shift: true })],
   },
-  { id: 'select-all', label: 'Select all', capture: 'key', gesture: 'press', defaults: [key('a', { ctrl: true })] },
-  { id: 'copy', label: 'Copy', capture: 'key', gesture: 'press', defaults: [key('c', { ctrl: true })] },
-  { id: 'paste', label: 'Paste', capture: 'key', gesture: 'press', defaults: [key('v', { ctrl: true })] },
-  { id: 'search', label: 'Search', capture: 'key', gesture: 'press', defaults: [key('f', { ctrl: true })] },
-  { id: 'delete', label: 'Delete', capture: 'key', gesture: 'press', defaults: [key('Delete'), key('Backspace')] },
+  { id: 'select-all', label: 'Select all', kind: 'key', gesture: 'press', defaults: [key('a', { ctrl: true })] },
+  { id: 'copy', label: 'Copy', kind: 'key', gesture: 'press', defaults: [key('c', { ctrl: true })] },
+  { id: 'paste', label: 'Paste', kind: 'key', gesture: 'press', defaults: [key('v', { ctrl: true })] },
+  { id: 'search', label: 'Search', kind: 'key', gesture: 'press', defaults: [key('f', { ctrl: true })] },
+  { id: 'delete', label: 'Delete', kind: 'key', gesture: 'press', defaults: [key('Delete'), key('Backspace')] },
+  { id: 'cancel', label: 'Cancel', kind: 'key', gesture: 'press', defaults: [key('Escape')] },
   {
     id: 'box-select',
     label: 'Box select',
-    capture: 'modifier+button',
+    kind: 'mouse',
     gesture: 'drag',
+    beginEnd: true,
     defaults: [mouse(0, { shift: true })],
   },
   {
     id: 'duplicate',
     label: 'Duplicate',
-    capture: 'modifier+button',
+    kind: 'mouse',
     gesture: 'drag',
+    beginEnd: true,
+    needsModifierInDrag: true,
     defaults: [mouse(0, { alt: true })],
   },
-  { id: 'pan', label: 'Pan the board', capture: 'button', gesture: 'drag', defaults: [mouse(1)] },
+  {
+    id: 'pan',
+    label: 'Pan the board',
+    kind: 'mouse',
+    gesture: 'drag',
+    defaults: [mouse(0), mouse(1)],
+  },
 ];
 
 const STORAGE_KEY = 'modl.keybindings';
 
-let overrides: Partial<Record<ActionId, Combo[]>> = {};
+let combosOverride: Partial<Record<ActionId, Combo[]>> = {};
+let modes: Partial<Record<ActionId, GestureMode>> = {};
 let version = 0;
 const listeners = new Set<() => void>();
 
@@ -126,7 +146,11 @@ export function specOf(id: ActionId): ActionSpec {
 }
 
 export function combosFor(id: ActionId): Combo[] {
-  return overrides[id] ?? specOf(id).defaults;
+  return combosOverride[id] ?? specOf(id).defaults;
+}
+
+export function gestureMode(id: ActionId): GestureMode {
+  return modes[id] ?? 'drag';
 }
 
 interface KeyLike {
@@ -149,37 +173,43 @@ function normalizeKey(k: string): string {
   return k.length === 1 ? k.toLowerCase() : k;
 }
 
-export function matchesKey(id: ActionId, event: KeyLike): boolean {
-  const pressed = normalizeKey(event.key);
-  const ctrl = event.ctrlKey || event.metaKey;
-  return combosFor(id).some(
-    (combo) =>
-      combo.kind === 'key' &&
-      combo.key === pressed &&
-      combo.ctrl === ctrl &&
-      combo.shift === event.shiftKey &&
-      combo.alt === event.altKey,
+function comboMatchesKey(combo: Combo, event: KeyLike): boolean {
+  return (
+    combo.kind === 'key' &&
+    combo.key === normalizeKey(event.key) &&
+    combo.ctrl === (event.ctrlKey || event.metaKey) &&
+    combo.shift === event.shiftKey &&
+    combo.alt === event.altKey
   );
+}
+
+function comboMatchesMouse(combo: Combo, event: MouseLike): boolean {
+  return (
+    combo.kind === 'mouse' &&
+    combo.button === event.button &&
+    combo.ctrl === (event.ctrlKey || event.metaKey) &&
+    combo.shift === event.shiftKey &&
+    combo.alt === event.altKey
+  );
+}
+
+export function matchesKey(id: ActionId, event: KeyLike): boolean {
+  return combosFor(id).some((combo) => comboMatchesKey(combo, event));
 }
 
 export function matchesMouse(id: ActionId, event: MouseLike): boolean {
-  const ctrl = event.ctrlKey || event.metaKey;
-  return combosFor(id).some(
-    (combo) =>
-      combo.kind === 'mouse' &&
-      combo.button === event.button &&
-      combo.ctrl === ctrl &&
-      combo.shift === event.shiftKey &&
-      combo.alt === event.altKey,
-  );
+  if (specOf(id).beginEnd && gestureMode(id) === 'begin-end') return false;
+  return combosFor(id).some((combo) => comboMatchesMouse(combo, event));
 }
 
 /**
- * A box-select press, read ctrl-tolerantly: ctrl on top of the bound combo
- * subtracts the boxed elements from the selection (decision 012). A combo
- * that itself holds ctrl always adds — no key is left over to say subtract.
+ * A box-select press in drag mode, read ctrl-tolerantly: ctrl on top of the
+ * bound combo subtracts the boxed elements from the selection (decision 012).
+ * A combo that itself holds ctrl always adds — no key is left over to say
+ * subtract.
  */
 export function boxSelectGesture(event: MouseLike): { subtract: boolean } | null {
+  if (gestureMode('box-select') === 'begin-end') return null;
   const ctrl = event.ctrlKey || event.metaKey;
   for (const combo of combosFor('box-select')) {
     if (combo.kind !== 'mouse' || combo.button !== event.button) continue;
@@ -190,10 +220,59 @@ export function boxSelectGesture(event: MouseLike): { subtract: boolean } | null
   return null;
 }
 
+/** The begin+end action a key press begins or ends, or null. */
+export function beginEndKeyTrigger(
+  event: KeyLike,
+): { id: 'box-select' | 'duplicate'; subtract: boolean } | null {
+  if (gestureMode('box-select') === 'begin-end') {
+    const ctrl = event.ctrlKey || event.metaKey;
+    for (const combo of combosFor('box-select')) {
+      if (combo.kind !== 'key' || combo.key !== normalizeKey(event.key)) continue;
+      if (combo.shift !== event.shiftKey || combo.alt !== event.altKey) continue;
+      if (combo.ctrl && !ctrl) continue;
+      return { id: 'box-select', subtract: !combo.ctrl && ctrl };
+    }
+  }
+  if (gestureMode('duplicate') === 'begin-end') {
+    if (combosFor('duplicate').some((combo) => comboMatchesKey(combo, event))) {
+      return { id: 'duplicate', subtract: false };
+    }
+  }
+  return null;
+}
+
+/** The begin+end action a mouse press begins or ends, or null. */
+export function beginEndMouseTrigger(
+  event: MouseLike,
+): { id: 'box-select' | 'duplicate'; subtract: boolean } | null {
+  if (gestureMode('box-select') === 'begin-end') {
+    const ctrl = event.ctrlKey || event.metaKey;
+    for (const combo of combosFor('box-select')) {
+      if (combo.kind !== 'mouse' || combo.button !== event.button) continue;
+      if (combo.shift !== event.shiftKey || combo.alt !== event.altKey) continue;
+      if (combo.ctrl && !ctrl) continue;
+      return { id: 'box-select', subtract: !combo.ctrl && ctrl };
+    }
+  }
+  if (gestureMode('duplicate') === 'begin-end') {
+    if (combosFor('duplicate').some((combo) => comboMatchesMouse(combo, event))) {
+      return { id: 'duplicate', subtract: false };
+    }
+  }
+  return null;
+}
+
 const MODIFIER_KEYS = new Set(['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'OS']);
 
-/** The combo a keydown describes, or null for a modifier alone (keep waiting). */
-export function comboFromKeyEvent(event: KeyLike): KeyCombo | null {
+/**
+ * The combo a keydown would bind to the armed action, or null to keep
+ * waiting: a modifier alone is half a combo, and a mouse action in drag mode
+ * takes no keys.
+ */
+export function captureKeyCombo(id: ActionId, event: KeyLike): KeyCombo | null {
+  const spec = specOf(id);
+  const acceptsKeys = spec.kind === 'key' || (spec.beginEnd && gestureMode(id) === 'begin-end');
+  if (!acceptsKeys) return null;
   if (MODIFIER_KEYS.has(event.key)) return null;
   return {
     kind: 'key',
@@ -205,15 +284,27 @@ export function comboFromKeyEvent(event: KeyLike): KeyCombo | null {
 }
 
 /**
- * The combo a press describes, or null when the action needs a modifier and
- * none is held — that press reads as a click somewhere else.
+ * The combo a press would bind to the armed action, or null when the press
+ * cannot bind it — a press on a keyboard-only action, or a bare left button
+ * where a modifier is required. The caller reads null as a click somewhere
+ * else.
  */
-export function comboFromMouseEvent(id: ActionId, event: MouseLike): MouseCombo | null {
+export function captureMouseCombo(id: ActionId, event: MouseLike): MouseCombo | null {
   const spec = specOf(id);
+  if (spec.kind !== 'mouse') return null;
+  // React Flow pans by button alone, so pan keeps no modifiers.
+  if (id === 'pan') return mouse(event.button);
   const ctrl = event.ctrlKey || event.metaKey;
-  if (spec.capture === 'button') return mouse(event.button);
-  if (!ctrl && !event.shiftKey && !event.altKey) return null;
+  const bare = !ctrl && !event.shiftKey && !event.altKey;
+  if (spec.needsModifierInDrag && gestureMode(id) === 'drag' && bare) return null;
   return { kind: 'mouse', button: event.button, ctrl, shift: event.shiftKey, alt: event.altKey };
+}
+
+/** What the armed slot is waiting for, said in the panel. */
+export function captureHint(id: ActionId): string {
+  const spec = specOf(id);
+  if (spec.beginEnd && gestureMode(id) === 'begin-end') return 'Press a key or button…';
+  return spec.kind === 'key' ? 'Press a key…' : 'Press a button…';
 }
 
 const BUTTON_LABELS: Record<number, string> = { 0: 'Left', 1: 'Middle', 2: 'Right' };
@@ -238,11 +329,11 @@ export function describeCombo(combo: Combo, gesture: 'press' | 'drag'): string {
   return [...modifierParts(combo), button].join('+') + suffix;
 }
 
-export function describeAction(id: ActionId): string {
+/** A combo said the way the action currently runs: begin+end reads as presses. */
+export function describeActionCombo(id: ActionId, combo: Combo): string {
   const spec = specOf(id);
-  return combosFor(id)
-    .map((combo) => describeCombo(combo, spec.gesture))
-    .join(' or ');
+  const gesture = spec.beginEnd && gestureMode(id) === 'begin-end' ? 'press' : spec.gesture;
+  return describeCombo(combo, gesture);
 }
 
 /**
@@ -270,9 +361,12 @@ export function deleteKeyCodes(): string[] {
 /**
  * The combinations that keep React Flow's selection box open. React Flow
  * matches them exactly, so ctrl and meta variants join each bound combo:
- * without them, pressing ctrl to subtract mid-drag would close the box.
+ * without them, pressing ctrl to subtract mid-drag would close the box. A
+ * combo with no modifiers is carried by selection-on-drag instead, and
+ * begin+end mode draws its own box.
  */
 export function selectionKeyCodes(): string[] {
+  if (gestureMode('box-select') === 'begin-end') return [];
   const codes = new Set<string>();
   for (const combo of combosFor('box-select')) {
     if (combo.kind !== 'mouse') continue;
@@ -290,12 +384,25 @@ export function selectionKeyCodes(): string[] {
 }
 
 /**
- * The buttons that pan. The left button always pans the empty pane — that is
- * the board's base gesture — and the bound button joins it so pan also
- * answers over elements.
+ * Whether a plain left drag on the pane opens the selection box: true when a
+ * drag-mode box-select combo is the bare left button, which React Flow's key
+ * codes cannot express.
+ */
+export function selectionOnDragEnabled(): boolean {
+  if (gestureMode('box-select') === 'begin-end') return false;
+  return combosFor('box-select').some(
+    (combo) =>
+      combo.kind === 'mouse' && combo.button === 0 && !combo.ctrl && !combo.shift && !combo.alt,
+  );
+}
+
+/**
+ * The buttons that pan, exactly as bound. React Flow shows the grab cursor
+ * only while the left button is among them, so removing the left-drag
+ * binding also returns the pane to a plain cursor.
  */
 export function panButtons(): number[] {
-  const buttons = new Set<number>([0]);
+  const buttons = new Set<number>();
   for (const combo of combosFor('pan')) {
     if (combo.kind === 'mouse') buttons.add(combo.button);
   }
@@ -320,8 +427,11 @@ export function useKeybindingsVersion(): number {
 
 function persist(): void {
   try {
-    if (Object.keys(overrides).length === 0) window.localStorage.removeItem(STORAGE_KEY);
-    else window.localStorage.setItem(STORAGE_KEY, JSON.stringify(overrides));
+    if (Object.keys(combosOverride).length === 0 && Object.keys(modes).length === 0) {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ combos: combosOverride, modes }));
+    }
   } catch {
     // Private browsing and blocked storage: the bindings still hold for this
     // session, which is the part the reader asked for.
@@ -333,19 +443,37 @@ function announce(): void {
   for (const listener of listeners) listener();
 }
 
-export function setBinding(id: ActionId, combo: Combo): void {
-  overrides = { ...overrides, [id]: [combo] };
+/** Fills the slot, appending when the index is past the end of the list. */
+export function setCombo(id: ActionId, index: number, combo: Combo): void {
+  const list = [...combosFor(id)];
+  list[Math.min(index, list.length)] = combo;
+  combosOverride = { ...combosOverride, [id]: list.slice(0, MAX_COMBOS) };
+  persist();
+  announce();
+}
+
+/** Empties the slot; an action can end up with no binding at all. */
+export function removeCombo(id: ActionId, index: number): void {
+  const list = combosFor(id).filter((_, at) => at !== index);
+  combosOverride = { ...combosOverride, [id]: list };
+  persist();
+  announce();
+}
+
+export function setGestureMode(id: ActionId, mode: GestureMode): void {
+  modes = { ...modes, [id]: mode };
   persist();
   announce();
 }
 
 export function resetKeybindings(): void {
-  overrides = {};
+  combosOverride = {};
+  modes = {};
   persist();
   announce();
 }
 
-function isCombo(value: unknown, action: ActionSpec): value is Combo {
+function isCombo(value: unknown, action: ActionSpec, mode: GestureMode): value is Combo {
   if (typeof value !== 'object' || value === null) return false;
   const combo = value as Record<string, unknown>;
   if (
@@ -355,25 +483,51 @@ function isCombo(value: unknown, action: ActionSpec): value is Combo {
   ) {
     return false;
   }
-  if (action.capture === 'key') return combo['kind'] === 'key' && typeof combo['key'] === 'string';
-  if (combo['kind'] !== 'mouse' || typeof combo['button'] !== 'number') return false;
-  // A modifier-less combo on a modifier+button action (a hand-edited store)
-  // would turn every plain press into the gesture.
-  if (action.capture === 'modifier+button' && !combo['ctrl'] && !combo['shift'] && !combo['alt']) {
+  const isKey = combo['kind'] === 'key' && typeof combo['key'] === 'string';
+  const isMouse = combo['kind'] === 'mouse' && typeof combo['button'] === 'number';
+  if (action.kind === 'key') return isKey;
+  if (action.beginEnd && mode === 'begin-end') return isKey || isMouse;
+  if (!isMouse) return false;
+  // A bare left button on a modifier-guarded drag (a hand-edited store)
+  // would swallow the plain drag that moves elements.
+  if (
+    action.needsModifierInDrag &&
+    combo['button'] === 0 &&
+    !combo['ctrl'] &&
+    !combo['shift'] &&
+    !combo['alt']
+  ) {
     return false;
   }
   return true;
 }
 
 /** Keeps what still parses and still fits its action; drops the rest. */
-function validate(parsed: unknown): Partial<Record<ActionId, Combo[]>> {
-  const result: Partial<Record<ActionId, Combo[]>> = {};
+function validate(parsed: unknown): {
+  combos: Partial<Record<ActionId, Combo[]>>;
+  modes: Partial<Record<ActionId, GestureMode>>;
+} {
+  const result: ReturnType<typeof validate> = { combos: {}, modes: {} };
   if (typeof parsed !== 'object' || parsed === null) return result;
-  for (const action of ACTIONS) {
-    const value = (parsed as Record<string, unknown>)[action.id];
-    if (!Array.isArray(value)) continue;
-    const combos = value.filter((combo): combo is Combo => isCombo(combo, action));
-    if (combos.length > 0) result[action.id] = combos;
+  const stored = parsed as Record<string, unknown>;
+  const storedModes = stored['modes'];
+  if (typeof storedModes === 'object' && storedModes !== null) {
+    for (const action of ACTIONS) {
+      if (!action.beginEnd) continue;
+      const mode = (storedModes as Record<string, unknown>)[action.id];
+      if (mode === 'drag' || mode === 'begin-end') result.modes[action.id] = mode;
+    }
+  }
+  const storedCombos = stored['combos'];
+  if (typeof storedCombos === 'object' && storedCombos !== null) {
+    for (const action of ACTIONS) {
+      const value = (storedCombos as Record<string, unknown>)[action.id];
+      if (!Array.isArray(value)) continue;
+      const mode = result.modes[action.id] ?? 'drag';
+      result.combos[action.id] = value
+        .filter((combo): combo is Combo => isCombo(combo, action, mode))
+        .slice(0, MAX_COMBOS);
+    }
   }
   return result;
 }
@@ -388,8 +542,11 @@ export function installKeybindings(): void {
   }
   if (stored === null) return;
   try {
-    overrides = validate(JSON.parse(stored));
+    const validated = validate(JSON.parse(stored));
+    combosOverride = validated.combos;
+    modes = validated.modes;
   } catch {
-    overrides = {};
+    combosOverride = {};
+    modes = {};
   }
 }

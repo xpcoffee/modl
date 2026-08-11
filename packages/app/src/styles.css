@@ -1387,8 +1387,59 @@ select {
   font-size: 13px;
 }
 
+.preferences__action {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Whether a drag action runs as a held drag or between two presses. */
+.preferences__modes {
+  display: flex;
+  gap: 4px;
+}
+
+.preferences__modes button {
+  padding: 1px 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.preferences__modes button.is-active {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.preferences__combos {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* A binding chip: the combo, and the × that removes it. */
+.preferences__chip {
+  display: inline-flex;
+}
+
+.preferences__chip .preferences__binding {
+  border-radius: 6px 0 0 6px;
+}
+
+.preferences__remove {
+  padding: 3px 6px;
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.preferences__remove:hover {
+  color: var(--text);
+}
+
 .preferences__binding {
-  min-width: 150px;
+  min-width: 24px;
   padding: 3px 8px;
   font-size: 12px;
 }
@@ -1396,6 +1447,10 @@ select {
 .preferences__binding.is-armed {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+.preferences__add {
+  color: var(--muted);
 }
 
 .preferences__reset {
@@ -1406,6 +1461,15 @@ select {
 
 .preferences__reset:hover {
   color: var(--text);
+}
+
+/* The rectangle a begin+end box selection spans, drawn by the app because
+   React Flow only draws its own box for a held drag. */
+.box-select-preview {
+  position: absolute;
+  border: 1px dashed var(--accent);
+  background: rgb(91 141 239 / 8%);
+  pointer-events: none;
 }
 
 /* Search and filter menu (issue #33), overlaid top-centre on the board. */

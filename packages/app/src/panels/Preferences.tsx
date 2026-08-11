@@ -7,13 +7,21 @@ import {
 } from '../preferences/motion.js';
 import {
   ACTIONS,
-  comboFromKeyEvent,
-  comboFromMouseEvent,
-  describeAction,
+  MAX_COMBOS,
+  captureHint,
+  captureKeyCombo,
+  captureMouseCombo,
+  combosFor,
+  describeActionCombo,
+  gestureMode,
+  matchesKey,
+  removeCombo,
   resetKeybindings,
-  setBinding,
+  setCombo,
+  setGestureMode,
   useKeybindingsVersion,
   type ActionId,
+  type GestureMode,
 } from '../preferences/keybindings.js';
 
 /**
@@ -36,17 +44,30 @@ const MOTION_CHOICES: { value: MotionPreference; label: string }[] = [
   { value: 'reduced', label: 'Never animate' },
 ];
 
+const MODE_CHOICES: { value: GestureMode; label: string }[] = [
+  { value: 'drag', label: 'Drag' },
+  { value: 'begin-end', label: 'Begin + end' },
+];
+
 type PreferencesPage = 'root' | 'keybindings';
+
+/** A binding slot waiting for a press. */
+interface Arming {
+  id: ActionId;
+  index: number;
+}
 
 export function Preferences() {
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState<PreferencesPage>('root');
-  // The action waiting for a press, when a binding button has been clicked.
-  const [arming, setArming] = useState<ActionId | null>(null);
+  const [arming, setArming] = useState<Arming | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   // Whether the click that follows a captured press should be swallowed
   // before it reaches whatever control it landed on.
   const swallowClick = useRef(false);
+  // Whether the press that opened the current click landed on the backdrop:
+  // a drag released over the backdrop must not read as a click outside.
+  const pressOnBackdrop = useRef(false);
   const preference = useMotionPreference();
   const systemReduces = useSystemReducesMotion();
   useKeybindingsVersion();
@@ -58,51 +79,53 @@ export function Preferences() {
     if (!open && dialog.open) dialog.close();
   }, [open]);
 
-  // While a binding is armed, the next press anywhere is the answer. The
-  // listeners ride the capture phase and stop the event, so the press being
-  // recorded cannot also act on the board or the panel.
+  // While a binding slot is armed, the next press anywhere is the answer.
+  // The listeners ride the capture phase and stop the event, so the press
+  // being recorded cannot also act on the board or the panel.
   useEffect(() => {
     if (arming === null) return;
-    const spec = ACTIONS.find((action) => action.id === arming);
-    if (!spec) return;
+    const { id, index } = arming;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (matchesKey('cancel', event)) {
         // preventDefault also keeps the dialog's own Escape from closing it.
         event.preventDefault();
         event.stopPropagation();
         setArming(null);
         return;
       }
-      if (spec.capture !== 'key') return;
-      const combo = comboFromKeyEvent(event);
-      // A modifier alone is half a combo: keep waiting for the rest.
+      const combo = captureKeyCombo(id, event);
+      // Half a combo (a modifier alone) or a key on a mouse-only action:
+      // keep waiting.
       if (combo === null) return;
       event.preventDefault();
       event.stopPropagation();
-      setBinding(spec.id, combo);
+      setCombo(id, index, combo);
       setArming(null);
     };
 
     const onPointerDown = (event: PointerEvent) => {
+      pressOnBackdrop.current = false;
       const target = event.target as HTMLElement | null;
-      if (spec.capture === 'key') {
-        // A press while waiting on a key backs out; on the armed button
-        // itself the click that follows would arm it straight back.
-        if (target?.closest(`[data-testid="binding-${spec.id}"]`)) swallowClick.current = true;
-        setArming(null);
-        return;
-      }
-      const combo = comboFromMouseEvent(spec.id, event);
-      // No modifier where one is needed: the press is a click somewhere else.
+      // A bare left click on one of the panel's own controls is the reader
+      // using the panel, so it disarms instead of binding; bare left binds
+      // from anywhere else (the panel background, the backdrop, the board).
+      const bare = event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
+      const onPanelControl = target?.closest('.preferences__panel :is(button, input, label)') != null;
+      const combo = bare && onPanelControl ? null : captureMouseCombo(id, event);
       if (combo === null) {
+        // The press cannot bind this slot, so it is a click somewhere else.
+        // On the armed button itself the click that follows would arm it
+        // straight back.
+        const armedButton = `[data-testid="binding-${id}-${index}"], [data-testid="add-binding-${id}"]`;
+        if (target?.closest(armedButton)) swallowClick.current = true;
         setArming(null);
         return;
       }
       event.preventDefault();
       event.stopPropagation();
       swallowClick.current = true;
-      setBinding(spec.id, combo);
+      setCombo(id, index, combo);
       setArming(null);
     };
 
@@ -115,7 +138,6 @@ export function Preferences() {
 
     // A right button being captured must not also open the browser's menu.
     const onContextMenu = (event: MouseEvent) => {
-      if (spec.capture === 'key') return;
       event.preventDefault();
       event.stopPropagation();
     };
@@ -160,9 +182,14 @@ export function Preferences() {
           setArming(null);
         }}
         // The backdrop is part of the dialog's own box, so a press that lands
-        // on the element itself landed outside the panel drawn inside it.
+        // on the element itself landed outside the panel drawn inside it. The
+        // click only dismisses when its press also started out there: a drag
+        // released over the backdrop stays inside.
+        onPointerDown={(event) => {
+          pressOnBackdrop.current = event.target === dialogRef.current;
+        }}
         onClick={(event) => {
-          if (event.target === dialogRef.current) setOpen(false);
+          if (event.target === dialogRef.current && pressOnBackdrop.current) setOpen(false);
         }}
       >
         <div className="preferences__panel">
@@ -248,25 +275,105 @@ export function Preferences() {
               <legend>Input bindings</legend>
               <p className="preferences__note">
                 Click a binding, then press the key or button it should answer to, with any
-                modifiers held. Escape backs out of a press. Changes apply as they are made.
+                modifiers held. Cancel (Escape) backs out of a press. Changes apply as they are
+                made.
               </p>
-              {ACTIONS.map((action) => (
-                <div key={action.id} className="preferences__row">
-                  <span>{action.label}</span>
-                  <button
-                    type="button"
-                    className={`preferences__binding${arming === action.id ? ' is-armed' : ''}`}
-                    data-testid={`binding-${action.id}`}
-                    onClick={() => setArming(arming === action.id ? null : action.id)}
-                  >
-                    {arming === action.id
-                      ? action.capture === 'key'
-                        ? 'Press a key…'
-                        : 'Press a button…'
-                      : describeAction(action.id)}
-                  </button>
-                </div>
-              ))}
+              {ACTIONS.map((action) => {
+                const combos = combosFor(action.id);
+                return (
+                  <div key={action.id} className="preferences__row">
+                    <span className="preferences__action">
+                      {action.label}
+                      {action.beginEnd && (
+                        <span
+                          className="preferences__modes"
+                          role="radiogroup"
+                          aria-label={`${action.label} runs as`}
+                        >
+                          {MODE_CHOICES.map((choice) => (
+                            <button
+                              key={choice.value}
+                              type="button"
+                              data-testid={`mode-${action.id}-${choice.value}`}
+                              aria-pressed={gestureMode(action.id) === choice.value}
+                              className={
+                                gestureMode(action.id) === choice.value ? 'is-active' : undefined
+                              }
+                              onClick={() => {
+                                setGestureMode(action.id, choice.value);
+                                setArming(null);
+                              }}
+                            >
+                              {choice.label}
+                            </button>
+                          ))}
+                        </span>
+                      )}
+                    </span>
+                    <span className="preferences__combos">
+                      {combos.map((combo, index) => (
+                        <span key={index} className="preferences__chip">
+                          <button
+                            type="button"
+                            className={`preferences__binding${
+                              arming?.id === action.id && arming.index === index
+                                ? ' is-armed'
+                                : ''
+                            }`}
+                            data-testid={`binding-${action.id}-${index}`}
+                            onClick={() =>
+                              setArming(
+                                arming?.id === action.id && arming.index === index
+                                  ? null
+                                  : { id: action.id, index },
+                              )
+                            }
+                          >
+                            {arming?.id === action.id && arming.index === index
+                              ? captureHint(action.id)
+                              : describeActionCombo(action.id, combo)}
+                          </button>
+                          <button
+                            type="button"
+                            className="preferences__remove"
+                            data-testid={`remove-${action.id}-${index}`}
+                            aria-label={`Remove ${action.label} binding`}
+                            onClick={() => {
+                              removeCombo(action.id, index);
+                              setArming(null);
+                            }}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                      {combos.length < MAX_COMBOS && (
+                        <button
+                          type="button"
+                          className={`preferences__binding preferences__add${
+                            arming?.id === action.id && arming.index === combos.length
+                              ? ' is-armed'
+                              : ''
+                          }`}
+                          data-testid={`add-binding-${action.id}`}
+                          aria-label={`Add ${action.label} binding`}
+                          onClick={() =>
+                            setArming(
+                              arming?.id === action.id && arming.index === combos.length
+                                ? null
+                                : { id: action.id, index: combos.length },
+                            )
+                          }
+                        >
+                          {arming?.id === action.id && arming.index === combos.length
+                            ? captureHint(action.id)
+                            : '+'}
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
               <button
                 type="button"
                 className="preferences__reset"
