@@ -4489,6 +4489,27 @@ test.describe('discussion overlay', () => {
     await expect(page.getByTestId(`comment-text-box-${FIRST}`)).toBeVisible();
   });
 
+  test('arcs follow an element while it is dragged in model mode', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+
+    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ledger] }]);
+    const arc = page.getByTestId(`comment-arc-${SECOND}-0`);
+    await expect(arc).toHaveCount(1);
+    const before = await arc.getAttribute('x2');
+
+    const node = await page.getByTestId(`entity-${IDS.ledger}`).boundingBox();
+    await page.mouse.move(node!.x + node!.width / 2, node!.y + node!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(node!.x + node!.width / 2 - 100, node!.y + node!.height / 2 - 40, {
+      steps: 5,
+    });
+
+    // Mid-drag, the button still down: the arc already points at the element.
+    expect(await arc.getAttribute('x2')).not.toBe(before);
+    await page.mouse.up();
+  });
+
   test('in model mode the card selects, edits, and deletes without opening the overlay', async ({ page }) => {
     await dispatch(page, discussedDomain());
     await fit(page);

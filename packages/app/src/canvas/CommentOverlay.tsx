@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ViewportPortal, useReactFlow } from '@xyflow/react';
+import { ViewportPortal, useNodes, useReactFlow } from '@xyflow/react';
 import {
   COMMENT_CARD_SIZE,
   allComments,
@@ -41,7 +41,15 @@ interface CardPlace {
   anchors: Point[];
 }
 
-function rectCentre(state: AppState, id: Id): Point | null {
+/**
+ * Centres React Flow is drawing right now, so an arc follows an element as
+ * it is dragged rather than jumping when the move lands in the document.
+ */
+type LiveCentres = ReadonlyMap<Id, Point>;
+
+function rectCentre(state: AppState, id: Id, live?: LiveCentres): Point | null {
+  const drawn = live?.get(id);
+  if (drawn) return drawn;
   const entry = state.document.layout[id];
   if (entry && 'x' in entry) {
     return { x: entry.x + entry.width / 2, y: entry.y + entry.height / 2 };
@@ -50,8 +58,8 @@ function rectCentre(state: AppState, id: Id): Point | null {
   // midpoint of the first pair stands in for it.
   const element = state.document.model.elements[id];
   if (element && isConnection(element)) {
-    const from = element.from[0] === undefined ? null : rectCentre(state, element.from[0]);
-    const to = element.to[0] === undefined ? null : rectCentre(state, element.to[0]);
+    const from = element.from[0] === undefined ? null : rectCentre(state, element.from[0], live);
+    const to = element.to[0] === undefined ? null : rectCentre(state, element.to[0], live);
     if (from && to) return { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
   }
   return null;
@@ -73,11 +81,11 @@ function generalFallback(state: AppState, index: number): Point {
   };
 }
 
-function placeCards(state: AppState): CardPlace[] {
+function placeCards(state: AppState, live?: LiveCentres): CardPlace[] {
   let unpinnedGenerals = 0;
   return allComments(state.document.comments).map((comment) => {
     const anchors = comment.targets
-      .map((target) => rectCentre(state, target))
+      .map((target) => rectCentre(state, target, live))
       .filter((point): point is Point => point !== null);
 
     const pin = state.document.layout[comment.id];
@@ -235,13 +243,31 @@ export function CommentOverlay() {
     };
   }, []);
 
+  // React Flow owns node positions while a drag is in flight, so the arcs
+  // read what it is drawing rather than the document, which only hears
+  // about the move on drop.
+  const flowNodes = useNodes();
+  const liveCentres = useMemo(() => {
+    const centres = new Map<Id, Point>();
+    for (const node of flowNodes) {
+      const origin = (node.data['parentOrigin'] as Point | undefined) ?? { x: 0, y: 0 };
+      const width = node.measured?.width ?? Number(node.style?.width ?? 0);
+      const height = node.measured?.height ?? Number(node.style?.height ?? 0);
+      centres.set(node.id, {
+        x: node.position.x + origin.x + width / 2,
+        y: node.position.y + origin.y + height / 2,
+      });
+    }
+    return centres;
+  }, [flowNodes]);
+
   const cards = useMemo(() => {
-    const placed = placeCards(state);
+    const placed = placeCards(state, liveCentres);
     if (liveDrag === null) return placed;
     return placed.map((card) =>
       card.comment.id === liveDrag.id ? { ...card, at: liveDrag.at } : card,
     );
-  }, [state, liveDrag]);
+  }, [state, liveDrag, liveCentres]);
   const selectedComment = soleSelectedComment(state);
 
   const panTo = useCallback(

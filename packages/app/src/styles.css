@@ -1798,14 +1798,25 @@ select {
 
 /* The reading position: a horizontal index line at the tape's centre, the
    way a HUD instrument marks its current value, with the entries sliding
-   past it like the tape. */
+   past it like the tape. A faint hairline runs the rail's width; a solid
+   stub at the edge carries the eye to it. */
 .comment-timeline__centre {
   position: absolute;
   top: 50%;
   right: 0;
-  width: 14px;
-  height: 2px;
+  left: 0;
+  height: 1px;
   transform: translateY(-50%);
+  background: rgb(224 169 79 / 30%);
+}
+
+.comment-timeline__centre::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: -1px;
+  width: 26px;
+  height: 3px;
   background: var(--comment);
 }
 
