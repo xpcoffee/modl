@@ -452,7 +452,9 @@ export function CommentOverlay() {
             selected={selectedComment === card.comment.id}
             editing={edit?.commentId === card.comment.id}
             born={card.comment.id === bornId}
-            ambient={!open && !leaving && !isRead(state, card.comment)}
+            // Dimming starts the moment the overlay closes, alongside the
+            // leaving cards' fade, the mirror of how entering lightens.
+            ambient={!open && !isRead(state, card.comment)}
             leaving={leaving && !open && !modelVisible(card)}
             justDragged={justDragged}
             onDragStart={dragCard(card.comment.id, card.at!)}
