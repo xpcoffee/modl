@@ -31,12 +31,13 @@ import {
   type Side,
 } from '@modl/core';
 import {
-  beginEndKeyTrigger,
   beginEndMouseTrigger,
   boxSelectGesture,
   deleteKeyCodes,
+  keyGestureTrigger,
   matchesKey,
   matchesMouse,
+  normalizeKey,
   panButtons,
   selectionKeyCodes,
   selectionOnDragEnabled,
@@ -191,14 +192,17 @@ interface CopyDrag {
   from: Point;
   /** How far the pointer has travelled since. */
   offset: Point;
-  /** True for a begin+end run: releases pass by, the next trigger settles it. */
+  /** True when the pointer's release does not settle it: a begin+end run or a held key. */
   untilEnd?: boolean;
+  /** For a held key: the run settles when this key is released. */
+  endKey?: string;
 }
 
 /**
- * A begin+end box selection in flight: begun by the box-select binding,
- * grown by pointer movement, settled by the next press of the binding, and
- * abandoned by the cancel binding.
+ * A box selection running free of the pointer: begun by the box-select
+ * binding, grown by pointer movement, settled by the binding's release (a
+ * held key) or its next press (begin+end), and abandoned by the cancel
+ * binding.
  */
 interface BoxRun {
   /** Where the run began, in flow coordinates. */
@@ -209,6 +213,8 @@ interface BoxRun {
   prior: ReadonlySet<Id>;
   /** True when ctrl rode the beginning press: the boxed elements leave. */
   subtract: boolean;
+  /** For a held key: the run settles when this key is released. */
+  endKey?: string;
 }
 
 /** The rectangle two corners span. */
@@ -844,7 +850,7 @@ export function Canvas() {
    * (the selection when it holds that element), or the selection when the
    * pointer is over nothing.
    */
-  const beginCopyRun = useCallback((at: Point, grabbed: Id | null) => {
+  const beginCopyRun = useCallback((at: Point, grabbed: Id | null, endKey?: string) => {
     const state = store.getState();
     const ids = grabbed
       ? state.selection.includes(grabbed)
@@ -858,6 +864,7 @@ export function Canvas() {
       from: at,
       offset: { x: 0, y: 0 },
       untilEnd: true,
+      ...(endKey !== undefined ? { endKey } : {}),
     });
   }, []);
 
@@ -873,18 +880,12 @@ export function Canvas() {
     [copyDrag, settleCopies],
   );
 
-  /** Begins a box run at a point, or settles the one already in flight. */
-  const toggleBoxRun = useCallback(
-    (at: Point, subtract: boolean) => {
-      if (boxRun) {
-        settleBox(rectFrom(boxRun.start, boxRun.to), boxRun.prior, boxRun.subtract, null);
-        setBoxRun(null);
-        return;
-      }
-      setBoxRun({ start: at, to: at, prior: new Set(store.getState().selection), subtract });
-    },
-    [boxRun, settleBox],
-  );
+  /** Settles the box run in flight, wherever its rectangle reaches. */
+  const settleBoxRun = useCallback(() => {
+    if (!boxRun) return;
+    settleBox(rectFrom(boxRun.start, boxRun.to), boxRun.prior, boxRun.subtract, null);
+    setBoxRun(null);
+  }, [boxRun, settleBox]);
 
   /** Drops a copy of the clipboard, centred on a point in flow coordinates. */
   const pasteAt = useCallback(
@@ -940,9 +941,10 @@ export function Canvas() {
   }, [pasteAt, screenToFlowPosition]);
 
   /**
-   * Begin+end gestures bound to keys: the first press opens the run at the
-   * pointer, the second settles it there, and the cancel binding abandons
-   * it. Mouse-bound runs go through the pointer handlers below instead.
+   * Gestures bound to keys: the press opens the run at the pointer, and it
+   * settles on the key's release (hold mode) or the binding's next press
+   * (begin+end). The cancel binding abandons it. Mouse-bound runs go through
+   * the pointer handlers below instead.
    */
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -958,16 +960,31 @@ export function Canvas() {
         return;
       }
 
-      const trigger = beginEndKeyTrigger(event);
+      // A held key repeats its keydown; only the first press drives a run.
+      if (event.repeat) return;
+      const trigger = keyGestureTrigger(event);
       if (!trigger) return;
       event.preventDefault();
       const at = screenToFlowPosition(pointer.current ?? centreOf(canvasRef.current));
+      const endKey = trigger.until === 'release' ? normalizeKey(event.key) : undefined;
       if (trigger.id === 'box-select') {
-        toggleBoxRun(at, trigger.subtract);
+        if (boxRun) {
+          // A begin+end run settles on the next press; a hold run waits for
+          // its release.
+          if (!boxRun.endKey) settleBoxRun();
+          return;
+        }
+        setBoxRun({
+          start: at,
+          to: at,
+          prior: new Set(store.getState().selection),
+          subtract: trigger.subtract,
+          ...(endKey !== undefined ? { endKey } : {}),
+        });
         return;
       }
       if (copyDrag?.untilEnd) {
-        endCopyRun(at);
+        if (!copyDrag.endKey) endCopyRun(at);
         return;
       }
       const under = pointer.current
@@ -975,11 +992,25 @@ export function Canvas() {
             .elementFromPoint(pointer.current.x, pointer.current.y)
             ?.closest<HTMLElement>('.react-flow__node')?.dataset['id']
         : undefined;
-      beginCopyRun(at, under ?? null);
+      beginCopyRun(at, under ?? null, endKey);
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      const key = normalizeKey(event.key);
+      if (boxRun?.endKey === key) {
+        settleBoxRun();
+        return;
+      }
+      if (copyDrag?.untilEnd && copyDrag.endKey === key) {
+        endCopyRun(screenToFlowPosition(pointer.current ?? centreOf(canvasRef.current)));
+      }
     };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [boxRun, copyDrag, screenToFlowPosition, toggleBoxRun, beginCopyRun, endCopyRun]);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [boxRun, copyDrag, screenToFlowPosition, settleBoxRun, beginCopyRun, endCopyRun]);
 
   /** A press on the minimap recentres the board there, at the zoom it holds. */
   const onMiniMapClick = useCallback(
@@ -1068,7 +1099,16 @@ export function Canvas() {
           swallowClick.current = true;
           const at = screenToFlowPosition({ x: event.clientX, y: event.clientY });
           if (runTrigger.id === 'box-select') {
-            toggleBoxRun(at, runTrigger.subtract);
+            if (boxRun) {
+              settleBoxRun();
+            } else {
+              setBoxRun({
+                start: at,
+                to: at,
+                prior: new Set(store.getState().selection),
+                subtract: runTrigger.subtract,
+              });
+            }
           } else if (copyDrag?.untilEnd) {
             endCopyRun(at);
           } else {

@@ -129,7 +129,7 @@ test('reset restores every default at once', async ({ page }) => {
   await page.getByTestId('reset-keybindings').click();
   await expect(page.getByTestId('binding-undo-0')).toContainText('Ctrl+Z');
   await expect(page.getByTestId('binding-pan-0')).toContainText('Left drag');
-  await expect(page.getByTestId('mode-box-select-drag')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('mode-box-select-hold')).toHaveAttribute('aria-pressed', 'true');
   expect(await page.evaluate(() => window.localStorage.getItem('modl.keybindings'))).toBeNull();
 
   await page.getByTestId('close-preferences').click();
@@ -143,7 +143,7 @@ test('the box-select modifier can move to alt', async ({ page }) => {
 
   await openBindings(page);
   await page.getByTestId('binding-box-select-0').click();
-  await expect(page.getByTestId('binding-box-select-0')).toContainText('Press a button');
+  await expect(page.getByTestId('binding-box-select-0')).toContainText('Press a key or button');
 
   const panel = (await page.getByTestId('preferences').boundingBox())!;
   await page.keyboard.down('Alt');
@@ -226,6 +226,72 @@ test('box select can take the bare left drag', async ({ page }) => {
   });
   await page.mouse.up();
 
+  await expect
+    .poll(() => selection(page))
+    .toEqual([IDS.gateway, IDS.authorise, IDS.post].sort());
+});
+
+test('the bare left click binds from anywhere, the panel included', async ({ page }) => {
+  await openBindings(page);
+
+  // The reported gesture: remove the left-drag pan, then bind it back with
+  // a plain click inside the panel.
+  await page.getByTestId('remove-pan-0').click();
+  await page.getByTestId('add-binding-pan').click();
+  await expect(page.getByTestId('add-binding-pan')).toContainText('Press a button');
+  await page.getByTestId('add-binding-pan').click();
+  await expect(page.getByTestId('binding-pan-1')).toContainText('Left drag');
+
+  // The same press binds box select, landing on any panel control.
+  await page.getByTestId('binding-box-select-0').click();
+  await page.getByTestId('reset-keybindings').click();
+  await expect(page.getByTestId('binding-box-select-0')).toContainText('Left drag');
+  // The swallowed press did not also reset: pan still holds the rebinding.
+  await expect(page.getByTestId('binding-pan-1')).toContainText('Left drag');
+});
+
+test('a held key drives duplicate: press, move, release', async ({ page }) => {
+  await dispatch(page, [createEntity()]);
+  await fit(page);
+
+  await openBindings(page);
+  await page.getByTestId('binding-duplicate-0').click();
+  await expect(page.getByTestId('binding-duplicate-0')).toContainText('Press a key or button');
+  await page.keyboard.press('d');
+  await expect(page.getByTestId('binding-duplicate-0')).toContainText('Hold D');
+  await page.getByTestId('close-preferences').click();
+
+  const node = (await page.locator(`.react-flow__node[data-id="${ENTITY}"]`).boundingBox())!;
+  await page.mouse.move(node.x + node.width / 2, node.y + node.height / 2);
+  await page.keyboard.down('d');
+  await page.mouse.move(node.x + node.width / 2 + 200, node.y + node.height / 2 + 100, {
+    steps: 6,
+  });
+  await page.keyboard.up('d');
+
+  await expect.poll(() => elementCount(page)).toBe(2);
+});
+
+test('a held key drives box select: press, move, release', async ({ page }) => {
+  await dispatch(page, sampleDomain());
+  await fit(page);
+
+  await openBindings(page);
+  await page.getByTestId('binding-box-select-0').click();
+  await page.keyboard.press('b');
+  await expect(page.getByTestId('binding-box-select-0')).toContainText('Hold B');
+  await page.getByTestId('close-preferences').click();
+
+  const gateway = (await page.getByTestId(`entity-${IDS.gateway}`).boundingBox())!;
+  await page.mouse.move(gateway.x - 25, gateway.y - 25);
+  await page.keyboard.down('b');
+  await page.mouse.move(gateway.x + gateway.width + 25, gateway.y + gateway.height + 25, {
+    steps: 6,
+  });
+  await expect(page.getByTestId('box-select-preview')).toBeVisible();
+  await page.keyboard.up('b');
+
+  await expect(page.getByTestId('box-select-preview')).toHaveCount(0);
   await expect
     .poll(() => selection(page))
     .toEqual([IDS.gateway, IDS.authorise, IDS.post].sort());

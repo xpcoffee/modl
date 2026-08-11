@@ -25,8 +25,11 @@ export type ActionId =
   | 'duplicate'
   | 'pan';
 
-/** How a drag action runs: held through a drag, or between two presses. */
-export type GestureMode = 'drag' | 'begin-end';
+/**
+ * How a drag action runs: the input held through the motion (a button drags,
+ * a key is pressed down and released), or between two separate presses.
+ */
+export type GestureMode = 'hold' | 'begin-end';
 
 /** How many combos an action can hold; the panel shows this many slots. */
 export const MAX_COMBOS = 2;
@@ -58,13 +61,13 @@ export interface ActionSpec {
   kind: 'key' | 'mouse';
   /** Drags read as "Shift+Left drag"; presses as "Ctrl+Z". */
   gesture: 'press' | 'drag';
-  /** Whether the action can run begin+end instead of as a held drag. */
+  /** Whether the action can run begin+end instead of as a held input. */
   beginEnd?: boolean;
   /**
-   * Whether a drag-mode combo must keep a modifier. A bare left button on
+   * Whether a hold-mode button must keep a modifier. A bare left button on
    * duplicate would swallow the plain drag that moves elements.
    */
-  needsModifierInDrag?: boolean;
+  needsModifierInHold?: boolean;
   defaults: Combo[];
 }
 
@@ -120,7 +123,7 @@ export const ACTIONS: ActionSpec[] = [
     kind: 'mouse',
     gesture: 'drag',
     beginEnd: true,
-    needsModifierInDrag: true,
+    needsModifierInHold: true,
     defaults: [mouse(0, { alt: true })],
   },
   {
@@ -150,7 +153,7 @@ export function combosFor(id: ActionId): Combo[] {
 }
 
 export function gestureMode(id: ActionId): GestureMode {
-  return modes[id] ?? 'drag';
+  return modes[id] ?? 'hold';
 }
 
 interface KeyLike {
@@ -169,7 +172,8 @@ interface MouseLike {
   altKey: boolean;
 }
 
-function normalizeKey(k: string): string {
+/** `event.key`, lowercased for single characters so shift cannot change it. */
+export function normalizeKey(k: string): string {
   return k.length === 1 ? k.toLowerCase() : k;
 }
 
@@ -220,23 +224,29 @@ export function boxSelectGesture(event: MouseLike): { subtract: boolean } | null
   return null;
 }
 
-/** The begin+end action a key press begins or ends, or null. */
-export function beginEndKeyTrigger(
+/**
+ * The gesture a key press drives, and how its run will settle: on the key's
+ * release for hold mode, on the next press of the binding for begin+end.
+ */
+export function keyGestureTrigger(
   event: KeyLike,
-): { id: 'box-select' | 'duplicate'; subtract: boolean } | null {
-  if (gestureMode('box-select') === 'begin-end') {
+): { id: 'box-select' | 'duplicate'; subtract: boolean; until: 'press' | 'release' } | null {
+  {
+    const until = gestureMode('box-select') === 'begin-end' ? 'press' : 'release';
     const ctrl = event.ctrlKey || event.metaKey;
     for (const combo of combosFor('box-select')) {
       if (combo.kind !== 'key' || combo.key !== normalizeKey(event.key)) continue;
       if (combo.shift !== event.shiftKey || combo.alt !== event.altKey) continue;
       if (combo.ctrl && !ctrl) continue;
-      return { id: 'box-select', subtract: !combo.ctrl && ctrl };
+      return { id: 'box-select', subtract: !combo.ctrl && ctrl, until };
     }
   }
-  if (gestureMode('duplicate') === 'begin-end') {
-    if (combosFor('duplicate').some((combo) => comboMatchesKey(combo, event))) {
-      return { id: 'duplicate', subtract: false };
-    }
+  if (combosFor('duplicate').some((combo) => comboMatchesKey(combo, event))) {
+    return {
+      id: 'duplicate',
+      subtract: false,
+      until: gestureMode('duplicate') === 'begin-end' ? 'press' : 'release',
+    };
   }
   return null;
 }
@@ -271,7 +281,9 @@ const MODIFIER_KEYS = new Set(['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'O
  */
 export function captureKeyCombo(id: ActionId, event: KeyLike): KeyCombo | null {
   const spec = specOf(id);
-  const acceptsKeys = spec.kind === 'key' || (spec.beginEnd && gestureMode(id) === 'begin-end');
+  // A drag action takes keys in either mode: held down through the motion,
+  // or pressed once to begin and once to end.
+  const acceptsKeys = spec.kind === 'key' || spec.beginEnd === true;
   if (!acceptsKeys) return null;
   if (MODIFIER_KEYS.has(event.key)) return null;
   return {
@@ -296,14 +308,14 @@ export function captureMouseCombo(id: ActionId, event: MouseLike): MouseCombo | 
   if (id === 'pan') return mouse(event.button);
   const ctrl = event.ctrlKey || event.metaKey;
   const bare = !ctrl && !event.shiftKey && !event.altKey;
-  if (spec.needsModifierInDrag && gestureMode(id) === 'drag' && bare) return null;
+  if (spec.needsModifierInHold && gestureMode(id) === 'hold' && bare) return null;
   return { kind: 'mouse', button: event.button, ctrl, shift: event.shiftKey, alt: event.altKey };
 }
 
 /** What the armed slot is waiting for, said in the panel. */
 export function captureHint(id: ActionId): string {
   const spec = specOf(id);
-  if (spec.beginEnd && gestureMode(id) === 'begin-end') return 'Press a key or button…';
+  if (spec.beginEnd) return 'Press a key or button…';
   return spec.kind === 'key' ? 'Press a key…' : 'Press a button…';
 }
 
@@ -329,11 +341,16 @@ export function describeCombo(combo: Combo, gesture: 'press' | 'drag'): string {
   return [...modifierParts(combo), button].join('+') + suffix;
 }
 
-/** A combo said the way the action currently runs: begin+end reads as presses. */
+/**
+ * A combo said the way the action currently runs: a held button keeps the
+ * word drag, a held key reads "Hold D", and begin+end reads as presses.
+ */
 export function describeActionCombo(id: ActionId, combo: Combo): string {
   const spec = specOf(id);
-  const gesture = spec.beginEnd && gestureMode(id) === 'begin-end' ? 'press' : spec.gesture;
-  return describeCombo(combo, gesture);
+  if (!spec.beginEnd) return describeCombo(combo, spec.gesture);
+  if (gestureMode(id) === 'begin-end') return describeCombo(combo, 'press');
+  if (combo.kind === 'key') return `Hold ${describeCombo(combo, 'press')}`;
+  return describeCombo(combo, 'drag');
 }
 
 /**
@@ -486,12 +503,13 @@ function isCombo(value: unknown, action: ActionSpec, mode: GestureMode): value i
   const isKey = combo['kind'] === 'key' && typeof combo['key'] === 'string';
   const isMouse = combo['kind'] === 'mouse' && typeof combo['button'] === 'number';
   if (action.kind === 'key') return isKey;
-  if (action.beginEnd && mode === 'begin-end') return isKey || isMouse;
+  if (action.beginEnd && isKey) return true;
   if (!isMouse) return false;
-  // A bare left button on a modifier-guarded drag (a hand-edited store)
+  // A bare left button on a modifier-guarded hold (a hand-edited store)
   // would swallow the plain drag that moves elements.
   if (
-    action.needsModifierInDrag &&
+    action.needsModifierInHold &&
+    mode === 'hold' &&
     combo['button'] === 0 &&
     !combo['ctrl'] &&
     !combo['shift'] &&
@@ -515,7 +533,9 @@ function validate(parsed: unknown): {
     for (const action of ACTIONS) {
       if (!action.beginEnd) continue;
       const mode = (storedModes as Record<string, unknown>)[action.id];
-      if (mode === 'drag' || mode === 'begin-end') result.modes[action.id] = mode;
+      // 'drag' is the mode's old name, kept readable across the rename.
+      if (mode === 'hold' || mode === 'drag') result.modes[action.id] = 'hold';
+      else if (mode === 'begin-end') result.modes[action.id] = 'begin-end';
     }
   }
   const storedCombos = stored['combos'];
@@ -523,7 +543,7 @@ function validate(parsed: unknown): {
     for (const action of ACTIONS) {
       const value = (storedCombos as Record<string, unknown>)[action.id];
       if (!Array.isArray(value)) continue;
-      const mode = result.modes[action.id] ?? 'drag';
+      const mode = result.modes[action.id] ?? 'hold';
       result.combos[action.id] = value
         .filter((combo): combo is Combo => isCombo(combo, action, mode))
         .slice(0, MAX_COMBOS);

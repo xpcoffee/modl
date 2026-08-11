@@ -45,7 +45,7 @@ const MOTION_CHOICES: { value: MotionPreference; label: string }[] = [
 ];
 
 const MODE_CHOICES: { value: GestureMode; label: string }[] = [
-  { value: 'drag', label: 'Drag' },
+  { value: 'hold', label: 'Hold' },
   { value: 'begin-end', label: 'Begin + end' },
 ];
 
@@ -65,12 +65,53 @@ export function Preferences() {
   // Whether the click that follows a captured press should be swallowed
   // before it reaches whatever control it landed on.
   const swallowClick = useRef(false);
+  // Whether the context menu that follows a captured right press should be
+  // swallowed.
+  const swallowContextMenu = useRef(false);
+  // The armed slot, readable from listeners that outlive the arming state.
+  const armingRef = useRef<Arming | null>(null);
   // Whether the press that opened the current click landed on the backdrop:
   // a drag released over the backdrop must not read as a click outside.
   const pressOnBackdrop = useRef(false);
   const preference = useMotionPreference();
   const systemReduces = useSystemReducesMotion();
   useKeybindingsVersion();
+  armingRef.current = arming;
+
+  // The click (and context menu) that trail a captured press arrive after
+  // React has already disarmed and re-run effects, so the listeners that
+  // swallow them must outlive the arming state. Chromium suppresses those
+  // trailing events entirely when the pointerdown was cancelled, so a new
+  // press clears any swallow left waiting — this listener is registered
+  // before the arming one and runs first.
+  useEffect(() => {
+    const onPointerDown = () => {
+      swallowClick.current = false;
+      swallowContextMenu.current = false;
+    };
+    const onClick = (event: MouseEvent) => {
+      if (!swallowClick.current) return;
+      swallowClick.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const onContextMenu = (event: MouseEvent) => {
+      // While armed, a right press must not open the browser's menu; after
+      // a captured right press, neither must the menu the press trails.
+      if (armingRef.current === null && !swallowContextMenu.current) return;
+      swallowContextMenu.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('click', onClick, true);
+    window.addEventListener('contextmenu', onContextMenu, true);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('click', onClick, true);
+      window.removeEventListener('contextmenu', onContextMenu, true);
+    };
+  }, []);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -107,12 +148,9 @@ export function Preferences() {
     const onPointerDown = (event: PointerEvent) => {
       pressOnBackdrop.current = false;
       const target = event.target as HTMLElement | null;
-      // A bare left click on one of the panel's own controls is the reader
-      // using the panel, so it disarms instead of binding; bare left binds
-      // from anywhere else (the panel background, the backdrop, the board).
-      const bare = event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
-      const onPanelControl = target?.closest('.preferences__panel :is(button, input, label)') != null;
-      const combo = bare && onPanelControl ? null : captureMouseCombo(id, event);
+      // Any press that can bind the slot binds it, wherever it lands — the
+      // bare left button included. Cancel (Escape) is the way out.
+      const combo = captureMouseCombo(id, event);
       if (combo === null) {
         // The press cannot bind this slot, so it is a click somewhere else.
         // On the armed button itself the click that follows would arm it
@@ -125,32 +163,16 @@ export function Preferences() {
       event.preventDefault();
       event.stopPropagation();
       swallowClick.current = true;
+      if (event.button === 2) swallowContextMenu.current = true;
       setCombo(id, index, combo);
       setArming(null);
     };
 
-    const onClick = (event: MouseEvent) => {
-      if (!swallowClick.current) return;
-      swallowClick.current = false;
-      event.preventDefault();
-      event.stopPropagation();
-    };
-
-    // A right button being captured must not also open the browser's menu.
-    const onContextMenu = (event: MouseEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-    };
-
     window.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('pointerdown', onPointerDown, true);
-    window.addEventListener('click', onClick, true);
-    window.addEventListener('contextmenu', onContextMenu, true);
     return () => {
       window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('pointerdown', onPointerDown, true);
-      window.removeEventListener('click', onClick, true);
-      window.removeEventListener('contextmenu', onContextMenu, true);
     };
   }, [arming]);
 
