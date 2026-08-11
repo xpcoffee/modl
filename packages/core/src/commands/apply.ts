@@ -343,6 +343,97 @@ function reduce(state: AppState, command: Command): CommandResult {
       );
     }
 
+    case 'reflow-layout': {
+      const positionIds = Object.keys(command.positions).sort();
+      const waypointIds = Object.keys(command.waypoints).sort();
+      const expandedIds = Object.keys(command.expanded).sort();
+      if (positionIds.length + waypointIds.length + expandedIds.length === 0) {
+        return fail(command.type, 'schema-invalid', 'a reflow needs at least one change');
+      }
+
+      // Everything is checked before anything is written, so a payload
+      // naming one stale id leaves the whole layout untouched.
+      for (const id of positionIds) {
+        const element = state.document.model.elements[id];
+        if (!element && !state.document.comments[id]) return unknown(command.type, id);
+        if (element && isConnection(element)) {
+          return fail(command.type, 'wrong-kind', `element ${id} is a connection`);
+        }
+        const position = command.positions[id]!;
+        if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) {
+          return fail(command.type, 'schema-invalid', 'a position needs finite coordinates');
+        }
+      }
+      for (const id of waypointIds) {
+        const element = state.document.model.elements[id];
+        if (!element) return unknown(command.type, id);
+        if (!isConnection(element)) {
+          return fail(command.type, 'wrong-kind', `element ${id} is not a connection`);
+        }
+        if (command.waypoints[id]!.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y))) {
+          return fail(command.type, 'schema-invalid', 'a waypoint needs finite coordinates');
+        }
+      }
+      for (const id of expandedIds) {
+        const element = state.document.model.elements[id];
+        if (!element) return unknown(command.type, id);
+        if (!isEntity(element)) {
+          return fail(command.type, 'wrong-kind', `element ${id} is not an entity`);
+        }
+        const size = command.expanded[id]!;
+        if (!(size.width > 0) || !(size.height > 0)) {
+          return fail(command.type, 'schema-invalid', 'width and height must be positive');
+        }
+      }
+
+      const layout = { ...state.document.layout };
+      // One id per changed element: a grown group is in both positions and
+      // expanded, and a consumer counting ids must not see it twice.
+      const events: DomainEvent[] = [
+        {
+          type: 'layout-reflowed',
+          ids: [...new Set([...positionIds, ...waypointIds, ...expandedIds])].sort(),
+        },
+      ];
+
+      for (const id of positionIds) {
+        const position = command.positions[id]!;
+        const previous = layout[id];
+        const fallbackSize = state.document.comments[id]
+          ? COMMENT_CARD_SIZE
+          : isConnectionNode(state.document.model.elements[id]!)
+            ? CONNECTION_NODE_SIZE
+            : DEFAULT_ENTITY_SIZE;
+        const existing = previous && 'width' in previous ? previous : { ...fallbackSize };
+        layout[id] = { ...existing, x: position.x, y: position.y };
+        events.push(
+          state.document.comments[id]
+            ? { type: 'comment-updated', id }
+            : { type: 'element-moved', id, position: { x: position.x, y: position.y } },
+        );
+      }
+      for (const id of waypointIds) {
+        const previous = layout[id];
+        const existing = previous && 'waypoints' in previous ? previous : { waypoints: [] };
+        layout[id] = {
+          ...existing,
+          waypoints: command.waypoints[id]!.map((p) => ({ x: p.x, y: p.y })),
+        };
+        events.push({ type: 'element-updated', id });
+      }
+      for (const id of expandedIds) {
+        const size = command.expanded[id]!;
+        const previous = layout[id];
+        const existing =
+          previous && 'x' in previous ? previous : { x: 0, y: 0, ...DEFAULT_ENTITY_SIZE };
+        layout[id] = { ...existing, expanded: { width: size.width, height: size.height } };
+        // A moved group already announced itself; a resize alone still has to.
+        if (!command.positions[id]) events.push({ type: 'element-updated', id });
+      }
+
+      return ok({ ...state, document: { ...state.document, layout } }, events);
+    }
+
     case 'set-metadata': {
       const element = state.document.model.elements[command.id];
       if (!element) return unknown(command.type, command.id);
@@ -1350,7 +1441,7 @@ function movedLayout(entry: ElementLayout, offset: Point): ElementLayout {
 }
 
 /** Room for the container header and a margin around what it holds. */
-const GROUP_PADDING = { side: 28, top: 44, bottom: 28 } as const;
+export const GROUP_PADDING = { side: 28, top: 44, bottom: 28 } as const;
 /** An empty container still needs somewhere to drop things. */
 export const MIN_GROUP_SIZE = { width: 260, height: 180 } as const;
 
