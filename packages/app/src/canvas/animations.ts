@@ -29,6 +29,8 @@ export const WARP_IN_MS = 300;
 export const WARP_OUT_MS = 200;
 /** Ripple duration. The wave still starts only once the warp has finished. */
 export const RIPPLE_MS = 300;
+/** How long a reflow glide takes, matching the camera's own settles. */
+export const GLIDE_MS = 300;
 
 /** A bulk merge stops adding waves once a burst is already in flight. */
 const MAX_ACTIVE_RIPPLES = 8;
@@ -71,6 +73,16 @@ let ghosts: readonly Ghost[] = [];
 const ripples: Ripple[] = [];
 /** Monotonic count of waves ever started, the observable the tests assert on. */
 let started = 0;
+/**
+ * A glide waiting for the canvas. A reflow teleports elements, and a glide
+ * from the old positions to the new is what lets the eye keep track of which
+ * box went where; an ordinary move already ends where the pointer is, so
+ * only `layout-reflowed` raises this. The canvas owns the node positions
+ * React Flow draws, so it claims the flag as it syncs to fresh geometry.
+ */
+let glidePending = false;
+/** Monotonic count of glides ever started, stamped on the canvas for tests. */
+let glidesStarted = 0;
 
 const listeners = new Set<() => void>();
 
@@ -103,6 +115,21 @@ export function activeRipples(now: number): readonly Ripple[] {
 
 export function ripplesStarted(): number {
   return started;
+}
+
+export function useGlidesStarted(): number {
+  return useSyncExternalStore(
+    subscribeAnimations,
+    () => glidesStarted,
+    () => glidesStarted,
+  );
+}
+
+/** Claims the pending glide. True means the sync it precedes should animate. */
+export function takeGlide(): boolean {
+  const take = glidePending;
+  glidePending = false;
+  return take;
 }
 
 interface WaveShape {
@@ -219,6 +246,12 @@ function onDomainEvents(events: DomainEvent[], before: AppState, after: AppState
     if (event.type === 'element-created') warpIn(event.id, after);
     if (event.type === 'element-deleted') warpOut(event.id, before);
   }
+
+  if (events.some((event) => event.type === 'layout-reflowed')) {
+    glidePending = true;
+    glidesStarted += 1;
+    emit();
+  }
 }
 
 /**
@@ -230,6 +263,7 @@ function onMotionChanged(): void {
   ripples.length = 0;
   warping = new Set();
   ghosts = [];
+  glidePending = false;
   emit();
 }
 

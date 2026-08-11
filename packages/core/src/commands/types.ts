@@ -122,6 +122,21 @@ export type Command =
    */
   | { type: 'duplicate-elements'; idMap: Record<Id, Id>; offset: Point }
   | { type: 'move-element'; id: Id; position: Point }
+  /**
+   * Applies a computed layout in one step: new origins for entities, nodes,
+   * and pinned comment cards, translated bends for connections, and new
+   * container sizes for expanded groups. One command, so a whole-board
+   * re-space is one undo step. It carries the geometry rather than the
+   * request because undo refolds the log: a payload of explicit positions
+   * keeps a saved trace replaying identically after the reflow algorithm
+   * changes. `planReflow` computes a payload for the current board.
+   */
+  | {
+      type: 'reflow-layout';
+      positions: Record<Id, Point>;
+      waypoints: Record<Id, Point[]>;
+      expanded: Record<Id, { width: number; height: number }>;
+    }
   | { type: 'set-metadata'; id: Id; title?: string; description?: string }
   | { type: 'set-tag'; id: Id; key: string; values: string[] }
   | { type: 'remove-tag'; id: Id; key: string }
@@ -187,6 +202,12 @@ export type DomainEvent =
   | { type: 'element-created'; id: Id }
   | { type: 'element-updated'; id: Id }
   | { type: 'element-moved'; id: Id; position: Point }
+  /**
+   * A reflow moved `ids` in one step. Alongside the per-element moves so a
+   * consumer animating the whole change (the canvas glide) reacts to the
+   * command once rather than guessing from a count of moves.
+   */
+  | { type: 'layout-reflowed'; ids: Id[] }
   | { type: 'element-deleted'; id: Id }
   | { type: 'comment-created'; id: Id }
   | { type: 'comment-updated'; id: Id }

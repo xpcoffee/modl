@@ -73,6 +73,8 @@ import {
 import { arm, disarm, getPending, usePending } from './placement.js';
 import { BoardSettings } from './BoardSettings.js';
 import { HistoryControls } from './HistoryControls.js';
+import { ReflowControl } from './ReflowControl.js';
+import { motionReduced } from '../preferences/motion.js';
 import { SearchMenu } from '../panels/SearchMenu.js';
 import { HiddenStrip } from '../panels/HiddenStrip.js';
 import { useSearchPreview } from './searchPreview.js';
@@ -91,7 +93,7 @@ import { getCommentEdit } from './commentEditing.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
 import { useHighlightId } from './highlight.js';
 import { lastConnectionStyle, lastEntityStyle } from './styleMemory.js';
-import { pressRipple, useWarpingIds } from './animations.js';
+import { GLIDE_MS, pressRipple, takeGlide, useGlidesStarted, useWarpingIds } from './animations.js';
 import { GravityGrid } from './GravityGrid.js';
 import { WarpGhosts } from './WarpGhosts.js';
 
@@ -143,6 +145,11 @@ function duplicateTarget(event: {
   if (!matchesMouse('duplicate', event) || getPending() !== null) return null;
   const node = (event.target as HTMLElement | null)?.closest<HTMLElement>('.react-flow__node');
   return node?.dataset['id'] ?? null;
+}
+
+/** Ease-in-out cubic, matching the camera's own 300ms settles. */
+function easeInOut(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
 /** The middle of the board in screen coordinates. */
@@ -306,7 +313,35 @@ export function Canvas() {
    * trace holding the position the user meant rather than every pixel.
    */
   const [nodes, setNodes] = useState(derived);
+  // The positions drawn right now, for a glide to start from.
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+  /**
+   * A glide in flight: where each node started, and when. Targets live in
+   * their own ref and refresh on every sync, so a mid-glide state change (a
+   * click selecting a node, a filter preview) re-aims the glide instead of
+   * snapping everything to its end position.
+   */
+  const glide = useRef<{ starts: Map<string, Point>; startedAt: number } | null>(null);
+  const glideTargets = useRef(new Map<string, Point>());
+  const glideFrame = useRef(0);
+
+  useEffect(() => () => window.cancelAnimationFrame(glideFrame.current), []);
+
   useEffect(() => {
+    glideTargets.current = new Map(derived.map((node) => [node.id, node.position]));
+    // A reflow glides each element from where it was drawn to where the
+    // command put it, so the eye can track which box went where. Everything
+    // else lands at once.
+    const fresh = takeGlide();
+    if (fresh) {
+      glide.current = {
+        starts: new Map(nodesRef.current.map((node) => [node.id, node.position])),
+        startedAt: performance.now(),
+      };
+    }
+    const active = glide.current;
+
     // Carry each node's measured size forward. Handing React Flow a fresh
     // unmeasured object on every state change makes it hide the node until it
     // re-measures, which drops it out of hit-testing mid-interaction.
@@ -314,9 +349,45 @@ export function Canvas() {
       const previous = new Map(current.map((node) => [node.id, node]));
       return derived.map((node) => {
         const before = previous.get(node.id);
-        return before?.measured ? { ...node, measured: before.measured } : node;
+        const kept = before?.measured ? { ...node, measured: before.measured } : node;
+        // A node mid-glide keeps its drawn position; the frames advance it.
+        if (active && before && !before.dragging && active.starts.has(node.id)) {
+          return { ...kept, position: before.position };
+        }
+        return kept;
       });
     });
+
+    if (!fresh) return;
+    window.cancelAnimationFrame(glideFrame.current);
+    const step = () => {
+      const running = glide.current;
+      if (!running) return;
+      const t = Math.min(1, (performance.now() - running.startedAt) / GLIDE_MS);
+      // Stillness asked for mid-glide takes effect now: the frame snaps to the end.
+      const progress = motionReduced() ? 1 : easeInOut(t);
+      setNodes((current) =>
+        current.map((node) => {
+          // A node the pointer is holding belongs to the drag, and a glide
+          // frame writing over it would put a glide-path position into the
+          // command the drop dispatches.
+          if (node.dragging) return node;
+          const from = running.starts.get(node.id);
+          const to = glideTargets.current.get(node.id);
+          if (!from || !to || (from.x === to.x && from.y === to.y)) return node;
+          return {
+            ...node,
+            position: {
+              x: from.x + (to.x - from.x) * progress,
+              y: from.y + (to.y - from.y) * progress,
+            },
+          };
+        }),
+      );
+      if (progress < 1) glideFrame.current = window.requestAnimationFrame(step);
+      else glide.current = null;
+    };
+    glideFrame.current = window.requestAnimationFrame(step);
   }, [derived]);
 
   /**
@@ -1046,6 +1117,10 @@ export function Canvas() {
     [setCenter, getViewport],
   );
 
+  // How many glides have started, stamped on the board so a spec can assert
+  // that a reflow animated (or, under reduced motion, that it did not).
+  const glidesStarted = useGlidesStarted();
+
   /** Muted elements stay muted in the minimap, so it mirrors the board. */
   const miniMapNodeColor = useCallback(
     (node: Node) => (node.data['dimmed'] === true ? '#242938' : '#3c4354'),
@@ -1059,6 +1134,7 @@ export function Canvas() {
       data-testid="canvas"
       data-placing={pending ?? undefined}
       data-comment-overlay={overlay ? 'true' : undefined}
+      data-glides={glidesStarted}
       // The board owns the right button, so it can be bound to an action
       // rather than opening the browser's menu.
       onContextMenuCapture={(event) => event.preventDefault()}
@@ -1304,6 +1380,7 @@ export function Canvas() {
         </Panel>
         <Controls>
           <HistoryControls />
+          <ReflowControl />
           <BoardSettings />
         </Controls>
         <MiniMap

@@ -1605,3 +1605,135 @@ describe('creation with a style', () => {
     });
   });
 });
+
+describe('reflow-layout', () => {
+  const GROUP = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const CARD = '77777777-7777-4777-8777-777777777777';
+
+  it('applies every change in one history entry', () => {
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      { type: 'set-waypoints', id: LINK, waypoints: [{ x: 100, y: 100 }] },
+    );
+    const entries = state.undo.history.length;
+    const next = must(state, {
+      type: 'reflow-layout',
+      positions: { [B]: { x: 400, y: 80 } },
+      waypoints: { [LINK]: [{ x: 130, y: 140 }] },
+      expanded: {},
+    });
+
+    expect(next.document.layout[B]).toEqual({ x: 400, y: 80, width: 180, height: 72 });
+    expect(next.document.layout[LINK]).toEqual({ waypoints: [{ x: 130, y: 140 }] });
+    expect(next.undo.history.length).toBe(entries + 1);
+  });
+
+  it('one undo restores every position exactly', () => {
+    const state = must(
+      base,
+      link(LINK, [A], [B]),
+      { type: 'set-waypoints', id: LINK, waypoints: [{ x: 100, y: 100 }] },
+    );
+    const before = serializeDocument(state.document);
+    const undone = must(
+      state,
+      {
+        type: 'reflow-layout',
+        positions: { [A]: { x: -40, y: 12 }, [B]: { x: 400, y: 80 } },
+        waypoints: { [LINK]: [{ x: 130, y: 140 }] },
+        expanded: {},
+      },
+      { type: 'undo' },
+    );
+    expect(serializeDocument(undone.document)).toBe(before);
+  });
+
+  it('emits one move per element and comment-updated for a card', () => {
+    const state = must(
+      base,
+      { type: 'create-comment', id: CARD, text: 'why?', targets: [A] },
+      { type: 'move-comment', id: CARD, position: { x: 20, y: 20 } },
+    );
+    const result = apply(state, {
+      type: 'reflow-layout',
+      positions: { [B]: { x: 400, y: 80 }, [CARD]: { x: 20, y: 160 } },
+      waypoints: {},
+      expanded: {},
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.events).toEqual([
+      { type: 'layout-reflowed', ids: [B, CARD] },
+      { type: 'element-moved', id: B, position: { x: 400, y: 80 } },
+      { type: 'comment-updated', id: CARD },
+    ]);
+  });
+
+  it('resizes an expanded container', () => {
+    const state = must(
+      base,
+      { type: 'group-elements', id: GROUP, title: 'G', memberIds: [A], position: { x: 0, y: 0 } },
+      { type: 'set-expanded', id: GROUP, expanded: true },
+    );
+    const next = must(state, {
+      type: 'reflow-layout',
+      positions: {},
+      waypoints: {},
+      expanded: { [GROUP]: { width: 400, height: 300 } },
+    });
+    expect((next.document.layout[GROUP] as { expanded?: object }).expanded).toEqual({
+      width: 400,
+      height: 300,
+    });
+  });
+
+  it('unknown-element: rejects a stale id without touching the layout', () => {
+    const result = apply(base, {
+      type: 'reflow-layout',
+      positions: { [A]: { x: 10, y: 10 }, [MISSING]: { x: 0, y: 0 } },
+      waypoints: {},
+      expanded: {},
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('unknown-element');
+  });
+
+  it('wrong-kind: rejects a position for a connection', () => {
+    const state = must(base, link(LINK, [A], [B]));
+    const result = apply(state, {
+      type: 'reflow-layout',
+      positions: { [LINK]: { x: 10, y: 10 } },
+      waypoints: {},
+      expanded: {},
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('wrong-kind');
+  });
+
+  it('schema-invalid: rejects a payload with nothing in it', () => {
+    const result = apply(base, {
+      type: 'reflow-layout',
+      positions: {},
+      waypoints: {},
+      expanded: {},
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('schema-invalid');
+  });
+
+  it('schema-invalid: rejects a position that is not finite', () => {
+    const result = apply(base, {
+      type: 'reflow-layout',
+      positions: { [A]: { x: Number.NaN, y: 0 } },
+      waypoints: {},
+      expanded: {},
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('schema-invalid');
+  });
+});
