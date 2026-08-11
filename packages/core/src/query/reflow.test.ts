@@ -8,9 +8,38 @@ import type { EntityLayout } from '../model/types.js';
 const DOC = '00000000-0000-4000-8000-000000000000';
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
+const C = '33333333-3333-4333-8333-333333333333';
 const LINK = '44444444-4444-4444-8444-444444444444';
+const LINK2 = '55555555-5555-4555-8555-555555555555';
 const GROUP = '66666666-6666-4666-8666-666666666666';
 const CARD = '77777777-7777-4777-8777-777777777777';
+
+interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function overlap(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
+/**
+ * Where a label draws, by the same estimate the plan uses: centred on the
+ * midpoint of its two anchors, 7.2px per character plus the pill's 28px,
+ * one 24px line tall.
+ */
+function labelRect(state: AppState, from: string, to: string, text: string): Rect {
+  const a = boxOf(state, from);
+  const b = boxOf(state, to);
+  const width = Math.ceil(text.length * 7.2) + 28;
+  const mid = {
+    x: (a.x + a.width / 2 + b.x + b.width / 2) / 2,
+    y: (a.y + a.height / 2 + b.y + b.height / 2) / 2,
+  };
+  return { x: mid.x - width / 2, y: mid.y - 12, width, height: 24 };
+}
 
 function must(state: AppState, ...commands: Command[]): AppState {
   const result = applyAll(state, commands);
@@ -236,6 +265,103 @@ describe('planReflow', () => {
     const containerRight = group.x + Math.max(group.expanded?.width ?? 0, 260);
     // 17 characters at 7.2px, plus the pill's 28px, plus 24px of clearance.
     expect(b.x - containerRight).toBeGreaterThanOrEqual(175);
+  });
+
+  it('moves a box off the label of a line passing over it', () => {
+    // C sits exactly where the A-B label draws, with every box gap already
+    // satisfied, so only the label constraint can be what moves it.
+    const state = must(
+      initialState(DOC),
+      entity(A, 0),
+      entity(B, 600),
+      entity(C, 300),
+      {
+        type: 'create-connection',
+        id: LINK,
+        connectionType: 'interaction',
+        from: [A],
+        to: [B],
+        title: 'hands work to the second box',
+      },
+    );
+    const plan = planReflow(state);
+    expect(plan).not.toBeNull();
+
+    const applied = must(state, { type: 'reflow-layout', ...plan! });
+    const label = labelRect(applied, A, B, 'hands work to the second box');
+    expect(overlap(label, boxOf(applied, C))).toBe(false);
+  });
+
+  it('fans out labels that pile on one another', () => {
+    // Two side-by-side sources joined to one far hub: the two labels draw at
+    // the same height and overlap, while every box gap is satisfied.
+    const state = must(
+      initialState(DOC),
+      entity(A, 0),
+      entity(B, 244),
+      entity(C, 1200, 600),
+      { type: 'create-connection', id: LINK, connectionType: 'interaction', from: [A], to: [C], title: 'first shared answer' },
+      { type: 'create-connection', id: LINK2, connectionType: 'interaction', from: [B], to: [C], title: 'second shared answer' },
+    );
+    const plan = planReflow(state);
+    expect(plan).not.toBeNull();
+
+    const applied = must(state, { type: 'reflow-layout', ...plan! });
+    const one = labelRect(applied, A, C, 'first shared answer');
+    const two = labelRect(applied, B, C, 'second shared answer');
+    expect(overlap(one, two)).toBe(false);
+  });
+
+  it('separates crossing labels by moving the members they start from', () => {
+    // The two sources sit inside a group and their lines leave it for one
+    // hub, so the labels ride the same container pair: only moving the
+    // members themselves can spread them.
+    const state = must(
+      initialState(DOC),
+      entity(A, 0),
+      entity(B, 244),
+      { type: 'group-elements', id: GROUP, title: 'G', memberIds: [A, B], position: { x: 0, y: 0 } },
+      { type: 'set-expanded', id: GROUP, expanded: true },
+      entity(C, 1400, 700),
+      { type: 'create-connection', id: LINK, connectionType: 'interaction', from: [A], to: [C], title: 'first crossing answer' },
+      { type: 'create-connection', id: LINK2, connectionType: 'interaction', from: [B], to: [C], title: 'second crossing answer' },
+    );
+    const plan = planReflow(state);
+    expect(plan).not.toBeNull();
+
+    const applied = must(state, { type: 'reflow-layout', ...plan! });
+    const one = labelRect(applied, A, C, 'first crossing answer');
+    const two = labelRect(applied, B, C, 'second crossing answer');
+    expect(overlap(one, two)).toBe(false);
+  });
+
+  it('is a fixed point on a labelled web', () => {
+    // A dense board shaped like the ones agents produce: a grid too tight
+    // for its labels, wired into a web. One press settles it.
+    const ids = Array.from(
+      { length: 9 },
+      (_, i) => `${String(i).padStart(8, '0')}-1111-4111-8111-111111111111`,
+    );
+    const web: Command[] = ids.map((id, i) =>
+      entity(id, (i % 3) * 200, Math.floor(i / 3) * 100),
+    );
+    ids.forEach((id, i) => {
+      if (i === 0) return;
+      web.push({
+        type: 'create-connection',
+        id: `${String(i).padStart(8, '0')}-2222-4222-8222-222222222222`,
+        connectionType: 'interaction',
+        from: [ids[(i * 3) % ids.length]!],
+        to: [id],
+        title: `answer number ${i} of the web`,
+      });
+    });
+    const state = must(initialState(DOC), ...web);
+
+    const plan = planReflow(state);
+    expect(plan).not.toBeNull();
+    const applied = must(state, { type: 'reflow-layout', ...plan! });
+    expect(planReflow(applied)).toBeNull();
   });
 
   it('keeps a card pinned inside an expanded container with its members', () => {
