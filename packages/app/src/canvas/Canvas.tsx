@@ -30,6 +30,15 @@ import {
   type Point,
   type Side,
 } from '@modl/core';
+import {
+  boxSelectGesture,
+  deleteKeyCodes,
+  matchesKey,
+  matchesMouse,
+  panButtons,
+  selectionKeyCodes,
+  useKeybindingsVersion,
+} from '../preferences/keybindings.js';
 import { store } from '../store/store.js';
 import { useAppState, useLoadCount } from '../store/useStore.js';
 import {
@@ -111,17 +120,21 @@ const COPY_DRAG_MINIMUM = 4;
 const PASTE_NUDGE = { x: 32, y: 32 } as const;
 
 /**
- * The node an alt+drag would copy, or null when the press is something else.
- * Read from the event rather than from state because two handlers have to
- * agree on it: the pointerdown that opens the gesture, and the mousedown that
- * would otherwise start React Flow's node drag before the gesture is drawn.
+ * The node the duplicate binding (alt+drag out of the box) would copy, or
+ * null when the press is something else. Read from the event rather than from
+ * state because two handlers have to agree on it: the pointerdown that opens
+ * the gesture, and the mousedown that would otherwise start React Flow's
+ * node drag before the gesture is drawn.
  */
 function duplicateTarget(event: {
   altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
   button: number;
   target: EventTarget | null;
 }): Id | null {
-  if (!event.altKey || event.button !== 0 || getPending() !== null) return null;
+  if (!matchesMouse('duplicate', event) || getPending() !== null) return null;
   const node = (event.target as HTMLElement | null)?.closest<HTMLElement>('.react-flow__node');
   return node?.dataset['id'] ?? null;
 }
@@ -203,6 +216,9 @@ export function Canvas() {
   const swallowClick = useRef(false);
   const canvasRef = useRef<HTMLDivElement>(null);
   const pending = usePending();
+  // Rebinding an input takes effect immediately: the React Flow props below
+  // are derived from the bindings on every render, and this re-renders.
+  useKeybindingsVersion();
   const warping = useWarpingIds();
   const [draft, setDraft] = useState<{ from: Point; to: Point | null } | null>(null);
   const options = useMemo(
@@ -802,22 +818,22 @@ export function Canvas() {
   );
 
   /**
-   * Ctrl+C remembers the selection and ctrl+V drops a copy centred on the
-   * pointer, so a run of pastes follows the cursor across the board. These
-   * live here rather than beside the other shortcuts in App because a paste
-   * needs the pointer in flow coordinates.
+   * The copy binding remembers the selection and the paste binding drops a
+   * copy centred on the pointer, so a run of pastes follows the cursor across
+   * the board. These live here rather than beside the other shortcuts in App
+   * because a paste needs the pointer in flow coordinates.
    */
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
-      const key = event.key.toLowerCase();
-      if (key !== 'c' && key !== 'v') return;
+      const copy = matchesKey('copy', event);
+      const paste = !copy && matchesKey('paste', event);
+      if (!copy && !paste) return;
 
       // A focused field keeps the browser's copy and paste over its own text.
       const target = event.target as HTMLElement | null;
       if (target?.closest('input, textarea, [contenteditable]')) return;
 
-      if (key === 'c') {
+      if (copy) {
         const selection = store.getState().selection;
         // Nothing selected is nothing to copy, and the clipboard keeps what
         // it already holds.
@@ -927,12 +943,14 @@ export function Canvas() {
         }
 
         if (!pending) {
-          // Shift opens React Flow's selection box wherever the press lands
-          // on the board, so the gesture is noted before any change arrives.
-          if (event.shiftKey && event.button === 0 && target.closest('.react-flow__pane')) {
+          // The box-select binding (shift+drag out of the box) opens React
+          // Flow's selection box wherever the press lands on the board, so
+          // the gesture is noted before any change arrives.
+          const gesture = boxSelectGesture(event);
+          if (gesture && target.closest('.react-flow__pane')) {
             boxGesture.current = {
               prior: new Set(store.getState().selection),
-              subtract: event.ctrlKey || event.metaKey,
+              subtract: gesture.subtract,
               start: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
               forComment: overlay ? (getCommentEdit()?.commentId ?? null) : null,
             };
@@ -1009,21 +1027,25 @@ export function Canvas() {
         // While the picker is armed the drag sizes an element, so the board
         // has to hold still: panning with it kept the flow position under the
         // pointer identical from start to finish, and every drag measured zero.
-        panOnDrag={!pending}
+        // Otherwise the buttons come from the pan binding, always joined by
+        // the left button on the empty pane.
+        panOnDrag={pending ? false : panButtons()}
         onDoubleClick={onDoubleClick}
         onPaneClick={onPaneClick}
         onSelectionStart={() => setBoxSelecting(true)}
         onSelectionEnd={() => setBoxSelecting(false)}
         // Double-click creates an element, so it must not also zoom.
         zoomOnDoubleClick={false}
-        // Both keys delete, matching what either keyboard leads you to
-        // expect. In the overlay they delete the selected comment instead
-        // (CommentOverlay handles that), never the model.
-        deleteKeyCode={overlay ? null : ['Delete', 'Backspace']}
-        // React Flow matches key combinations exactly, so plain 'Shift' stops
+        // The delete binding, spelled in React Flow's combo strings (Delete
+        // and Backspace out of the box). In the overlay the keys delete the
+        // selected comment instead (CommentOverlay handles that), never the
+        // model.
+        deleteKeyCode={overlay ? null : deleteKeyCodes()}
+        // React Flow matches key combinations exactly, so the box-select
+        // binding expands to its ctrl and meta variants: plain 'Shift' stops
         // matching the moment ctrl joins it and ctrl+shift+drag would pan.
         // Naming the combinations keeps the box open for subtraction.
-        selectionKeyCode={['Shift', 'Control+Shift', 'Meta+Shift']}
+        selectionKeyCode={selectionKeyCodes()}
         // Pinned so the gesture is the same on every platform.
         multiSelectionKeyCode={['Control', 'Meta']}
         // Any handle can be either end, so a line attaches to whichever side

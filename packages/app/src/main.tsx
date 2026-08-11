@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.js';
+import { installKeybindings } from './preferences/keybindings.js';
 import { installMotion } from './preferences/motion.js';
 import { installRuntimeApi } from './runtime/api.js';
 import './styles.css';
@@ -9,6 +10,9 @@ installRuntimeApi();
 // Before the first render, so an element created in the first frame warps
 // the way the reader's preference says it should.
 installMotion();
+// Likewise before the first render, so the first press already answers to
+// the reader's own bindings.
+installKeybindings();
 
 const container = document.getElementById('root');
 if (!container) throw new Error('#root is missing from index.html');

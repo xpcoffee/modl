@@ -1337,6 +1337,77 @@ select {
   font-style: normal;
 }
 
+/* The panel holds one page at a time; the breadcrumb walks back to the root. */
+.preferences__breadcrumbs {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.preferences__breadcrumbs h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.preferences__breadcrumbs > span {
+  color: var(--muted);
+}
+
+.preferences__breadcrumbs button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.preferences__breadcrumbs button:hover {
+  color: var(--text);
+}
+
+.preferences__page-link {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 13px;
+  text-align: left;
+}
+
+.preferences__group + .preferences__group {
+  margin-top: 12px;
+}
+
+.preferences__row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 0;
+  font-size: 13px;
+}
+
+.preferences__binding {
+  min-width: 150px;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.preferences__binding.is-armed {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.preferences__reset {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.preferences__reset:hover {
+  color: var(--text);
+}
+
 /* Search and filter menu (issue #33), overlaid top-centre on the board. */
 
 .search-menu {
