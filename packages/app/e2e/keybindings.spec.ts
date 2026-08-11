@@ -297,6 +297,77 @@ test('a held key drives box select: press, move, release', async ({ page }) => {
     .toEqual([IDS.gateway, IDS.authorise, IDS.post].sort());
 });
 
+test('a bare-left box replaces the selection, and shift on top adds', async ({ page }) => {
+  await dispatch(page, sampleDomain());
+  await fit(page);
+
+  await openBindings(page);
+  await page.getByTestId('remove-pan-0').click();
+  await page.getByTestId('binding-box-select-0').click();
+  await page.mouse.click(8, 8);
+  await expect(page.getByTestId('binding-box-select-0')).toContainText('Left drag');
+  await page.getByTestId('close-preferences').click();
+
+  await page.locator(`.react-flow__node[data-id="${IDS.ui}"]`).click();
+  await expect.poll(() => selection(page)).toEqual([IDS.ui]);
+
+  // The bare drag replaces: the prior selection goes.
+  const gateway = (await page.getByTestId(`entity-${IDS.gateway}`).boundingBox())!;
+  await page.mouse.move(gateway.x - 25, gateway.y - 25);
+  await page.mouse.down();
+  await page.mouse.move(gateway.x + gateway.width + 25, gateway.y + gateway.height + 25, {
+    steps: 8,
+  });
+  await page.mouse.up();
+  await expect
+    .poll(() => selection(page))
+    .toEqual([IDS.gateway, IDS.authorise, IDS.post].sort());
+
+  // Shift on top of the binding adds instead.
+  const ledger = (await page.getByTestId(`entity-${IDS.ledger}`).boundingBox())!;
+  await page.keyboard.down('Shift');
+  await page.mouse.move(ledger.x - 25, ledger.y - 25);
+  await page.mouse.down();
+  await page.mouse.move(ledger.x + ledger.width + 25, ledger.y + ledger.height + 25, {
+    steps: 8,
+  });
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+  await expect
+    .poll(() => selection(page))
+    .toEqual([IDS.gateway, IDS.ledger, IDS.authorise, IDS.post].sort());
+});
+
+test('cancel clears the selection, and a click on the empty pane does too', async ({ page }) => {
+  await dispatch(page, sampleDomain());
+  await fit(page);
+
+  await page.keyboard.press('Control+a');
+  await expect.poll(async () => (await selection(page)).length).toBeGreaterThan(0);
+  await page.keyboard.press('Escape');
+  await expect.poll(() => selection(page)).toEqual([]);
+
+  await page.locator(`.react-flow__node[data-id="${IDS.ui}"]`).click();
+  await expect.poll(() => selection(page)).toEqual([IDS.ui]);
+  const pane = (await page.locator('.react-flow__pane').boundingBox())!;
+  await page.mouse.click(pane.x + 15, pane.y + pane.height - 15);
+  await expect.poll(() => selection(page)).toEqual([]);
+});
+
+test('two actions on one combo are flagged in the panel', async ({ page }) => {
+  await openBindings(page);
+  await expect(page.locator('[data-duplicate]')).toHaveCount(0);
+
+  await page.getByTestId('binding-undo-0').click();
+  await page.keyboard.press('Control+y');
+  await expect(page.getByTestId('binding-undo-0')).toHaveAttribute('data-duplicate', 'true');
+  await expect(page.getByTestId('binding-redo-0')).toHaveAttribute('data-duplicate', 'true');
+  await expect(page.getByTestId('binding-redo-1')).not.toHaveAttribute('data-duplicate', 'true');
+
+  await page.getByTestId('reset-keybindings').click();
+  await expect(page.locator('[data-duplicate]')).toHaveCount(0);
+});
+
 test('a drag released outside the panel keeps it open; a click begun outside closes it', async ({
   page,
 }) => {

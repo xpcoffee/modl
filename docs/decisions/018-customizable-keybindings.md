@@ -16,9 +16,11 @@ Every input gesture on the board was hard-coded where it was handled: undo and r
 
 **Pan is bound like everything else, including the left drag.** `panButtons` returns exactly the bound buttons, and React Flow shows the grab cursor only while the left button is among them, so removing the left-drag binding also returns the pane to a plain cursor. A box-select combo on the bare left button rides React Flow's `selectionOnDrag`, which its key-code strings cannot express. The board takes the right button for itself (`contextmenu` is suppressed on the canvas), so a right-button binding does not fight the browser's menu.
 
+**A box combines by what rides on top of its binding.** Alt in a press must match the combo exactly; shift and ctrl on top of it are the combine modifiers. The bare combo replaces the selection with the boxed elements, extra shift adds them, and extra ctrl subtracts them (revising decision 012's always-add). A modifier inside the combo is spent naming the gesture: the default shift+left drag always adds, because no shift is left over to distinguish adding from replacing. The same reading applies to held drags, held keys, and begin+end presses, and `selectionKeyCodes` expands each combo to its combine variants so React Flow keeps the box open under them.
+
 **A drag action runs held or begin+end, with keys welcome in both.** Box select and duplicate carry a mode. `hold` keeps the input down through the motion: a button drags as before, and a key opens the run on its keydown and settles it on its keyup (hold `d`, move, release: the copy lands under the pointer). `begin-end` opens a run on one press, grows it with pointer movement, settles it on the next press, and abandons it on the cancel binding. A held key reads "Hold D" in the panel; a held button keeps the word drag. Runs free of the pointer draw their own rectangle (`BoxSelectPreview`), because React Flow only draws one for a held drag; every form settles through the same `settleBox`/`settleCopies` code.
 
-**Cancel is an action too.** Escape by default; it backs out of a capture in the panel, disarms placement, and abandons a begin+end run. The dialog's own Escape-to-close stays native.
+**Cancel is an action too, and it backs out of the nearest thing.** Escape by default. One chain in `Canvas` orders its claims: a run in flight, an armed placement, a non-empty selection (which it clears), then the open comment overlay (which it leaves) — repeated presses back out of anything. The panel's capture and the dialog's own Escape sit in front of the chain, and the overlay's old hard-coded Escape handler folded into it. Clicking the empty pane also deselects, and that stays hard-wired: it is the board's base click, like creating a component.
 
 **Captures are typed by action, and any accepted press binds.** A keyboard action records the next key press with its modifiers; a drag action records a key or a button in either mode. Pan records a button and drops modifiers, because React Flow pans by button alone. Duplicate in hold mode refuses a bare left button, which would swallow the plain drag that moves elements. Every other press binds from wherever it lands, the panel's own controls included, so the bare left button is as assignable as anything else; cancel (Escape) is the way out of a capture. The panel dismisses on a backdrop click only when the press also began on the backdrop, so a drag released outside stays open.
 
@@ -26,7 +28,7 @@ Every input gesture on the board was hard-coded where it was handled: undo and r
 
 ## Consequences
 
-Conflicts are allowed. Two actions bound to the same combo both fire; the panel does not arbitrate. The bindings that stay expressible are bounded by React Flow where React Flow owns the gesture: a delete combo becomes its combo strings (with ctrl written as both Control and Meta), a box-select combo becomes exact-match selection key codes with ctrl and meta variants for subtraction (or `selectionOnDrag` for the bare left button), and pan reduces to buttons. React Flow only draws its selection box for the left button, so a box-select drag bound elsewhere selects correctly and draws nothing.
+Conflicts are allowed but visible. Two actions bound to the same combo both fire; the panel marks each such chip amber and names the other owners, and leaves the choice with the reader. The bindings that stay expressible are bounded by React Flow where React Flow owns the gesture: a delete combo becomes its combo strings (with ctrl written as both Control and Meta), a box-select combo becomes exact-match selection key codes with its combine variants (or `selectionOnDrag` for the bare left button), and pan reduces to buttons. React Flow only draws its selection box for the left button, so a box-select drag bound elsewhere selects correctly and draws nothing.
 
 Editor-local keys (Enter and Escape in inline editors, arrows in the roller and search list) stay hard-coded: they belong to the focused control, not to the board.
 
@@ -38,6 +40,6 @@ A stored override that no longer parses, names an unknown action, or breaks its 
 
 **A general chord or sequence system** (multi-stroke bindings, per-context maps). Nothing on the board needs it, and every layer of expressiveness here must survive round-tripping into React Flow's key-code strings.
 
-**Conflict detection in the panel.** Arbitration needs a policy (block? warn? steal?) and the cost of a duplicate binding is low and self-inflicted. A later pass can add a warning without changing the model.
+**Conflict arbitration in the panel.** Blocking or stealing a duplicate binding needs a policy the reader then has to learn; a visible warning costs nothing and keeps the choice theirs.
 
 **Unlimited combos per action.** Two covers every default and keeps the panel one row per action; a longer list buys nothing the second slot does not.

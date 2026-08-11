@@ -13,6 +13,7 @@ import {
   captureMouseCombo,
   combosFor,
   describeActionCombo,
+  duplicateOwners,
   gestureMode,
   matchesKey,
   removeCombo,
@@ -333,25 +334,28 @@ export function Preferences() {
                       )}
                     </span>
                     <span className="preferences__combos">
-                      {combos.map((combo, index) => (
+                      {combos.map((combo, index) => {
+                        const armedHere = arming?.id === action.id && arming.index === index;
+                        const others = duplicateOwners(action.id, combo);
+                        return (
                         <span key={index} className="preferences__chip">
                           <button
                             type="button"
-                            className={`preferences__binding${
-                              arming?.id === action.id && arming.index === index
-                                ? ' is-armed'
-                                : ''
+                            className={`preferences__binding${armedHere ? ' is-armed' : ''}${
+                              others.length > 0 ? ' is-duplicate' : ''
                             }`}
                             data-testid={`binding-${action.id}-${index}`}
+                            data-duplicate={others.length > 0 ? 'true' : undefined}
+                            title={
+                              others.length > 0
+                                ? `Also bound to ${others.join(', ')}: both fire`
+                                : undefined
+                            }
                             onClick={() =>
-                              setArming(
-                                arming?.id === action.id && arming.index === index
-                                  ? null
-                                  : { id: action.id, index },
-                              )
+                              setArming(armedHere ? null : { id: action.id, index })
                             }
                           >
-                            {arming?.id === action.id && arming.index === index
+                            {armedHere
                               ? captureHint(action.id)
                               : describeActionCombo(action.id, combo)}
                           </button>
@@ -368,7 +372,8 @@ export function Preferences() {
                             ×
                           </button>
                         </span>
-                      ))}
+                        );
+                      })}
                       {combos.length < MAX_COMBOS && (
                         <button
                           type="button"

@@ -206,20 +206,47 @@ export function matchesMouse(id: ActionId, event: MouseLike): boolean {
   return combosFor(id).some((combo) => comboMatchesMouse(combo, event));
 }
 
+/** How a settled box joins the selection it opened over. */
+export type BoxCombine = 'replace' | 'add' | 'subtract';
+
+/** The modifiers a press holds, with ctrl read as ctrl-or-cmd. */
+function heldModifiers(event: {
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+}): { ctrl: boolean; shift: boolean; alt: boolean } {
+  return { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey };
+}
+
 /**
- * A box-select press in drag mode, read ctrl-tolerantly: ctrl on top of the
- * bound combo subtracts the boxed elements from the selection (decision 012).
- * A combo that itself holds ctrl always adds — no key is left over to say
- * subtract.
+ * How a press relates to a bound box-select combo, or null when it misses.
+ * Alt is matched exactly; shift and ctrl on top of the combo are the combine
+ * modifiers: the bare combo replaces the selection, extra shift adds the
+ * boxed elements, and extra ctrl subtracts them. A modifier inside the combo
+ * is spent naming the gesture — shift+left drag always adds, because no
+ * shift is left over to distinguish adding from replacing.
  */
-export function boxSelectGesture(event: MouseLike): { subtract: boolean } | null {
+function boxCombine(
+  combo: Combo,
+  held: { ctrl: boolean; shift: boolean; alt: boolean },
+): BoxCombine | null {
+  if (combo.alt !== held.alt) return null;
+  if (combo.shift && !held.shift) return null;
+  if (combo.ctrl && !held.ctrl) return null;
+  if (!combo.ctrl && held.ctrl) return 'subtract';
+  if (combo.shift || held.shift) return 'add';
+  return 'replace';
+}
+
+/** The box-select gesture a press opens in hold mode, or null. */
+export function boxSelectGesture(event: MouseLike): { combine: BoxCombine } | null {
   if (gestureMode('box-select') === 'begin-end') return null;
-  const ctrl = event.ctrlKey || event.metaKey;
+  const held = heldModifiers(event);
   for (const combo of combosFor('box-select')) {
     if (combo.kind !== 'mouse' || combo.button !== event.button) continue;
-    if (combo.shift !== event.shiftKey || combo.alt !== event.altKey) continue;
-    if (combo.ctrl && !ctrl) continue;
-    return { subtract: !combo.ctrl && ctrl };
+    const combine = boxCombine(combo, held);
+    if (combine !== null) return { combine };
   }
   return null;
 }
@@ -227,24 +254,24 @@ export function boxSelectGesture(event: MouseLike): { subtract: boolean } | null
 /**
  * The gesture a key press drives, and how its run will settle: on the key's
  * release for hold mode, on the next press of the binding for begin+end.
+ * `combine` only means something for box-select.
  */
 export function keyGestureTrigger(
   event: KeyLike,
-): { id: 'box-select' | 'duplicate'; subtract: boolean; until: 'press' | 'release' } | null {
+): { id: 'box-select' | 'duplicate'; combine: BoxCombine; until: 'press' | 'release' } | null {
   {
     const until = gestureMode('box-select') === 'begin-end' ? 'press' : 'release';
-    const ctrl = event.ctrlKey || event.metaKey;
+    const held = heldModifiers(event);
     for (const combo of combosFor('box-select')) {
       if (combo.kind !== 'key' || combo.key !== normalizeKey(event.key)) continue;
-      if (combo.shift !== event.shiftKey || combo.alt !== event.altKey) continue;
-      if (combo.ctrl && !ctrl) continue;
-      return { id: 'box-select', subtract: !combo.ctrl && ctrl, until };
+      const combine = boxCombine(combo, held);
+      if (combine !== null) return { id: 'box-select', combine, until };
     }
   }
   if (combosFor('duplicate').some((combo) => comboMatchesKey(combo, event))) {
     return {
       id: 'duplicate',
-      subtract: false,
+      combine: 'replace',
       until: gestureMode('duplicate') === 'begin-end' ? 'press' : 'release',
     };
   }
@@ -254,19 +281,18 @@ export function keyGestureTrigger(
 /** The begin+end action a mouse press begins or ends, or null. */
 export function beginEndMouseTrigger(
   event: MouseLike,
-): { id: 'box-select' | 'duplicate'; subtract: boolean } | null {
+): { id: 'box-select' | 'duplicate'; combine: BoxCombine } | null {
   if (gestureMode('box-select') === 'begin-end') {
-    const ctrl = event.ctrlKey || event.metaKey;
+    const held = heldModifiers(event);
     for (const combo of combosFor('box-select')) {
       if (combo.kind !== 'mouse' || combo.button !== event.button) continue;
-      if (combo.shift !== event.shiftKey || combo.alt !== event.altKey) continue;
-      if (combo.ctrl && !ctrl) continue;
-      return { id: 'box-select', subtract: !combo.ctrl && ctrl };
+      const combine = boxCombine(combo, held);
+      if (combine !== null) return { id: 'box-select', combine };
     }
   }
   if (gestureMode('duplicate') === 'begin-end') {
     if (combosFor('duplicate').some((combo) => comboMatchesMouse(combo, event))) {
-      return { id: 'duplicate', subtract: false };
+      return { id: 'duplicate', combine: 'replace' };
     }
   }
   return null;
@@ -377,10 +403,12 @@ export function deleteKeyCodes(): string[] {
 
 /**
  * The combinations that keep React Flow's selection box open. React Flow
- * matches them exactly, so ctrl and meta variants join each bound combo:
- * without them, pressing ctrl to subtract mid-drag would close the box. A
- * combo with no modifiers is carried by selection-on-drag instead, and
- * begin+end mode draws its own box.
+ * matches them exactly, so each bound combo expands to every combine
+ * variant: shift joins where the combo has none (add) and ctrl or meta
+ * joins where the combo has none (subtract) — without them, pressing a
+ * combine modifier mid-drag would close the box. The bare no-modifier form
+ * is carried by selection-on-drag instead, and begin+end mode draws its
+ * own box.
  */
 export function selectionKeyCodes(): string[] {
   if (gestureMode('box-select') === 'begin-end') return [];
@@ -388,16 +416,38 @@ export function selectionKeyCodes(): string[] {
   for (const combo of combosFor('box-select')) {
     if (combo.kind !== 'mouse') continue;
     const base = [...(combo.shift ? ['Shift'] : []), ...(combo.alt ? ['Alt'] : [])];
-    if (combo.ctrl) {
-      codes.add(['Control', ...base].join('+'));
-      codes.add(['Meta', ...base].join('+'));
-    } else if (base.length > 0) {
-      codes.add(base.join('+'));
-      codes.add(['Control', ...base].join('+'));
-      codes.add(['Meta', ...base].join('+'));
+    const ctrlBases = combo.ctrl ? [['Control'], ['Meta']] : [[]];
+    const shiftExtras = combo.shift ? [[]] : [[], ['Shift']];
+    const ctrlExtras = combo.ctrl ? [[]] : [[], ['Control'], ['Meta']];
+    for (const ctrlBase of ctrlBases) {
+      for (const shiftExtra of shiftExtras) {
+        for (const ctrlExtra of ctrlExtras) {
+          const parts = [...base, ...ctrlBase, ...shiftExtra, ...ctrlExtra];
+          if (parts.length > 0) codes.add(parts.join('+'));
+        }
+      }
     }
   }
   return [...codes];
+}
+
+/** One name per distinct press, for spotting two actions on one combo. */
+function comboSignature(combo: Combo): string {
+  const press = combo.kind === 'key' ? `key:${combo.key}` : `mouse:${combo.button}`;
+  return `${press}:${combo.ctrl}:${combo.shift}:${combo.alt}`;
+}
+
+/**
+ * The labels of the other actions holding this same combo, for the panel to
+ * warn with. Both actions still fire; the panel does not arbitrate.
+ */
+export function duplicateOwners(id: ActionId, combo: Combo): string[] {
+  const signature = comboSignature(combo);
+  return ACTIONS.filter(
+    (action) =>
+      action.id !== id &&
+      combosFor(action.id).some((other) => comboSignature(other) === signature),
+  ).map((action) => action.label);
 }
 
 /**

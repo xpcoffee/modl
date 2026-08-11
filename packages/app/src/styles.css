@@ -1449,6 +1449,12 @@ select {
   color: var(--accent);
 }
 
+/* Two actions on one combo both fire; the amber says look, not stop. */
+.preferences__binding.is-duplicate {
+  border-color: #d9a13c;
+  color: #e4b45c;
+}
+
 .preferences__add {
   color: var(--muted);
 }

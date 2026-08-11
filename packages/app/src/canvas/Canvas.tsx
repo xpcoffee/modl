@@ -42,6 +42,7 @@ import {
   selectionKeyCodes,
   selectionOnDragEnabled,
   useKeybindingsVersion,
+  type BoxCombine,
 } from '../preferences/keybindings.js';
 import { store } from '../store/store.js';
 import { useAppState, useLoadCount } from '../store/useStore.js';
@@ -162,14 +163,14 @@ interface CanvasChange {
  * A selection box in flight. React Flow's box always replaces the selection
  * and reports it change by change, so the gesture is settled here instead:
  * dispatches pause while the box is open, and on release the boxed elements
- * are computed from geometry and joined with (shift) or removed from
- * (ctrl+shift) the selection the gesture started with, in one dispatch.
+ * are computed from geometry and combined with the selection the gesture
+ * started with, in one dispatch.
  */
 interface BoxGesture {
   /** The selection when the box opened. */
   prior: ReadonlySet<Id>;
-  /** True for ctrl+shift: the boxed elements leave the selection. */
-  subtract: boolean;
+  /** How the boxed elements join `prior`, read from the opening press. */
+  combine: BoxCombine;
   /** Where the box opened, in flow coordinates. Converted at press time so
       auto-panning mid-drag cannot shift it. */
   start: Point;
@@ -211,8 +212,8 @@ interface BoxRun {
   to: Point;
   /** The selection when the run began. */
   prior: ReadonlySet<Id>;
-  /** True when ctrl rode the beginning press: the boxed elements leave. */
-  subtract: boolean;
+  /** How the boxed elements join `prior`, read from the beginning press. */
+  combine: BoxCombine;
   /** For a held key: the run settles when this key is released. */
   endKey?: string;
 }
@@ -647,9 +648,9 @@ export function Canvas() {
   const onNodesChange = useCallback(
     (changes: NodeChange<Node<BoardNodeData>>[]) => {
       // While a box is open, React Flow deselects the prior selection, which
-      // this gesture keeps (it adds or subtracts on release). Those elements
-      // stay drawn as selected so the board never shows a selection the
-      // release would contradict.
+      // this gesture still needs (the release combines the boxed elements
+      // with it). Those elements stay drawn as selected until the release
+      // settles what the selection becomes.
       const gesture = boxGesture.current;
       const visual = gesture
         ? changes.filter(
@@ -713,16 +714,16 @@ export function Canvas() {
 
   /**
    * Settles a box: the nodes drawn fully inside it and the connections
-   * touching them, joined with the selection the gesture opened over, or
-   * removed from it when the gesture said subtract. One dispatch per
-   * gesture, and none when the selection would not change. Shared between
-   * the held drag and the begin+end run.
+   * touching them, combined with the selection the gesture opened over —
+   * replacing it, joining it, or leaving it. One dispatch per gesture, and
+   * none when the selection would not change. Shared between the held drag
+   * and the begin+end run.
    */
   const settleBox = useCallback(
     (
       rect: { x: number; y: number; width: number; height: number },
       prior: ReadonlySet<Id>,
-      subtract: boolean,
+      combine: BoxCombine,
       forComment: Id | null,
     ) => {
       const boxedNodes = new Set<Id>();
@@ -762,9 +763,12 @@ export function Canvas() {
       }
 
       const state = store.getState();
-      const next = subtract
-        ? [...prior].filter((id) => !boxed.has(id))
-        : [...new Set([...prior, ...boxed])];
+      const next =
+        combine === 'subtract'
+          ? [...prior].filter((id) => !boxed.has(id))
+          : combine === 'add'
+            ? [...new Set([...prior, ...boxed])]
+            : [...boxed];
       const ids = next.filter((id) => state.document.model.elements[id]);
 
       const current = new Set(state.selection);
@@ -793,7 +797,7 @@ export function Canvas() {
       boxGesture.current = null;
 
       const end = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-      settleBox(rectFrom(gesture.start, end), gesture.prior, gesture.subtract, gesture.forComment);
+      settleBox(rectFrom(gesture.start, end), gesture.prior, gesture.combine, gesture.forComment);
     },
     [screenToFlowPosition, settleBox],
   );
@@ -883,7 +887,7 @@ export function Canvas() {
   /** Settles the box run in flight, wherever its rectangle reaches. */
   const settleBoxRun = useCallback(() => {
     if (!boxRun) return;
-    settleBox(rectFrom(boxRun.start, boxRun.to), boxRun.prior, boxRun.subtract, null);
+    settleBox(rectFrom(boxRun.start, boxRun.to), boxRun.prior, boxRun.combine, null);
     setBoxRun(null);
   }, [boxRun, settleBox]);
 
@@ -953,10 +957,32 @@ export function Canvas() {
       if (target?.closest('input, textarea, [contenteditable]')) return;
 
       if (matchesKey('cancel', event)) {
-        if (!boxRun && !copyDrag?.untilEnd) return;
-        event.preventDefault();
-        setBoxRun(null);
-        setCopyDrag(null);
+        // Nearest claim first: a run in flight, an armed placement, the
+        // selection, then the comment overlay — repeated presses back out
+        // of anything. Menus, editors, and the dialog keep their own Escape
+        // (the guard above, their own handlers, and the dialog check here).
+        if (boxRun || copyDrag?.untilEnd) {
+          event.preventDefault();
+          setBoxRun(null);
+          setCopyDrag(null);
+          return;
+        }
+        if (getPending() !== null) {
+          event.preventDefault();
+          disarm();
+          return;
+        }
+        if (target?.closest('dialog')) return;
+        const current = store.getState();
+        if (current.selection.length > 0) {
+          event.preventDefault();
+          store.dispatch({ type: 'set-selection', ids: [] });
+          return;
+        }
+        if (current.commentOverlay) {
+          event.preventDefault();
+          store.dispatch({ type: 'set-comment-overlay', open: false });
+        }
         return;
       }
 
@@ -978,7 +1004,7 @@ export function Canvas() {
           start: at,
           to: at,
           prior: new Set(store.getState().selection),
-          subtract: trigger.subtract,
+          combine: trigger.combine,
           ...(endKey !== undefined ? { endKey } : {}),
         });
         return;
@@ -1106,7 +1132,7 @@ export function Canvas() {
                 start: at,
                 to: at,
                 prior: new Set(store.getState().selection),
-                subtract: runTrigger.subtract,
+                combine: runTrigger.combine,
               });
             }
           } else if (copyDrag?.untilEnd) {
@@ -1142,7 +1168,7 @@ export function Canvas() {
           if (gesture && target.closest('.react-flow__pane')) {
             boxGesture.current = {
               prior: new Set(store.getState().selection),
-              subtract: gesture.subtract,
+              combine: gesture.combine,
               start: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
               forComment: overlay ? (getCommentEdit()?.commentId ?? null) : null,
             };
@@ -1238,9 +1264,10 @@ export function Canvas() {
         // model.
         deleteKeyCode={overlay ? null : deleteKeyCodes()}
         // React Flow matches key combinations exactly, so the box-select
-        // binding expands to its ctrl and meta variants: plain 'Shift' stops
-        // matching the moment ctrl joins it and ctrl+shift+drag would pan.
-        // Naming the combinations keeps the box open for subtraction.
+        // binding expands to its shift, ctrl, and meta variants: plain
+        // 'Shift' stops matching the moment ctrl joins it and the drag would
+        // pan. Naming the combinations keeps the box open for the combine
+        // modifiers (add, subtract).
         selectionKeyCode={selectionKeyCodes().length > 0 ? selectionKeyCodes() : null}
         // A box-select binding on the bare left button has no key for React
         // Flow to match, so the pane itself opens the box on drag.
