@@ -4352,47 +4352,87 @@ test.describe('discussion overlay', () => {
     await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-comment-overlay', 'true');
   });
 
-  test('clicking a selected element quick-adds a comment, and clicking off empty cancels', async ({ page }) => {
-    await dispatch(page, discussedDomain());
+  test('one click on an element opens its discussion, or a fresh card', async ({ page }) => {
+    const BARE = 'floating-note-pad';
+    await dispatch(page, [
+      ...discussedDomain(),
+      { type: 'create-entity', id: BARE, entityType: 'component', title: 'Apart', position: { x: 0, y: 300 } },
+    ]);
     await fit(page);
     await page.keyboard.press('c');
 
-    // The UI element: the timeline reserves the board's right edge, and the
-    // ledger sits under it once the camera fits the domain.
-    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ui] }]);
+    // An element already discussed opens its latest comment for editing.
     await page.getByTestId(`entity-${IDS.ui}`).click();
+    await expect(page.getByTestId(`comment-text-box-${FIRST}`)).toBeVisible();
+    // Clicking off keeps a comment that has words.
+    await page.getByTestId('canvas').click({ position: { x: 60, y: 500 } });
+    expect((await getDocument(page)).comments[FIRST]).toBeDefined();
 
+    // An element with no discussion gets a fresh card; abandoning it empty
+    // deletes it.
+    await page.getByTestId(`entity-${BARE}`).click();
     const editor = page.locator('[data-testid^="comment-text-box-"]');
     await expect(editor).toBeVisible();
-
-    // Clicking off with nothing written abandons the comment.
-    await page.getByTestId('canvas').click({ position: { x: 40, y: 400 } });
+    await page.getByTestId('canvas').click({ position: { x: 60, y: 500 } });
     await expect(editor).toHaveCount(0);
     expect(Object.keys((await getDocument(page)).comments)).toHaveLength(3);
+
+    // The element selection UI never showed for any of it.
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-selected/);
   });
 
-  test('quick-add with words saves on click-off, targeting the whole selection', async ({ page }) => {
+  test('ctrl+click while a card is open toggles what it discusses', async ({ page }) => {
+    const BARE = 'floating-note-pad';
+    await dispatch(page, [
+      ...discussedDomain(),
+      { type: 'create-entity', id: BARE, entityType: 'component', title: 'Apart', position: { x: 0, y: 300 } },
+    ]);
+    await fit(page);
+    await page.keyboard.press('c');
+
+    await page.getByTestId(`entity-${BARE}`).click();
+    const editor = page.locator('[data-testid^="comment-text-box-"]');
+    await editor.fill('does this belong with the UI?');
+
+    await page.getByTestId(`entity-${IDS.ui}`).click({ modifiers: ['Control'] });
+    const card = page.locator('.comment-card', { hasText: 'does this belong' });
+    await expect(card.locator('.comment-card__meta')).toHaveText('one comment across 2 elements');
+
+    await page.getByTestId(`entity-${IDS.ui}`).click({ modifiers: ['Control'] });
+    await expect(card.locator('.comment-card__meta')).toBeHidden();
+
+    await page.getByTestId('canvas').click({ position: { x: 60, y: 500 } });
+    const written = Object.values((await getDocument(page)).comments).find(
+      (comment) => comment.text === 'does this belong with the UI?',
+    );
+    expect(written?.targets).toEqual([BARE]);
+  });
+
+  test('double-clicking empty board writes a general remark', async ({ page }) => {
     await dispatch(page, discussedDomain());
     await fit(page);
     await page.keyboard.press('c');
 
-    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ui, IDS.gateway] }]);
-    await page.getByTestId(`entity-${IDS.ui}`).click();
-
+    await page.getByTestId('canvas').dblclick({ position: { x: 60, y: 500 } });
     const editor = page.locator('[data-testid^="comment-text-box-"]');
-    await editor.fill('does this pair share a retry budget?');
-    await page.getByTestId('canvas').click({ position: { x: 40, y: 400 } });
+    await editor.fill('a remark about everything');
+    await page.getByTestId('canvas').click({ position: { x: 60, y: 560 } });
 
     const written = Object.values((await getDocument(page)).comments).find(
-      (comment) => comment.text === 'does this pair share a retry budget?',
+      (comment) => comment.text === 'a remark about everything',
     );
-    expect(written?.targets).toEqual([IDS.ui, IDS.gateway]);
+    expect(written?.targets).toEqual([]);
+    // No element was created by the double-click.
+    expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(5);
   });
 
-  test('a dragged card is pinned in the document layout', async ({ page }) => {
+  test('a dragged card is pinned, and its arc follows during the drag', async ({ page }) => {
     await dispatch(page, discussedDomain());
     await fit(page);
     await page.keyboard.press('c');
+
+    const arc = page.getByTestId(`comment-arc-${SECOND}-0`);
+    const before = await arc.getAttribute('x1');
 
     const card = page.getByTestId(`comment-card-${SECOND}`);
     const box = await card.boundingBox();
@@ -4400,6 +4440,9 @@ test.describe('discussion overlay', () => {
     await page.mouse.move(box!.x + box!.width / 2, box!.y + 8);
     await page.mouse.down();
     await page.mouse.move(box!.x + box!.width / 2 + 120, box!.y + 88, { steps: 5 });
+
+    // Mid-drag, the button still down: the arc has already moved with the card.
+    expect(await arc.getAttribute('x1')).not.toBe(before);
     await page.mouse.up();
 
     const layout = (await getDocument(page)).layout[SECOND];
@@ -4413,12 +4456,13 @@ test.describe('discussion overlay', () => {
     await setFilter(page, 'team=web');
     await page.keyboard.press('c');
 
-    // The gateway does not match team=web, so clicking it selects nothing.
+    // The gateway does not match team=web, so clicking it opens nothing.
     await page.getByTestId(`entity-${IDS.gateway}`).click({ force: true });
-    expect((await state(page)).selection).toEqual([]);
+    await expect(page.locator('[data-testid^="comment-text-box-"]')).toHaveCount(0);
 
+    // The UI matches, so its discussion opens.
     await page.getByTestId(`entity-${IDS.ui}`).click();
-    expect((await state(page)).selection).toEqual([IDS.ui]);
+    await expect(page.getByTestId(`comment-text-box-${FIRST}`)).toBeVisible();
   });
 
   test('in model mode the card selects, edits, and deletes without opening the overlay', async ({ page }) => {
@@ -4428,6 +4472,15 @@ test.describe('discussion overlay', () => {
     await dispatch(page, [{ type: 'set-selection', ids: [IDS.ledger] }]);
     const card = page.getByTestId(`comment-card-${SECOND}`);
     await expect(card).toBeVisible();
+
+    // A drag only moves the card: the element stays selected, the comment
+    // stays unselected, and the card stays where the reader can see it.
+    const box = await card.boundingBox();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + 8);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + box!.width / 2 - 90, box!.y + 60, { steps: 4 });
+    await page.mouse.up();
+    expect((await state(page)).selection).toEqual([IDS.ledger]);
 
     await card.click();
     expect((await state(page)).selection).toEqual([SECOND]);

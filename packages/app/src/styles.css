@@ -1726,19 +1726,25 @@ select {
   min-width: 180px;
 }
 
+/* General remarks line the bottom edge: the camera fits content to the
+   middle, so this strip stays clear of the board most of the time. */
 .comment-overlay__dock {
   position: absolute;
-  top: 64px;
-  left: 16px;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
-  flex-direction: column;
+  align-items: flex-end;
   gap: 8px;
-  width: 240px;
+  max-width: 60vw;
+  overflow-x: auto;
   z-index: 6;
 }
 
 .comment-overlay__dock .comment-card {
   position: static;
+  width: 220px;
+  flex-shrink: 0;
 }
 
 .comment-overlay__dock-title {
@@ -1746,6 +1752,8 @@ select {
   letter-spacing: 2px;
   color: var(--comment);
   text-transform: uppercase;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
 }
 
 /* Spans the board's height, no chrome of its own: the current entry sits
@@ -1766,6 +1774,19 @@ select {
 
 .comment-timeline__entry {
   pointer-events: auto;
+}
+
+/* The reading position: the current entry always sits beside this mark. */
+.comment-timeline__centre {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  transform: translateY(-50%) rotate(45deg);
+  border: 1.5px solid var(--comment);
+  border-left: none;
+  border-bottom: none;
 }
 
 .comment-timeline__entry {

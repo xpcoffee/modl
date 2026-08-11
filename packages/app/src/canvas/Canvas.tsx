@@ -62,7 +62,15 @@ import { useSearchPreview } from './searchPreview.js';
 import { ExpansionMenu } from './ExpansionMenu.js';
 import { RelationsMenu } from './RelationsMenu.js';
 import { SelectionActions } from './SelectionActions.js';
-import { CommentOverlay, OverlayToggle, quickAddComment } from './CommentOverlay.js';
+import {
+  addCommentTargets,
+  CommentOverlay,
+  openElementComment,
+  OverlayToggle,
+  quickAddComment,
+  toggleCommentTarget,
+} from './CommentOverlay.js';
+import { getCommentEdit } from './commentEditing.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
 import { useHighlightId } from './highlight.js';
 import { lastConnectionStyle, lastEntityStyle } from './styleMemory.js';
@@ -145,6 +153,9 @@ interface BoxGesture {
   /** Where the box opened, in flow coordinates. Converted at press time so
       auto-panning mid-drag cannot shift it. */
   start: Point;
+  /** The comment whose card was open when the box started: the boxed
+      elements join its targets instead of the selection. */
+  forComment: Id | null;
 }
 
 /**
@@ -219,25 +230,6 @@ export function Canvas() {
     () =>
       selectIds(state.document.model.elements, state.filter, state.document.comments),
     [state.document.model.elements, state.filter, state.document.comments],
-  );
-  /** The selection as it stood when the press landed. By click time the
-      press itself has changed it: a plain click collapses a multi-selection
-      to the clicked node before onNodeClick runs. */
-  const pressSelection = useRef<Id[]>([]);
-  const pressWasSelected = useRef(false);
-
-  /** In the overlay, a click on an already-selected element writes a comment
-      on it, or on the whole selection it was part of. */
-  const overlayElementClick = useCallback(
-    (id: Id) => {
-      if (!store.getState().commentOverlay || !pressWasSelected.current) return;
-      const elements = store.getState().document.model.elements;
-      const targets = pressSelection.current.includes(id)
-        ? pressSelection.current.filter((candidate) => elements[candidate])
-        : [id];
-      quickAddComment(targets);
-    },
-    [],
   );
 
   const derived = useMemo(
@@ -489,9 +481,17 @@ export function Canvas() {
 
   const onDoubleClick = useCallback(
     (event: React.MouseEvent) => {
-      // The overlay is for discussing, so a double-click must not edit the
-      // model underneath it. The second click already quick-added a comment.
-      if (store.getState().commentOverlay) return;
+      // In the overlay a double-click on empty board writes a general
+      // remark; it never edits the model underneath.
+      if (store.getState().commentOverlay) {
+        const hit = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+        const emptyBoard =
+          hit?.closest(
+            '.react-flow__node, .edge-label, .comment-card, .comment-timeline, .comment-overlay__dock, .overlay-toggle, .search-menu, .react-flow__controls, .react-flow__minimap',
+          ) === null;
+        if (emptyBoard) quickAddComment([]);
+        return;
+      }
       // A double-click on or beside the controls is a mis-aimed button press,
       // not a request for a component. Enabled buttons bubble their clicks up
       // to here, so without this a zoom spam-click drops components too.
@@ -679,6 +679,17 @@ export function Canvas() {
         }
       }
 
+      // A box drawn while a card is open gathers targets for the comment;
+      // the selection, which the overlay never shows for elements, is left
+      // alone. Only what the filter shows joins.
+      if (gesture.forComment !== null) {
+        addCommentTargets(
+          gesture.forComment,
+          [...boxed].filter((id) => interactable.has(id)),
+        );
+        return;
+      }
+
       const state = store.getState();
       const next = gesture.subtract
         ? [...gesture.prior].filter((id) => !boxed.has(id))
@@ -700,7 +711,7 @@ export function Canvas() {
         ),
       );
     },
-    [nodes, edges, screenToFlowPosition],
+    [nodes, edges, screenToFlowPosition, interactable],
   );
 
   /**
@@ -844,22 +855,36 @@ export function Canvas() {
         swallowClick.current = false;
         const target = event.target as HTMLElement;
 
-        // In the overlay only what the filter shows is interactable, and a
-        // press on an already-selected element is the start of a quick-add.
+        // In the overlay every element press speaks comments: React Flow
+        // never sees it, so the normal selection UI never shows. One click
+        // opens the element's discussion (or a fresh card), and while a card
+        // is open ctrl+click toggles the element in and out of its targets.
+        // preventDefault keeps focus in the open text box, so writing
+        // continues across the toggles. Only what the filter shows reacts.
         const pressedId =
           target.closest<HTMLElement>('.react-flow__node')?.dataset['id'] ??
           target.closest<HTMLElement>('.edge-label')?.dataset['connectionId'] ??
           null;
-        pressSelection.current = [...store.getState().selection];
-        pressWasSelected.current =
-          pressedId !== null && pressSelection.current.includes(pressedId);
-        if (overlay && pressedId !== null && !interactable.has(pressedId)) {
+        if (overlay && pressedId !== null) {
           // Cancelling the pointerdown does not cancel the click that
           // follows it, and the click is where React Flow selects.
           swallowClick.current = true;
           event.preventDefault();
           event.stopPropagation();
+          if (event.button !== 0 || !interactable.has(pressedId)) return;
+          const edit = getCommentEdit();
+          if ((event.ctrlKey || event.metaKey) && edit !== null) {
+            toggleCommentTarget(edit.commentId, pressedId);
+          } else {
+            openElementComment(pressedId);
+          }
           return;
+        }
+
+        // Shift opens a box over the pane; while a card is open the box
+        // gathers targets for it, and keeping focus keeps the card open.
+        if (overlay && event.shiftKey && getCommentEdit() !== null) {
+          event.preventDefault();
         }
 
         // Alt+drag copies what it grabs, or the whole selection when it holds
@@ -887,6 +912,7 @@ export function Canvas() {
               prior: new Set(store.getState().selection),
               subtract: event.ctrlKey || event.metaKey,
               start: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+              forComment: overlay ? (getCommentEdit()?.commentId ?? null) : null,
             };
           }
           return;
@@ -951,8 +977,6 @@ export function Canvas() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onReconnect={onReconnect}
-        onNodeClick={(_, node) => overlayElementClick(node.id)}
-        onEdgeClick={(_, edge) => overlayElementClick(connectionIdFromEdge(edge.id))}
         // The overlay reads and discusses; the model underneath holds still.
         nodesDraggable={!overlay}
         nodesConnectable={!overlay}

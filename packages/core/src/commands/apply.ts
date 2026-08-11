@@ -1095,9 +1095,19 @@ function reduce(state: AppState, command: Command): CommandResult {
     }
 
     case 'set-comment-overlay': {
-      return ok({ ...state, commentOverlay: command.open }, [
+      // Opening drops any selected elements: the overlay never shows the
+      // element selection UI, and clicking an element there speaks comments.
+      // A selected comment rides along, since the overlay is its home.
+      const selection = command.open
+        ? state.selection.filter((id) => state.document.comments[id])
+        : state.selection;
+      const events: DomainEvent[] = [
         { type: 'comment-overlay-changed', open: command.open },
-      ]);
+      ];
+      if (selection.length !== state.selection.length) {
+        events.push({ type: 'selection-changed', ids: [...selection] });
+      }
+      return ok({ ...state, commentOverlay: command.open, selection }, events);
     }
 
     default: {

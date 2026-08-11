@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ViewportPortal, useReactFlow } from '@xyflow/react';
 import {
   COMMENT_CARD_SIZE,
@@ -11,7 +11,7 @@ import {
 } from '@modl/core';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
-import { startCommentEdit, useCommentEdit } from './commentEditing.js';
+import { getCommentEdit, startCommentEdit, stopCommentEdit, useCommentEdit } from './commentEditing.js';
 import { CommentTextBox } from './CommentTextBox.js';
 
 /**
@@ -20,10 +20,12 @@ import { CommentTextBox } from './CommentTextBox.js';
  * or one of its targets is selected, and the discussion overlay shows them
  * all over a blueprint of the board.
  *
- * `c` opens the overlay, and with elements selected it also opens a fresh
- * card on them, which is the quick way to write. Escape deselects first and
- * leaves the overlay second. The up/down keys, the wheel over the timeline,
- * and clicks on its entries walk the discussion in the order it was written.
+ * In the overlay every element click speaks comments: one click opens the
+ * element's discussion, or a fresh card when it has none, and the normal
+ * element selection UI never shows. `c` opens the overlay (and a card on
+ * whatever was selected), double-clicking empty board writes a general
+ * remark, and while a card is open ctrl+click and shift+box grow or shrink
+ * what it discusses. Escape deselects first and leaves the overlay second.
  */
 
 /** Where a card sits when the reader has not pinned it: under its targets. */
@@ -93,8 +95,24 @@ function isTyping(target: EventTarget | null): boolean {
   return Boolean((target as HTMLElement | null)?.closest('input, textarea, [contenteditable]'));
 }
 
+/**
+ * Closes whatever card is open the way clicking off would: an empty comment
+ * is abandoned, one with words is already saved. Switching to another
+ * element's discussion goes through here so no blank card lingers behind.
+ */
+function settleOpenCard(): void {
+  const edit = getCommentEdit();
+  if (edit === null) return;
+  stopCommentEdit();
+  const comment = store.getState().document.comments[edit.commentId];
+  if (comment && comment.text.trim() === '') {
+    store.dispatch({ type: 'delete-comment', id: edit.commentId });
+  }
+}
+
 /** Creates a comment on the given elements and opens its card for writing. */
 export function quickAddComment(targets: Id[]): void {
+  settleOpenCard();
   const id = crypto.randomUUID();
   const result = store.dispatch({
     type: 'create-comment',
@@ -108,13 +126,71 @@ export function quickAddComment(targets: Id[]): void {
   startCommentEdit(id, 'overlay');
 }
 
+/**
+ * What one click on an element means in the overlay: open its discussion.
+ * The latest comment on the element opens for editing, and an element with
+ * none gets a fresh card, so pointing at a thing is all writing takes.
+ */
+export function openElementComment(elementId: Id): void {
+  const state = store.getState();
+  const discussion = allComments(state.document.comments).filter((comment) =>
+    comment.targets.includes(elementId),
+  );
+  const latest = discussion[discussion.length - 1];
+  if (latest === undefined) {
+    quickAddComment([elementId]);
+    return;
+  }
+  if (getCommentEdit()?.commentId !== latest.id) settleOpenCard();
+  store.dispatch({ type: 'set-selection', ids: [latest.id] });
+  startCommentEdit(latest.id, 'overlay');
+}
+
+/**
+ * Ctrl+click while a card is open: the element joins what the comment
+ * discusses, or leaves it when it is already there. Removing the last
+ * target turns the comment into a general remark rather than deleting
+ * words someone wrote.
+ */
+export function toggleCommentTarget(commentId: Id, elementId: Id): void {
+  const comment = store.getState().document.comments[commentId];
+  if (!comment) return;
+  const targets = comment.targets.includes(elementId)
+    ? comment.targets.filter((target) => target !== elementId)
+    : [...comment.targets, elementId];
+  store.dispatch({ type: 'set-comment-targets', id: commentId, targets });
+}
+
+/** Shift+box while a card is open: everything boxed joins the comment. */
+export function addCommentTargets(commentId: Id, elementIds: Id[]): void {
+  const comment = store.getState().document.comments[commentId];
+  if (!comment || elementIds.length === 0) return;
+  store.dispatch({
+    type: 'set-comment-targets',
+    id: commentId,
+    targets: [...new Set([...comment.targets, ...elementIds])],
+  });
+}
+
 export function CommentOverlay() {
   const state = useAppState();
   const edit = useCommentEdit();
   const { setCenter, getViewport, screenToFlowPosition } = useReactFlow();
   const open = state.commentOverlay;
 
-  const cards = useMemo(() => placeCards(state), [state]);
+  // A drag in flight, held locally so the card AND its arcs follow the
+  // pointer; the document gets one move-comment on release.
+  const [liveDrag, setLiveDrag] = useState<{ id: Id; at: Point } | null>(null);
+  // The click that ends a drag must not also select the card.
+  const justDragged = useRef(false);
+
+  const cards = useMemo(() => {
+    const placed = placeCards(state);
+    if (liveDrag === null) return placed;
+    return placed.map((card) =>
+      card.comment.id === liveDrag.id ? { ...card, at: liveDrag.at } : card,
+    );
+  }, [state, liveDrag]);
   const selectedComment = soleSelectedComment(state);
 
   const panTo = useCallback(
@@ -200,11 +276,18 @@ export function CommentOverlay() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [panTo]);
 
-  /** Drags a card; the pin lands as one move-comment on release. */
+  /**
+   * Drags a card, arcs following live; the pin lands as one move-comment on
+   * release. A card drags while its text box is open too: only a press on
+   * the box itself is left alone, so the caret still places by mouse.
+   */
   const dragCard = useCallback(
     (commentId: Id, from: Point) => (event: React.PointerEvent) => {
       if (event.button !== 0) return;
+      if ((event.target as HTMLElement).closest('textarea, input, button')) return;
       event.stopPropagation();
+      // Keeps focus (and the open text box) where it is while the card moves.
+      event.preventDefault();
       const origin = screenToFlowPosition({ x: event.clientX, y: event.clientY });
       let last = from;
       const element = event.currentTarget as HTMLElement;
@@ -213,12 +296,14 @@ export function CommentOverlay() {
       const move = (moveEvent: PointerEvent) => {
         const at = screenToFlowPosition({ x: moveEvent.clientX, y: moveEvent.clientY });
         last = { x: from.x + at.x - origin.x, y: from.y + at.y - origin.y };
-        element.style.transform = `translate(${last.x}px, ${last.y}px)`;
+        setLiveDrag({ id: commentId, at: last });
       };
       const up = () => {
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', up);
+        setLiveDrag(null);
         if (last.x !== from.x || last.y !== from.y) {
+          justDragged.current = true;
           store.dispatch({ type: 'move-comment', id: commentId, position: last });
         }
       };
@@ -243,6 +328,7 @@ export function CommentOverlay() {
             card.anchors.map((anchor, index) => (
               <line
                 key={`${card.comment.id}-${index}`}
+                data-testid={`comment-arc-${card.comment.id}-${index}`}
                 x1={card.at!.x + COMMENT_CARD_SIZE.width / 2}
                 y1={card.at!.y + 12}
                 x2={anchor.x}
@@ -263,6 +349,7 @@ export function CommentOverlay() {
             card={card}
             selected={selectedComment === card.comment.id}
             editing={edit?.commentId === card.comment.id}
+            justDragged={justDragged}
             onDragStart={dragCard(card.comment.id, card.at!)}
           />
         ))}
@@ -278,6 +365,7 @@ export function CommentOverlay() {
               card={card}
               selected={selectedComment === card.comment.id}
               editing={edit?.commentId === card.comment.id}
+              justDragged={justDragged}
               docked
             />
           ))}
@@ -293,12 +381,15 @@ function CommentCard({
   card,
   selected,
   editing,
+  justDragged,
   docked = false,
   onDragStart,
 }: {
   card: CardPlace;
   selected: boolean;
   editing: boolean;
+  /** Set by a drag ending; the click that follows it must not select. */
+  justDragged: React.MutableRefObject<boolean>;
   docked?: boolean;
   onDragStart?: (event: React.PointerEvent) => void;
 }) {
@@ -322,9 +413,15 @@ function CommentCard({
           ? undefined
           : { transform: `translate(${card.at!.x}px, ${card.at!.y}px)`, width: COMMENT_CARD_SIZE.width }
       }
-      onPointerDown={editing ? undefined : onDragStart}
+      onPointerDown={onDragStart}
       onClick={(event) => {
         event.stopPropagation();
+        // A drag is a move, never a click: the element under discussion (or
+        // the card itself) stays exactly as selected as it was.
+        if (justDragged.current) {
+          justDragged.current = false;
+          return;
+        }
         if (editing) return;
         // First click points at the comment; a second click opens it.
         if (selected) startCommentEdit(comment.id, 'overlay');
@@ -396,6 +493,8 @@ function Timeline({
 
   return (
     <div className="comment-timeline nowheel nodrag nopan" data-testid="comment-timeline">
+      {/* Marks the reading position: the entry beside this is the current one. */}
+      <span className="comment-timeline__centre" data-testid="timeline-centre" aria-hidden="true" />
       {cards.map((card, index) => {
         const offset = index - current;
         const opacity = Math.max(0, 1 - Math.abs(offset) * TIMELINE_FADE);

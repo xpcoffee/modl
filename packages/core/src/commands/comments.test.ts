@@ -204,6 +204,16 @@ describe('the discussion overlay and pinned cards', () => {
     expect(undone.document.comments[NOTE]).toBeUndefined();
   });
 
+  it('opening the overlay drops selected elements and keeps a selected comment', () => {
+    const state = must(
+      base,
+      comment(NOTE, 'hm', [A]),
+      { type: 'set-selection', ids: [A, NOTE] },
+      { type: 'set-comment-overlay', open: true },
+    );
+    expect(state.selection).toEqual([NOTE]);
+  });
+
   it('move-comment pins the card in layout, and the pin dies with the comment', () => {
     const pinned = must(
       base,
