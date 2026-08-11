@@ -1,23 +1,17 @@
-import { useRef, useState } from 'react';
-import { isGroup, parseDocument, selectIds } from '@modl/core';
+import { useEffect, useRef, useState } from 'react';
+import { fileStem, isGroup, parseDocument, selectIds } from '@modl/core';
 import { store } from '../store/store.js';
 import { ElementIcon } from '../canvas/ElementIcon.js';
 import { PLACEABLE, arm, usePending } from '../canvas/placement.js';
+import { download, pickDocumentFile, saveDocumentFile, saveDocumentFileAs } from '../files/fileAccess.js';
+import { rememberFile, useFileContext } from '../files/fileContext.js';
+import { matchesKey } from '../preferences/keybindings.js';
 import { useAppState } from '../store/useStore.js';
 import { Preferences } from './Preferences.js';
 
-/** Downloads text as a file. */
-function download(filename: string, text: string, type = 'application/json'): void {
-  const url = URL.createObjectURL(new Blob([text], { type }));
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
 export function Toolbar() {
   const state = useAppState();
+  const file = useFileContext();
   const fileInput = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState('');
   const pending = usePending();
@@ -62,15 +56,52 @@ export function Toolbar() {
     isGroup(state.document.model.elements, id),
   );
 
-  const openFile = async (file: File) => {
+  const openFile = async (file: File, handle: FileSystemFileHandle | null) => {
     const result = parseDocument(await file.text());
     if (!result.ok) {
       setMessage(`Could not load: ${result.errors.map((e) => e.message).join('; ')}`);
       return;
     }
     const applied = store.dispatch({ type: 'load-document', document: result.document });
+    if (applied.ok) rememberFile({ handle, name: file.name });
     setMessage(applied.ok ? `Loaded ${file.name}` : applied.error.message);
   };
+
+  const load = async () => {
+    const picked = await pickDocumentFile();
+    if (picked.outcome === 'unsupported') {
+      fileInput.current?.click();
+      return;
+    }
+    if (picked.outcome === 'canceled') return;
+    if (picked.outcome === 'failed') {
+      setMessage(`Could not open: ${picked.message}`);
+      return;
+    }
+    await openFile(picked.file, picked.handle);
+  };
+
+  const save = async (as: boolean) => {
+    const text = store.serialize();
+    const title = store.getState().document.title;
+    const result = as ? await saveDocumentFileAs(text, title) : await saveDocumentFile(text, title);
+    if (result.outcome === 'saved') setMessage(`Saved ${result.name}`);
+    else if (result.outcome === 'failed') setMessage(`Could not save: ${result.message}`);
+  };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const saveAs = matchesKey('save-as', event);
+      const plain = !saveAs && matchesKey('save', event);
+      if (!saveAs && !plain) return;
+      // ctrl+s inside a field still means the document, and the default
+      // would open the browser's own save dialog.
+      event.preventDefault();
+      void save(saveAs);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   return (
     <header className="toolbar" data-testid="toolbar">
@@ -78,6 +109,11 @@ export function Toolbar() {
         <img src="./modl.svg" alt="" width="20" height="20" />
         modl
       </strong>
+      {file.name && (
+        <span className="toolbar__file" data-testid="file-name" title={file.name}>
+          {fileStem(file.name)}
+        </span>
+      )}
 
       <div className="toolbar__add">
         <button
@@ -148,11 +184,20 @@ export function Toolbar() {
       <button
         type="button"
         data-testid="save"
-        onClick={() => download('domain.modl.json', store.serialize())}
+        title={file.name ? `Save to ${file.name}` : 'Save'}
+        onClick={() => void save(false)}
       >
         Save
       </button>
-      <button type="button" data-testid="load" onClick={() => fileInput.current?.click()}>
+      <button
+        type="button"
+        data-testid="save-as"
+        title="Save to a new file"
+        onClick={() => void save(true)}
+      >
+        Save as
+      </button>
+      <button type="button" data-testid="load" onClick={() => void load()}>
         Load
       </button>
       <input
@@ -162,8 +207,8 @@ export function Toolbar() {
         data-testid="file-input"
         hidden
         onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) void openFile(file);
+          const picked = event.target.files?.[0];
+          if (picked) void openFile(picked, null);
           event.target.value = '';
         }}
       />

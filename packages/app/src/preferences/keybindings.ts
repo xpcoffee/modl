@@ -19,6 +19,8 @@ export type ActionId =
   | 'copy'
   | 'paste'
   | 'search'
+  | 'save'
+  | 'save-as'
   | 'delete'
   | 'cancel'
   | 'box-select'
@@ -107,6 +109,14 @@ export const ACTIONS: ActionSpec[] = [
   { id: 'copy', label: 'Copy', kind: 'key', gesture: 'press', defaults: [key('c', { ctrl: true })] },
   { id: 'paste', label: 'Paste', kind: 'key', gesture: 'press', defaults: [key('v', { ctrl: true })] },
   { id: 'search', label: 'Search', kind: 'key', gesture: 'press', defaults: [key('f', { ctrl: true })] },
+  { id: 'save', label: 'Save', kind: 'key', gesture: 'press', defaults: [key('s', { ctrl: true })] },
+  {
+    id: 'save-as',
+    label: 'Save as',
+    kind: 'key',
+    gesture: 'press',
+    defaults: [key('s', { ctrl: true, shift: true })],
+  },
   { id: 'delete', label: 'Delete', kind: 'key', gesture: 'press', defaults: [key('Delete'), key('Backspace')] },
   { id: 'cancel', label: 'Cancel', kind: 'key', gesture: 'press', defaults: [key('Escape')] },
   {
