@@ -3510,6 +3510,22 @@ test.describe('selection gestures', () => {
 
     expect(await selection(page)).toEqual([IDS.ledger]);
   });
+
+  test('a bare shift draws no border around the board', async ({ page }) => {
+    // A click focuses the canvas div, and the browser upgrades that focus to
+    // a visible ring on the first keypress, so holding the box-select
+    // modifier drew a white border around the whole board (issue #45).
+    await page.locator('.react-flow__pane').click({ position: { x: 200, y: 200 } });
+    await page.keyboard.down('Shift');
+
+    const outline = await page.evaluate(() => {
+      const canvas = document.querySelector('.canvas')!;
+      return getComputedStyle(canvas).outlineStyle;
+    });
+    await page.keyboard.up('Shift');
+
+    expect(outline).toBe('none');
+  });
 });
 
 test.describe('minimap', () => {

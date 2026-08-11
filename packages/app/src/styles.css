@@ -106,6 +106,10 @@ select {
 .canvas {
   flex: 1;
   min-width: 0;
+  /* The div is focusable (tabIndex -1) only to catch key events; the browser
+     upgrades that focus to a visible ring on the first keypress, so a bare
+     Shift drew a border around the board (issue #45). */
+  outline: none;
 }
 
 .entity-node {
