@@ -1368,6 +1368,10 @@ select {
   font-size: 12px;
 }
 
+/* The open plays in two parts (issue #40): the bar widens out of the button,
+   then the panel below the field unfolds downward. The close is the same two
+   parts backwards: the panel folds up, then the bar narrows. Each part takes
+   half of CLOSE_MS in SearchMenu.tsx, which unmounts the bar at the end. */
 .search-menu__bar {
   width: min(520px, 80vw);
   padding: 8px;
@@ -1375,24 +1379,81 @@ select {
   border-radius: 10px;
   background: var(--panel);
   box-shadow: 0 6px 24px rgb(0 0 0 / 45%);
-  animation: search-open 0.18s ease-out;
+  animation: search-bar-open 0.15s ease-out;
 }
 
-@keyframes search-open {
+@keyframes search-bar-open {
   from {
     opacity: 0;
-    transform: translateY(-6px) scaleX(0.7);
+    transform: scaleX(0.2);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0) scaleX(1);
+    transform: scaleX(1);
+  }
+}
+
+/* The 0fr row track is what animates: the panel's height follows its content
+   with no squashing, which a scaleY would cause. */
+.search-menu__panel {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: search-panel-open 0.15s ease-out 0.15s backwards;
+}
+
+.search-menu__panel-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@keyframes search-panel-open {
+  from {
+    grid-template-rows: 0fr;
+  }
+
+  to {
+    grid-template-rows: 1fr;
+  }
+}
+
+/* The departing bar takes no clicks. Both close animations hold their last
+   frame until React unmounts the bar. */
+.search-menu__bar.is-closing {
+  animation: search-bar-close 0.15s ease-in 0.15s forwards;
+  pointer-events: none;
+}
+
+.search-menu__bar.is-closing .search-menu__panel {
+  animation: search-panel-close 0.15s ease-in forwards;
+}
+
+@keyframes search-bar-close {
+  from {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scaleX(0.2);
+  }
+}
+
+@keyframes search-panel-close {
+  from {
+    grid-template-rows: 1fr;
+  }
+
+  to {
+    grid-template-rows: 0fr;
   }
 }
 
 /* The reader's motion preference reaches the keyframes the same way the
    warps read it, so the bar is replaced rather than grown. */
-:root[data-motion='reduced'] .search-menu__bar {
+:root[data-motion='reduced'] .search-menu__bar,
+:root[data-motion='reduced'] .search-menu__panel {
   animation: none;
 }
 

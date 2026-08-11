@@ -14,11 +14,15 @@ import {
   type SearchOption,
 } from '@modl/core';
 import { setSearchPreview } from '../canvas/searchPreview.js';
+import { motionReduced } from '../preferences/motion.js';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 
 /** How many options are on screen at once. The rest are reached by cycling. */
 const VISIBLE_OPTIONS = 10;
+
+/** How long the close takes: the two search-close CSS animations end to end. */
+const CLOSE_MS = 300;
 
 /** What the bar is doing: finding things, or changing one active filter. */
 type Mode = { kind: 'search' } | { kind: 'edit'; index: number };
@@ -73,6 +77,7 @@ export function SearchMenu() {
   const paneHeight = useFlowStore((flow) => flow.height);
 
   const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [mode, setMode] = useState<Mode>({ kind: 'search' });
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -80,6 +85,7 @@ export function SearchMenu() {
 
   const container = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  const closeTimer = useRef<number | undefined>(undefined);
 
   const terms = useMemo(() => activeFilterTerms(state.filter), [state.filter]);
   const editing = mode.kind === 'edit';
@@ -95,17 +101,36 @@ export function SearchMenu() {
     [state, query, editing, terms.length],
   );
 
-  const close = useCallback(() => {
-    setOpen(false);
+  /** The bar is gone: forget what it held, ready for the next opening. */
+  const settle = useCallback(() => {
+    window.clearTimeout(closeTimer.current);
+    setClosing(false);
     setMode({ kind: 'search' });
     setQuery('');
     setActive(0);
     setWindowStart(0);
-    setSearchPreview(null);
   }, []);
+
+  const close = useCallback(() => {
+    setOpen(false);
+    setSearchPreview(null);
+    if (motionReduced()) {
+      settle();
+      return;
+    }
+    // The bar stays mounted, holding its content, while it shrinks away.
+    setClosing(true);
+    window.clearTimeout(closeTimer.current);
+    closeTimer.current = window.setTimeout(settle, CLOSE_MS);
+  }, [settle]);
+
+  useEffect(() => () => window.clearTimeout(closeTimer.current), []);
 
   /** Opens the bar for a plain search, focusing whatever it already holds. */
   const openSearch = useCallback(() => {
+    // Reopening mid-shrink claims the bar back before the timer empties it.
+    window.clearTimeout(closeTimer.current);
+    setClosing(false);
     setOpen(true);
     setMode({ kind: 'search' });
     setQuery('');
@@ -254,6 +279,8 @@ export function SearchMenu() {
         step(event.deltaY > 0 ? 1 : -1);
       }}
       onKeyDown={(event) => {
+        // A key landing on the departing bar must not act on it.
+        if (!open) return;
         if (event.key === 'ArrowDown') step(1);
         else if (event.key === 'ArrowUp') step(-1);
         else if (event.key === 'Enter') {
@@ -265,7 +292,7 @@ export function SearchMenu() {
         event.stopPropagation();
       }}
     >
-      {!open && (
+      {!open && !closing && (
         <button
           type="button"
           className="search-menu__entrance"
@@ -288,8 +315,8 @@ export function SearchMenu() {
         </button>
       )}
 
-      {open && (
-        <div className="search-menu__bar" data-testid="search-bar">
+      {(open || closing) && (
+        <div className={`search-menu__bar${closing ? ' is-closing' : ''}`} data-testid="search-bar">
           <div className="search-menu__field">
             {editing ? <FilterIcon /> : <SearchIcon />}
             <input
@@ -311,78 +338,82 @@ export function SearchMenu() {
             </button>
           </div>
 
-          {terms.length > 0 && (
-            <ul className="search-menu__filters" data-testid="active-filters">
-              {terms.map((term, index) => (
-                <li key={`${formatTerm(term)}-${index}`}>
-                  <button
-                    type="button"
-                    className={`search-menu__chip${editing && mode.index === index ? ' is-editing' : ''}`}
-                    data-testid={`filter-chip-${index}`}
-                    title="Edit this filter"
-                    onClick={() => editTermAt(index)}
-                  >
-                    <FilterIcon />
-                    {formatTerm(term)}
-                  </button>
-                  <button
-                    type="button"
-                    className="search-menu__chip-remove"
-                    data-testid={`filter-remove-${index}`}
-                    aria-label={`Remove filter ${formatTerm(term)}`}
-                    onClick={() => removeTermAt(index)}
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+          <div className="search-menu__panel" data-testid="search-panel">
+            <div className="search-menu__panel-inner">
+              {terms.length > 0 && (
+                <ul className="search-menu__filters" data-testid="active-filters">
+                  {terms.map((term, index) => (
+                    <li key={`${formatTerm(term)}-${index}`}>
+                      <button
+                        type="button"
+                        className={`search-menu__chip${editing && mode.index === index ? ' is-editing' : ''}`}
+                        data-testid={`filter-chip-${index}`}
+                        title="Edit this filter"
+                        onClick={() => editTermAt(index)}
+                      >
+                        <FilterIcon />
+                        {formatTerm(term)}
+                      </button>
+                      <button
+                        type="button"
+                        className="search-menu__chip-remove"
+                        data-testid={`filter-remove-${index}`}
+                        aria-label={`Remove filter ${formatTerm(term)}`}
+                        onClick={() => removeTermAt(index)}
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
 
-          {terms.length >= MAX_FILTERS && !editing && (
-            <p className="search-menu__note" data-testid="filter-cap">
-              {MAX_FILTERS} filters is the limit. Remove one to add another.
-            </p>
-          )}
+              {terms.length >= MAX_FILTERS && !editing && (
+                <p className="search-menu__note" data-testid="filter-cap">
+                  {MAX_FILTERS} filters is the limit. Remove one to add another.
+                </p>
+              )}
 
-          <ul className="search-menu__options" data-testid="search-options">
-            {shown.map((option) => {
-              const index = options.indexOf(option);
-              return (
-                <li key={keyOf(option)}>
-                  <button
-                    type="button"
-                    className={`search-menu__option${index === active ? ' is-active' : ''}`}
-                    data-testid={testIdOf(option)}
-                    onMouseEnter={() => setActive(index)}
-                    onClick={() => choose(option)}
-                  >
-                    {option.kind === 'filter' ? <FilterIcon /> : <GoToIcon />}
-                    <span className="search-menu__option-label">{option.label}</span>
-                    <span className="search-menu__option-kind">
-                      {option.kind === 'filter'
-                        ? editing
-                          ? 'change filter'
-                          : 'filter the board'
-                        : option.sublabel}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-            {options.length === 0 && (
-              <li className="search-menu__empty" data-testid="search-empty">
-                nothing matches “{query}”
-              </li>
-            )}
-          </ul>
+              <ul className="search-menu__options" data-testid="search-options">
+                {shown.map((option) => {
+                  const index = options.indexOf(option);
+                  return (
+                    <li key={keyOf(option)}>
+                      <button
+                        type="button"
+                        className={`search-menu__option${index === active ? ' is-active' : ''}`}
+                        data-testid={testIdOf(option)}
+                        onMouseEnter={() => setActive(index)}
+                        onClick={() => choose(option)}
+                      >
+                        {option.kind === 'filter' ? <FilterIcon /> : <GoToIcon />}
+                        <span className="search-menu__option-label">{option.label}</span>
+                        <span className="search-menu__option-kind">
+                          {option.kind === 'filter'
+                            ? editing
+                              ? 'change filter'
+                              : 'filter the board'
+                            : option.sublabel}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+                {options.length === 0 && (
+                  <li className="search-menu__empty" data-testid="search-empty">
+                    nothing matches “{query}”
+                  </li>
+                )}
+              </ul>
 
-          {options.length > VISIBLE_OPTIONS && (
-            <p className="search-menu__note" data-testid="search-more">
-              {windowStart + 1}–{Math.min(windowStart + VISIBLE_OPTIONS, options.length)} of{' '}
-              {options.length} · arrow keys or the wheel to cycle
-            </p>
-          )}
+              {options.length > VISIBLE_OPTIONS && (
+                <p className="search-menu__note" data-testid="search-more">
+                  {windowStart + 1}–{Math.min(windowStart + VISIBLE_OPTIONS, options.length)} of{' '}
+                  {options.length} · arrow keys or the wheel to cycle
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
