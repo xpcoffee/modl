@@ -4,8 +4,10 @@ import {
   COMMENT_CARD_SIZE,
   allComments,
   isConnection,
+  isEntityLayout,
   type AppState,
   type Comment,
+  type DomainEvent,
   type Id,
   type Point,
 } from '@modl/core';
@@ -55,7 +57,24 @@ function rectCentre(state: AppState, id: Id): Point | null {
   return null;
 }
 
+/**
+ * Where unpinned general remarks stack: beside the content, so they sit on
+ * the board like everything else without covering it. A general remark
+ * normally arrives pinned where it was double-clicked; this fallback is for
+ * files that carry one without a pin.
+ */
+function generalFallback(state: AppState, index: number): Point {
+  const boxes = Object.values(state.document.layout).filter(isEntityLayout);
+  const left = boxes.length === 0 ? 0 : Math.min(...boxes.map((box) => box.x));
+  const top = boxes.length === 0 ? 0 : Math.min(...boxes.map((box) => box.y));
+  return {
+    x: left - COMMENT_CARD_SIZE.width - 60,
+    y: top + index * (COMMENT_CARD_SIZE.height + 16),
+  };
+}
+
 function placeCards(state: AppState): CardPlace[] {
+  let unpinnedGenerals = 0;
   return allComments(state.document.comments).map((comment) => {
     const anchors = comment.targets
       .map((target) => rectCentre(state, target))
@@ -64,7 +83,9 @@ function placeCards(state: AppState): CardPlace[] {
     const pin = state.document.layout[comment.id];
     if (pin && 'x' in pin) return { comment, at: { x: pin.x, y: pin.y }, anchors };
 
-    if (anchors.length === 0) return { comment, anchors };
+    if (anchors.length === 0) {
+      return { comment, at: generalFallback(state, unpinnedGenerals++), anchors };
+    }
 
     const centroid = anchors.reduce(
       (sum, point) => ({ x: sum.x + point.x / anchors.length, y: sum.y + point.y / anchors.length }),
@@ -110,8 +131,12 @@ function settleOpenCard(): void {
   }
 }
 
-/** Creates a comment on the given elements and opens its card for writing. */
-export function quickAddComment(targets: Id[]): void {
+/**
+ * Creates a comment on the given elements and opens its card for writing.
+ * `at` pins the card there (a general remark lands where it was
+ * double-clicked); without it the card derives its place from its targets.
+ */
+export function quickAddComment(targets: Id[], at?: Point): void {
   settleOpenCard();
   const id = crypto.randomUUID();
   const result = store.dispatch({
@@ -122,6 +147,13 @@ export function quickAddComment(targets: Id[]): void {
     createdAt: new Date().toISOString(),
   });
   if (!result.ok) return;
+  if (at !== undefined) {
+    store.dispatch({
+      type: 'move-comment',
+      id,
+      position: { x: at.x - COMMENT_CARD_SIZE.width / 2, y: at.y - 12 },
+    });
+  }
   store.dispatch({ type: 'set-selection', ids: [id] });
   startCommentEdit(id, 'overlay');
 }
@@ -183,6 +215,25 @@ export function CommentOverlay() {
   const [liveDrag, setLiveDrag] = useState<{ id: Id; at: Point } | null>(null);
   // The click that ends a drag must not also select the card.
   const justDragged = useRef(false);
+  // The card just written into being, pulsing its border once.
+  const [bornId, setBornId] = useState<Id | null>(null);
+  useEffect(() => {
+    let timer: number | undefined;
+    const unsubscribe = store.subscribeEvents((events) => {
+      const created = events.find(
+        (event): event is Extract<DomainEvent, { type: 'comment-created' }> =>
+          event.type === 'comment-created',
+      );
+      if (!created || !store.getState().commentOverlay) return;
+      setBornId(created.id);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setBornId(null), 700);
+    });
+    return () => {
+      unsubscribe();
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   const cards = useMemo(() => {
     const placed = placeCards(state);
@@ -315,9 +366,7 @@ export function CommentOverlay() {
 
   // The card is the one rendering a comment has. The overlay shows every
   // card; model mode shows the ones being read.
-  const shown = open ? cards : cards.filter((card) => isRead(state, card.comment));
-  const pinned = shown.filter((card) => card.at !== undefined);
-  const docked = shown.filter((card) => card.at === undefined);
+  const pinned = open ? cards : cards.filter((card) => isRead(state, card.comment));
 
   return (
     <>
@@ -349,28 +398,12 @@ export function CommentOverlay() {
             card={card}
             selected={selectedComment === card.comment.id}
             editing={edit?.commentId === card.comment.id}
+            born={card.comment.id === bornId}
             justDragged={justDragged}
             onDragStart={dragCard(card.comment.id, card.at!)}
           />
         ))}
       </ViewportPortal>
-
-      {/* General remarks with no pin dock here; dragging one pins it. */}
-      {docked.length > 0 && (
-        <div className="comment-overlay__dock" data-testid="comment-dock">
-          <span className="comment-overlay__dock-title">whole board</span>
-          {docked.map((card) => (
-            <CommentCard
-              key={card.comment.id}
-              card={card}
-              selected={selectedComment === card.comment.id}
-              editing={edit?.commentId === card.comment.id}
-              justDragged={justDragged}
-              docked
-            />
-          ))}
-        </div>
-      )}
 
       {open && <Timeline cards={cards} selected={selectedComment} onPick={goTo} />}
     </>
@@ -381,16 +414,17 @@ function CommentCard({
   card,
   selected,
   editing,
+  born,
   justDragged,
-  docked = false,
   onDragStart,
 }: {
   card: CardPlace;
   selected: boolean;
   editing: boolean;
+  /** True just after creation: the border pulses once to say "written here". */
+  born: boolean;
   /** Set by a drag ending; the click that follows it must not select. */
   justDragged: React.MutableRefObject<boolean>;
-  docked?: boolean;
   onDragStart?: (event: React.PointerEvent) => void;
 }) {
   const { comment } = card;
@@ -399,7 +433,7 @@ function CommentCard({
     'nodrag',
     'nopan',
     selected ? 'is-selected' : '',
-    docked ? 'is-docked' : '',
+    born ? 'is-born' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -408,11 +442,7 @@ function CommentCard({
     <div
       className={classes}
       data-testid={`comment-card-${comment.id}`}
-      style={
-        docked
-          ? undefined
-          : { transform: `translate(${card.at!.x}px, ${card.at!.y}px)`, width: COMMENT_CARD_SIZE.width }
-      }
+      style={{ transform: `translate(${card.at!.x}px, ${card.at!.y}px)`, width: COMMENT_CARD_SIZE.width }}
       onPointerDown={onDragStart}
       onClick={(event) => {
         event.stopPropagation();

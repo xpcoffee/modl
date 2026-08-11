@@ -8,6 +8,7 @@ import {
   ReactFlow,
   useReactFlow,
   useStoreApi,
+  ViewportPortal,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -16,6 +17,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
+  COMMENT_CARD_SIZE,
   DEFAULT_ENTITY_SIZE,
   connectionTypeFor,
   descendantsOf,
@@ -487,9 +489,13 @@ export function Canvas() {
         const hit = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
         const emptyBoard =
           hit?.closest(
-            '.react-flow__node, .edge-label, .comment-card, .comment-timeline, .comment-overlay__dock, .overlay-toggle, .search-menu, .react-flow__controls, .react-flow__minimap',
+            '.react-flow__node, .edge-label, .comment-card, .comment-timeline, .overlay-toggle, .search-menu, .react-flow__controls, .react-flow__minimap',
           ) === null;
-        if (emptyBoard) quickAddComment([]);
+        // The remark lands where it was written, pinned in place.
+        if (emptyBoard) {
+          setCardGhost(null);
+          quickAddComment([], screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+        }
         return;
       }
       // A double-click on or beside the controls is a mis-aimed button press,
@@ -608,13 +614,29 @@ export function Canvas() {
   );
 
   /**
+   * A ghost card pulsing where the pane was clicked in the overlay. It says
+   * what a second click writes there, in the overlay's own language rather
+   * than the model's gravity wave.
+   */
+  const [cardGhost, setCardGhost] = useState<{ at: Point; key: number } | null>(null);
+  const ghostTimer = useRef<number | undefined>(undefined);
+
+  /**
    * A lone click on empty canvas answers with a small wave: the spot is live,
-   * and a second click here creates an element.
+   * and a second click here creates an element. In the overlay the answer is
+   * the outline of the comment a second click would write instead.
    */
   const onPaneClick = useCallback(
     (event: React.MouseEvent) => {
       stopEditing();
-      pressRipple(screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+      const at = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      if (store.getState().commentOverlay) {
+        setCardGhost((previous) => ({ at, key: (previous?.key ?? 0) + 1 }));
+        window.clearTimeout(ghostTimer.current);
+        ghostTimer.current = window.setTimeout(() => setCardGhost(null), 650);
+        return;
+      }
+      pressRipple(at);
     },
     [screenToFlowPosition],
   );
@@ -1042,6 +1064,20 @@ export function Canvas() {
         <RelationsMenu nodes={nodes} />
         <ExpansionMenu nodes={nodes} />
         <CommentOverlay />
+        {cardGhost && (
+          <ViewportPortal>
+            <div
+              key={cardGhost.key}
+              className="comment-card-ghost"
+              data-testid="comment-ghost"
+              style={{
+                transform: `translate(${cardGhost.at.x - COMMENT_CARD_SIZE.width / 2}px, ${cardGhost.at.y - 12}px)`,
+                width: COMMENT_CARD_SIZE.width,
+                height: COMMENT_CARD_SIZE.height,
+              }}
+            />
+          </ViewportPortal>
+        )}
       </ReactFlow>
     </div>
   );

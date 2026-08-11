@@ -4307,14 +4307,24 @@ test.describe('discussion overlay', () => {
     await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-comment-overlay', 'true');
   });
 
-  test('a general remark docks against the board edge', async ({ page }) => {
+  test('a general remark is a card on the board like any other', async ({ page }) => {
     await dispatch(page, discussedDomain());
     await fit(page);
     await page.keyboard.press('c');
 
-    await expect(
-      page.getByTestId('comment-dock').getByTestId(`comment-card-${GENERAL}`),
-    ).toBeVisible();
+    // Unpinned (as from a file), it draws beside the content, and dragging
+    // pins it like any other card. Its timeline entry pans the camera to it
+    // first, since "beside the content" sits outside the fitted framing.
+    await page.getByTestId(`timeline-entry-${GENERAL}`).click();
+    await page.waitForTimeout(400);
+    const card = page.getByTestId(`comment-card-${GENERAL}`);
+    await expect(card).toBeVisible();
+    const box = await card.boundingBox();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + 8);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + box!.width / 2 + 80, box!.y + 60, { steps: 4 });
+    await page.mouse.up();
+    expect((await getDocument(page)).layout[GENERAL]).toBeDefined();
   });
 
   test('the timeline walks the discussion in writing order', async ({ page }) => {
@@ -4422,8 +4432,22 @@ test.describe('discussion overlay', () => {
       (comment) => comment.text === 'a remark about everything',
     );
     expect(written?.targets).toEqual([]);
+    // The remark landed where it was written: pinned at the double-click.
+    expect((await getDocument(page)).layout[written!.id]).toBeDefined();
     // No element was created by the double-click.
     expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(5);
+  });
+
+  test('a pane click in the overlay pulses a card ghost, never the gravity wave', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+    await page.keyboard.press('c');
+
+    await page.getByTestId('canvas').click({ position: { x: 60, y: 500 } });
+    await expect(page.getByTestId('comment-ghost')).toBeVisible();
+    // The single click wrote nothing; the ghost only says what a double
+    // click would do.
+    expect(Object.keys((await getDocument(page)).comments)).toHaveLength(3);
   });
 
   test('a dragged card is pinned, and its arc follows during the drag', async ({ page }) => {

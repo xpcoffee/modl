@@ -1726,34 +1726,54 @@ select {
   min-width: 180px;
 }
 
-/* General remarks line the bottom edge: the camera fits content to the
-   middle, so this strip stays clear of the board most of the time. */
-.comment-overlay__dock {
+/* The overlay's answer to a pane click: the outline of the card a second
+   click would write there, pulsing once. The overlay speaks in comments,
+   so its click language is a card rather than the model's gravity wave. */
+.comment-card-ghost {
   position: absolute;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  max-width: 60vw;
-  overflow-x: auto;
-  z-index: 6;
+  top: 0;
+  left: 0;
+  border: 1.5px dashed var(--comment);
+  border-radius: 10px;
+  pointer-events: none;
+  animation: comment-ghost-pulse 0.65s ease-out forwards;
 }
 
-.comment-overlay__dock .comment-card {
-  position: static;
-  width: 220px;
-  flex-shrink: 0;
+@keyframes comment-ghost-pulse {
+  0% {
+    opacity: 0;
+    transform-origin: center;
+  }
+  25% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
-.comment-overlay__dock-title {
-  font-size: 10px;
-  letter-spacing: 2px;
-  color: var(--comment);
-  text-transform: uppercase;
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
+/* A card just written into being announces itself with one ring of light. */
+.comment-card.is-born {
+  animation: comment-born-pulse 0.7s ease-out;
+}
+
+@keyframes comment-born-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(224 169 79 / 70%);
+  }
+  100% {
+    box-shadow: 0 0 18px 10px rgb(224 169 79 / 0%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .comment-card-ghost,
+  .comment-card.is-born {
+    animation: none;
+  }
+  .comment-card-ghost {
+    opacity: 0.7;
+  }
 }
 
 /* Spans the board's height, no chrome of its own: the current entry sits
