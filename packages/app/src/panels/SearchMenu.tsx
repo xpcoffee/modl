@@ -21,8 +21,8 @@ import { useAppState } from '../store/useStore.js';
 /** How many options are on screen at once. The rest are reached by cycling. */
 const VISIBLE_OPTIONS = 10;
 
-/** How long the bar takes to shrink away: the search-close CSS animation. */
-const CLOSE_MS = 180;
+/** How long the close takes: the two search-close CSS animations end to end. */
+const CLOSE_MS = 300;
 
 /** What the bar is doing: finding things, or changing one active filter. */
 type Mode = { kind: 'search' } | { kind: 'edit'; index: number };
@@ -338,78 +338,82 @@ export function SearchMenu() {
             </button>
           </div>
 
-          {terms.length > 0 && (
-            <ul className="search-menu__filters" data-testid="active-filters">
-              {terms.map((term, index) => (
-                <li key={`${formatTerm(term)}-${index}`}>
-                  <button
-                    type="button"
-                    className={`search-menu__chip${editing && mode.index === index ? ' is-editing' : ''}`}
-                    data-testid={`filter-chip-${index}`}
-                    title="Edit this filter"
-                    onClick={() => editTermAt(index)}
-                  >
-                    <FilterIcon />
-                    {formatTerm(term)}
-                  </button>
-                  <button
-                    type="button"
-                    className="search-menu__chip-remove"
-                    data-testid={`filter-remove-${index}`}
-                    aria-label={`Remove filter ${formatTerm(term)}`}
-                    onClick={() => removeTermAt(index)}
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+          <div className="search-menu__panel" data-testid="search-panel">
+            <div className="search-menu__panel-inner">
+              {terms.length > 0 && (
+                <ul className="search-menu__filters" data-testid="active-filters">
+                  {terms.map((term, index) => (
+                    <li key={`${formatTerm(term)}-${index}`}>
+                      <button
+                        type="button"
+                        className={`search-menu__chip${editing && mode.index === index ? ' is-editing' : ''}`}
+                        data-testid={`filter-chip-${index}`}
+                        title="Edit this filter"
+                        onClick={() => editTermAt(index)}
+                      >
+                        <FilterIcon />
+                        {formatTerm(term)}
+                      </button>
+                      <button
+                        type="button"
+                        className="search-menu__chip-remove"
+                        data-testid={`filter-remove-${index}`}
+                        aria-label={`Remove filter ${formatTerm(term)}`}
+                        onClick={() => removeTermAt(index)}
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
 
-          {terms.length >= MAX_FILTERS && !editing && (
-            <p className="search-menu__note" data-testid="filter-cap">
-              {MAX_FILTERS} filters is the limit. Remove one to add another.
-            </p>
-          )}
+              {terms.length >= MAX_FILTERS && !editing && (
+                <p className="search-menu__note" data-testid="filter-cap">
+                  {MAX_FILTERS} filters is the limit. Remove one to add another.
+                </p>
+              )}
 
-          <ul className="search-menu__options" data-testid="search-options">
-            {shown.map((option) => {
-              const index = options.indexOf(option);
-              return (
-                <li key={keyOf(option)}>
-                  <button
-                    type="button"
-                    className={`search-menu__option${index === active ? ' is-active' : ''}`}
-                    data-testid={testIdOf(option)}
-                    onMouseEnter={() => setActive(index)}
-                    onClick={() => choose(option)}
-                  >
-                    {option.kind === 'filter' ? <FilterIcon /> : <GoToIcon />}
-                    <span className="search-menu__option-label">{option.label}</span>
-                    <span className="search-menu__option-kind">
-                      {option.kind === 'filter'
-                        ? editing
-                          ? 'change filter'
-                          : 'filter the board'
-                        : option.sublabel}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-            {options.length === 0 && (
-              <li className="search-menu__empty" data-testid="search-empty">
-                nothing matches “{query}”
-              </li>
-            )}
-          </ul>
+              <ul className="search-menu__options" data-testid="search-options">
+                {shown.map((option) => {
+                  const index = options.indexOf(option);
+                  return (
+                    <li key={keyOf(option)}>
+                      <button
+                        type="button"
+                        className={`search-menu__option${index === active ? ' is-active' : ''}`}
+                        data-testid={testIdOf(option)}
+                        onMouseEnter={() => setActive(index)}
+                        onClick={() => choose(option)}
+                      >
+                        {option.kind === 'filter' ? <FilterIcon /> : <GoToIcon />}
+                        <span className="search-menu__option-label">{option.label}</span>
+                        <span className="search-menu__option-kind">
+                          {option.kind === 'filter'
+                            ? editing
+                              ? 'change filter'
+                              : 'filter the board'
+                            : option.sublabel}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+                {options.length === 0 && (
+                  <li className="search-menu__empty" data-testid="search-empty">
+                    nothing matches “{query}”
+                  </li>
+                )}
+              </ul>
 
-          {options.length > VISIBLE_OPTIONS && (
-            <p className="search-menu__note" data-testid="search-more">
-              {windowStart + 1}–{Math.min(windowStart + VISIBLE_OPTIONS, options.length)} of{' '}
-              {options.length} · arrow keys or the wheel to cycle
-            </p>
-          )}
+              {options.length > VISIBLE_OPTIONS && (
+                <p className="search-menu__note" data-testid="search-more">
+                  {windowStart + 1}–{Math.min(windowStart + VISIBLE_OPTIONS, options.length)} of{' '}
+                  {options.length} · arrow keys or the wheel to cycle
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

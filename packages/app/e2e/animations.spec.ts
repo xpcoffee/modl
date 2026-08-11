@@ -253,6 +253,8 @@ test.describe('reduced motion', () => {
 
     const bar = page.getByTestId('search-bar');
     expect(await bar.evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
+    const panel = page.getByTestId('search-panel');
+    expect(await panel.evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
   });
 
   test('removes the bar rather than shrinking it', async ({ page }) => {
@@ -342,40 +344,63 @@ test.describe('reduced motion', () => {
 test.describe('turning motion off', () => {
   test.use({ contextOptions: { reducedMotion: 'no-preference' } });
 
-  test('the search button grows into the bar while motion is on', async ({ page }) => {
+  test('the search button grows into the bar, then the panel unfolds below it', async ({ page }) => {
     await open(page);
     await openSearch(page);
 
+    // Two parts in sequence: the bar widens at once, the panel's unfold
+    // starts only after the bar's part has run.
     const bar = page.getByTestId('search-bar');
-    expect(await bar.evaluate((el) => getComputedStyle(el).animationName)).toBe('search-open');
+    expect(await bar.evaluate((el) => getComputedStyle(el).animationName)).toBe('search-bar-open');
+    expect(await bar.evaluate((el) => getComputedStyle(el).animationDelay)).toBe('0s');
+    const panel = page.getByTestId('search-panel');
+    expect(await panel.evaluate((el) => getComputedStyle(el).animationName)).toBe(
+      'search-panel-open',
+    );
+    expect(await panel.evaluate((el) => getComputedStyle(el).animationDelay)).toBe('0.15s');
   });
 
   test('the bar shrinks back into the button when closed', async ({ page }) => {
     await open(page);
     await openSearch(page);
 
-    // The click's first effect on the bar decides the outcome: the shrink
+    // The click's first effect on the bar decides the outcome: the closing
     // class arriving, or an unmount that skipped the animation. Watching the
     // mutation itself dodges frame timing, which headless runs stretch past
-    // the animation's 180ms.
-    const animation = await page.evaluate(
+    // the animations' 300ms.
+    const closing = await page.evaluate(
       () =>
-        new Promise<string>((resolve) => {
-          const bar = document.querySelector('[data-testid="search-bar"]')!;
-          const observer = new MutationObserver(() => {
-            if (!document.contains(bar)) {
-              observer.disconnect();
-              resolve('unmounted');
-            } else if (bar.classList.contains('is-closing')) {
-              observer.disconnect();
-              resolve(getComputedStyle(bar).animationName);
-            }
-          });
-          observer.observe(document.body, { attributes: true, childList: true, subtree: true });
-          document.querySelector<HTMLElement>('[data-testid="search-close"]')?.click();
-        }),
+        new Promise<{ bar: string; barDelay: string; panel: string; panelDelay: string } | string>(
+          (resolve) => {
+            const bar = document.querySelector('[data-testid="search-bar"]')!;
+            const observer = new MutationObserver(() => {
+              if (!document.contains(bar)) {
+                observer.disconnect();
+                resolve('unmounted');
+              } else if (bar.classList.contains('is-closing')) {
+                observer.disconnect();
+                const panel = document.querySelector('[data-testid="search-panel"]')!;
+                resolve({
+                  bar: getComputedStyle(bar).animationName,
+                  barDelay: getComputedStyle(bar).animationDelay,
+                  panel: getComputedStyle(panel).animationName,
+                  panelDelay: getComputedStyle(panel).animationDelay,
+                });
+              }
+            });
+            observer.observe(document.body, { attributes: true, childList: true, subtree: true });
+            document.querySelector<HTMLElement>('[data-testid="search-close"]')?.click();
+          },
+        ),
     );
-    expect(animation).toBe('search-close');
+    // The open played backwards: the panel folds up at once, the bar narrows
+    // only after the panel's part has run.
+    expect(closing).toEqual({
+      bar: 'search-bar-close',
+      barDelay: '0.15s',
+      panel: 'search-panel-close',
+      panelDelay: '0s',
+    });
 
     // The shrink ends with the button back in place.
     await expect(page.getByTestId('search-bar')).toHaveCount(0);
