@@ -338,6 +338,37 @@ test('a bare-left box replaces the selection, and shift on top adds', async ({ p
     .toEqual([IDS.gateway, IDS.ledger, IDS.authorise, IDS.post].sort());
 });
 
+test('a multi-selection drag-moves without losing the selection, on the bare-left binding too', async ({
+  page,
+}) => {
+  await dispatch(page, sampleDomain());
+  await fit(page);
+
+  await openBindings(page);
+  await page.getByTestId('remove-pan-0').click();
+  await page.getByTestId('binding-box-select-0').click();
+  await page.mouse.click(8, 8);
+  await expect(page.getByTestId('binding-box-select-0')).toContainText('Left drag');
+  await page.getByTestId('close-preferences').click();
+
+  await page.keyboard.press('Control+a');
+  const all = await selection(page);
+  expect(all.length).toBeGreaterThan(2);
+
+  // Grabbing a selected node is that node's drag: the bare-left box binding
+  // must not claim it and settle an empty box over the selection.
+  const gateway = (await page.getByTestId(`entity-${IDS.gateway}`).boundingBox())!;
+  await page.mouse.move(gateway.x + gateway.width / 2, gateway.y + gateway.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(gateway.x + gateway.width / 2 + 80, gateway.y + gateway.height / 2 + 40, {
+    steps: 6,
+  });
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+
+  expect(await selection(page)).toEqual(all);
+});
+
 test('cancel clears the selection, and a click on the empty pane does too', async ({ page }) => {
   await dispatch(page, sampleDomain());
   await fit(page);

@@ -1163,9 +1163,17 @@ export function Canvas() {
         if (!pending) {
           // The box-select binding (shift+drag out of the box) opens React
           // Flow's selection box wherever the press lands on the board, so
-          // the gesture is noted before any change arrives.
+          // the gesture is noted before any change arrives. Except that a
+          // press with no modifier on an element is that element's own drag
+          // or click — React Flow only cedes an element press to the box
+          // while a modifier is held — so a bare-left binding must not turn
+          // a node drag into a box that settles over the selection.
           const gesture = boxSelectGesture(event);
-          if (gesture && target.closest('.react-flow__pane')) {
+          const onElement =
+            target.closest('.react-flow__node, .react-flow__edge, .edge-label') !== null;
+          const withModifier =
+            event.shiftKey || event.ctrlKey || event.metaKey || event.altKey;
+          if (gesture && target.closest('.react-flow__pane') && (!onElement || withModifier)) {
             boxGesture.current = {
               prior: new Set(store.getState().selection),
               combine: gesture.combine,
