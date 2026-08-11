@@ -255,6 +255,32 @@ test.describe('reduced motion', () => {
     expect(await bar.evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
   });
 
+  test('removes the bar rather than shrinking it', async ({ page }) => {
+    await openSearch(page);
+
+    // The click's first effect on the bar decides the outcome: an unmount
+    // with no animation, or the shrink class arriving first.
+    const outcome = await page.evaluate(
+      () =>
+        new Promise<string>((resolve) => {
+          const bar = document.querySelector('[data-testid="search-bar"]')!;
+          const observer = new MutationObserver(() => {
+            if (!document.contains(bar)) {
+              observer.disconnect();
+              resolve('unmounted');
+            } else if (bar.classList.contains('is-closing')) {
+              observer.disconnect();
+              resolve('shrinking');
+            }
+          });
+          observer.observe(document.body, { attributes: true, childList: true, subtree: true });
+          document.querySelector<HTMLElement>('[data-testid="search-close"]')?.click();
+        }),
+    );
+    expect(outcome).toBe('unmounted');
+    await expect(page.getByTestId('search-open')).toBeVisible();
+  });
+
   test('disables ripples, warps, and ghosts', async ({ page }) => {
     const grid = page.getByTestId('gravity-grid');
     await expect(grid).toHaveAttribute('data-motion', 'reduced');
@@ -322,6 +348,50 @@ test.describe('turning motion off', () => {
 
     const bar = page.getByTestId('search-bar');
     expect(await bar.evaluate((el) => getComputedStyle(el).animationName)).toBe('search-open');
+  });
+
+  test('the bar shrinks back into the button when closed', async ({ page }) => {
+    await open(page);
+    await openSearch(page);
+
+    // The click's first effect on the bar decides the outcome: the shrink
+    // class arriving, or an unmount that skipped the animation. Watching the
+    // mutation itself dodges frame timing, which headless runs stretch past
+    // the animation's 180ms.
+    const animation = await page.evaluate(
+      () =>
+        new Promise<string>((resolve) => {
+          const bar = document.querySelector('[data-testid="search-bar"]')!;
+          const observer = new MutationObserver(() => {
+            if (!document.contains(bar)) {
+              observer.disconnect();
+              resolve('unmounted');
+            } else if (bar.classList.contains('is-closing')) {
+              observer.disconnect();
+              resolve(getComputedStyle(bar).animationName);
+            }
+          });
+          observer.observe(document.body, { attributes: true, childList: true, subtree: true });
+          document.querySelector<HTMLElement>('[data-testid="search-close"]')?.click();
+        }),
+    );
+    expect(animation).toBe('search-close');
+
+    // The shrink ends with the button back in place.
+    await expect(page.getByTestId('search-bar')).toHaveCount(0);
+    await expect(page.getByTestId('search-open')).toBeVisible();
+  });
+
+  test('reopening during the shrink brings the bar straight back', async ({ page }) => {
+    await open(page);
+    await openSearch(page);
+    await page.getByTestId('search-close').click();
+    await openSearch(page);
+
+    await expect(page.getByTestId('search-input')).toBeVisible();
+    // Well past the shrink timer: a stale timer would have emptied the bar.
+    await page.waitForTimeout(400);
+    await expect(page.getByTestId('search-bar')).toBeVisible();
   });
 
   test('stills the board, and stops a wave already in flight', async ({ page }) => {

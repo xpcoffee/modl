@@ -1390,6 +1390,26 @@ select {
   }
 }
 
+/* The opening played backwards, held on its last frame until React unmounts
+   the bar (CLOSE_MS in SearchMenu.tsx matches this duration). The departing
+   bar takes no clicks. */
+.search-menu__bar.is-closing {
+  animation: search-close 0.18s ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes search-close {
+  from {
+    opacity: 1;
+    transform: translateY(0) scaleX(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scaleX(0.7);
+  }
+}
+
 /* The reader's motion preference reaches the keyframes the same way the
    warps read it, so the bar is replaced rather than grown. */
 :root[data-motion='reduced'] .search-menu__bar {

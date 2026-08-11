@@ -14,11 +14,15 @@ import {
   type SearchOption,
 } from '@modl/core';
 import { setSearchPreview } from '../canvas/searchPreview.js';
+import { motionReduced } from '../preferences/motion.js';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 
 /** How many options are on screen at once. The rest are reached by cycling. */
 const VISIBLE_OPTIONS = 10;
+
+/** How long the bar takes to shrink away: the search-close CSS animation. */
+const CLOSE_MS = 180;
 
 /** What the bar is doing: finding things, or changing one active filter. */
 type Mode = { kind: 'search' } | { kind: 'edit'; index: number };
@@ -73,6 +77,7 @@ export function SearchMenu() {
   const paneHeight = useFlowStore((flow) => flow.height);
 
   const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [mode, setMode] = useState<Mode>({ kind: 'search' });
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -80,6 +85,7 @@ export function SearchMenu() {
 
   const container = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  const closeTimer = useRef<number | undefined>(undefined);
 
   const terms = useMemo(() => activeFilterTerms(state.filter), [state.filter]);
   const editing = mode.kind === 'edit';
@@ -95,17 +101,36 @@ export function SearchMenu() {
     [state, query, editing, terms.length],
   );
 
-  const close = useCallback(() => {
-    setOpen(false);
+  /** The bar is gone: forget what it held, ready for the next opening. */
+  const settle = useCallback(() => {
+    window.clearTimeout(closeTimer.current);
+    setClosing(false);
     setMode({ kind: 'search' });
     setQuery('');
     setActive(0);
     setWindowStart(0);
-    setSearchPreview(null);
   }, []);
+
+  const close = useCallback(() => {
+    setOpen(false);
+    setSearchPreview(null);
+    if (motionReduced()) {
+      settle();
+      return;
+    }
+    // The bar stays mounted, holding its content, while it shrinks away.
+    setClosing(true);
+    window.clearTimeout(closeTimer.current);
+    closeTimer.current = window.setTimeout(settle, CLOSE_MS);
+  }, [settle]);
+
+  useEffect(() => () => window.clearTimeout(closeTimer.current), []);
 
   /** Opens the bar for a plain search, focusing whatever it already holds. */
   const openSearch = useCallback(() => {
+    // Reopening mid-shrink claims the bar back before the timer empties it.
+    window.clearTimeout(closeTimer.current);
+    setClosing(false);
     setOpen(true);
     setMode({ kind: 'search' });
     setQuery('');
@@ -254,6 +279,8 @@ export function SearchMenu() {
         step(event.deltaY > 0 ? 1 : -1);
       }}
       onKeyDown={(event) => {
+        // A key landing on the departing bar must not act on it.
+        if (!open) return;
         if (event.key === 'ArrowDown') step(1);
         else if (event.key === 'ArrowUp') step(-1);
         else if (event.key === 'Enter') {
@@ -265,7 +292,7 @@ export function SearchMenu() {
         event.stopPropagation();
       }}
     >
-      {!open && (
+      {!open && !closing && (
         <button
           type="button"
           className="search-menu__entrance"
@@ -288,8 +315,8 @@ export function SearchMenu() {
         </button>
       )}
 
-      {open && (
-        <div className="search-menu__bar" data-testid="search-bar">
+      {(open || closing) && (
+        <div className={`search-menu__bar${closing ? ' is-closing' : ''}`} data-testid="search-bar">
           <div className="search-menu__field">
             {editing ? <FilterIcon /> : <SearchIcon />}
             <input
