@@ -153,7 +153,7 @@ node packages/app/e2e/screenshot.mjs /tmp/board.png "team=payments"
 
 ## Status
 
-Runnable: model, commands, trace and replay, undo and redo, all three paradigms, groups with collapse and expand, filtering, colours and styles, hiding, selection highlight, pan-to-relation, the canvas, the inspector, and save/load. 505 unit tests and 303 browser tests.
+Runnable: model, commands, trace and replay, undo and redo, all three paradigms, groups with collapse and expand, filtering, colours and styles, hiding, selection highlight, pan-to-relation, the canvas, the inspector, and save/load. 523 unit tests and 304 browser tests.
 
 See [the vision](docs/vision.md) for what remains.
 

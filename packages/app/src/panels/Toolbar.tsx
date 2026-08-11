@@ -3,16 +3,61 @@ import { fileStem, isGroup, parseDocument, selectIds } from '@modl/core';
 import { store } from '../store/store.js';
 import { ElementIcon } from '../canvas/ElementIcon.js';
 import { PLACEABLE, arm, usePending } from '../canvas/placement.js';
-import { download, pickDocumentFile, saveDocumentFile, saveDocumentFileAs } from '../files/fileAccess.js';
+import {
+  download,
+  pickDocumentFile,
+  saveDocumentFile,
+  saveDocumentFileAs,
+  type SaveResult,
+} from '../files/fileAccess.js';
 import { rememberFile, useFileContext } from '../files/fileContext.js';
 import { matchesKey } from '../preferences/keybindings.js';
 import { useAppState } from '../store/useStore.js';
 import { Preferences } from './Preferences.js';
 
+/**
+ * How long each save-feedback phase holds, so a near-instant save still
+ * reads as started, then done (issue 47).
+ */
+const FEEDBACK_MS = 300;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** A spinner while the save runs, then a checkmark, over the button. */
+function SaveFeedback({ phase }: { phase: 'saving' | 'saved' }) {
+  return (
+    <span className="save-feedback" data-testid="save-feedback" data-phase={phase} aria-hidden="true">
+      {phase === 'saving' ? (
+        <span className="save-feedback__spinner" />
+      ) : (
+        <svg viewBox="0 0 12 12" width="12" height="12">
+          <path
+            className="save-feedback__check"
+            d="M2 6.5 L5 9.5 L10 3"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+    </span>
+  );
+}
+
 export function Toolbar() {
   const state = useAppState();
   const file = useFileContext();
   const fileInput = useRef<HTMLInputElement>(null);
+  const savingRef = useRef(false);
+  const saveRunRef = useRef(0);
+  const [feedback, setFeedback] = useState<{
+    button: 'save' | 'save-as';
+    phase: 'saving' | 'saved';
+  } | null>(null);
   const [message, setMessage] = useState('');
   const pending = usePending();
   const [picking, setPicking] = useState(false);
@@ -82,11 +127,36 @@ export function Toolbar() {
   };
 
   const save = async (as: boolean) => {
-    const text = store.serialize();
-    const title = store.getState().document.title;
-    const result = as ? await saveDocumentFileAs(text, title) : await saveDocumentFile(text, title);
-    if (result.outcome === 'saved') setMessage(`Saved ${result.name}`);
-    else if (result.outcome === 'failed') setMessage(`Could not save: ${result.message}`);
+    // A save already writing, or holding a picker open, swallows the press;
+    // the feedback tail below does not, so a quick follow-up save still runs.
+    if (savingRef.current) return;
+    savingRef.current = true;
+    const run = ++saveRunRef.current;
+    const button = as ? 'save-as' : 'save';
+    setFeedback({ button, phase: 'saving' });
+    const started = performance.now();
+    let result: SaveResult;
+    try {
+      const text = store.serialize();
+      const title = store.getState().document.title;
+      result = as ? await saveDocumentFileAs(text, title) : await saveDocumentFile(text, title);
+    } finally {
+      savingRef.current = false;
+    }
+    if (result.outcome === 'failed') setMessage(`Could not save: ${result.message}`);
+    if (result.outcome !== 'saved') {
+      if (saveRunRef.current === run) setFeedback(null);
+      return;
+    }
+    setMessage(`Saved ${result.name}`);
+    // The spinner holds a beat even when the save is instant, then the
+    // checkmark; a newer save owns the feedback from here on.
+    await delay(Math.max(0, FEEDBACK_MS - (performance.now() - started)));
+    if (saveRunRef.current !== run) return;
+    setFeedback({ button, phase: 'saved' });
+    await delay(FEEDBACK_MS);
+    if (saveRunRef.current !== run) return;
+    setFeedback(null);
   };
 
   useEffect(() => {
@@ -184,18 +254,22 @@ export function Toolbar() {
       <button
         type="button"
         data-testid="save"
+        className="toolbar__save"
         title={file.name ? `Save to ${file.name}` : 'Save'}
         onClick={() => void save(false)}
       >
         Save
+        {feedback?.button === 'save' && <SaveFeedback phase={feedback.phase} />}
       </button>
       <button
         type="button"
         data-testid="save-as"
+        className="toolbar__save"
         title="Save to a new file"
         onClick={() => void save(true)}
       >
         Save as
+        {feedback?.button === 'save-as' && <SaveFeedback phase={feedback.phase} />}
       </button>
       <button type="button" data-testid="load" onClick={() => void load()}>
         Load

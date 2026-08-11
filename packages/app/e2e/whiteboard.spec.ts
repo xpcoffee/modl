@@ -1069,6 +1069,44 @@ test.describe('save and load', () => {
     expect(await savedFile(page, 'renamed.modl.json')).toBe(await serialize(page));
   });
 
+  test('the save buttons show pending, then a checkmark, then rest', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    // Each phase holds 300ms, short enough to slip between assertion polls,
+    // so an observer records the sequence and the test reads it afterwards.
+    const recorded = () =>
+      page.evaluate(() => (window as unknown as { __phases?: string[] }).__phases ?? []);
+    await page.evaluate(() => {
+      const record: string[] = [];
+      (window as unknown as { __phases: string[] }).__phases = record;
+      const observer = new MutationObserver(() => {
+        const phase = document
+          .querySelector('[data-testid="save-feedback"]')
+          ?.getAttribute('data-phase');
+        if (phase && record[record.length - 1] !== phase) record.push(phase);
+      });
+      observer.observe(document.body, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['data-phase'],
+      });
+    });
+
+    await page.getByTestId('save').click();
+    await expect(page.getByTestId('save').getByTestId('save-feedback')).toHaveCount(1);
+    await expect(page.getByTestId('save-feedback')).toHaveCount(0);
+    expect(await recorded()).toEqual(['saving', 'saved']);
+
+    await page.evaluate(() => {
+      (window as unknown as { __phases: string[] }).__phases.length = 0;
+    });
+    await page.keyboard.press('Control+Shift+s');
+    await expect(page.getByTestId('save-as').getByTestId('save-feedback')).toHaveCount(1);
+    await expect(page.getByTestId('save-feedback')).toHaveCount(0);
+    expect(await recorded()).toEqual(['saving', 'saved']);
+  });
+
   test('without the pickers, save falls back to a download and remembers the name', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await page.evaluate(() => {

@@ -66,6 +66,57 @@ body {
   background: var(--border);
 }
 
+.toolbar__save {
+  position: relative;
+}
+
+.save-feedback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: inherit;
+  border-radius: inherit;
+  color: var(--accent);
+}
+
+.save-feedback__spinner {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: currentColor;
+  animation: save-feedback-spin 0.6s linear infinite;
+}
+
+@keyframes save-feedback-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.save-feedback__check {
+  stroke-dasharray: 14;
+  stroke-dashoffset: 14;
+  animation: save-feedback-draw 250ms ease-out forwards;
+}
+
+@keyframes save-feedback-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+:root[data-motion='reduced'] .save-feedback__spinner {
+  animation: none;
+}
+
+:root[data-motion='reduced'] .save-feedback__check {
+  animation: none;
+  stroke-dashoffset: 0;
+}
+
 .toolbar__spacer {
   flex: 1;
 }
