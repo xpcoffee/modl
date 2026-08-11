@@ -111,6 +111,29 @@ export interface Model {
   elements: Record<Id, Element>;
 }
 
+/**
+ * A remark about one or more elements: a question, an objection, a note for
+ * the next reader. It discusses the model rather than describing the domain,
+ * so it lives in its own map beside `model` — a consumer reading structure
+ * ignores it, and a discussion never pollutes the elements it is about.
+ */
+export interface Comment {
+  id: Id;
+  text: string;
+  /**
+   * When the comment was written, ISO 8601. Carried by the create command
+   * rather than read from a clock, so a trace replays identically. Absent on
+   * comments written before the field existed.
+   */
+  createdAt?: string;
+  /**
+   * Elements this comment discusses. Empty means a general remark about the
+   * whole document. An attached comment whose last target is deleted goes
+   * with it: it was written against that thing, and a general one was not.
+   */
+  targets: Id[];
+}
+
 export interface EntityLayout {
   x: number;
   y: number;
@@ -152,6 +175,9 @@ export interface Document {
   id: Id;
   title: string;
   model: Model;
+  /** Discussion about the model, keyed by comment id. Not part of `model`:
+   * iterating on a diagram is not describing the domain. */
+  comments: Record<Id, Comment>;
   layout: Record<Id, ElementLayout>;
   view: View;
 }
@@ -170,13 +196,19 @@ export interface Document {
  * 5 -> 6: a connection node carries `labels`, one per connection touching it.
  *         Same reasoning as the last bump: an older build would drop the
  *         reasons someone wrote against each branch on the next save.
+ * 6 -> 7: the document carries `comments`, discussion attached to elements
+ *         but kept beside the model. Additive, and the bump exists for the
+ *         same reason as the last two: a version 6 build would silently drop
+ *         every comment on save.
  *
  * Older documents still load: the reader migrates them.
  */
-export const FORMAT_VERSION = 6;
+export const FORMAT_VERSION = 7;
 export const OLDEST_READABLE_VERSION = 1;
 
 export const DEFAULT_ENTITY_SIZE = { width: 180, height: 72 } as const;
+/** The box a comment card reserves in `layout` when a reader pins it. */
+export const COMMENT_CARD_SIZE = { width: 240, height: 88 } as const;
 /** A node is a junction, drawn small so it reads as a point rather than a box. */
 export const CONNECTION_NODE_SIZE = { width: 64, height: 64 } as const;
 export const DEFAULT_VIEW: View = { pan: { x: 0, y: 0 }, zoom: 1 };

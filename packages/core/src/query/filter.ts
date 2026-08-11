@@ -1,4 +1,4 @@
-import type { Element, Id } from '../model/types.js';
+import type { Comment, Element, Id } from '../model/types.js';
 import { readableName } from '../naming/readable-name.js';
 import { fuzzyMatches } from './fuzzy.js';
 
@@ -16,6 +16,13 @@ import { fuzzyMatches } from './fuzzy.js';
  * made permanent the same way a tag filter is. It is quoted so a name with a
  * space stays one term, and so a bare word keeps meaning "carries this tag
  * key", which is what it meant before.
+ *
+ * The key `comment` is reserved: `comment` matches every element a comment
+ * is attached to, and `comment=text` narrows to comments containing `text`.
+ * A tag key literally named "comment" stays reachable by quoting the key:
+ * `"comment"=todo` filters on the tag, and `"comment"=*` matches any value
+ * of it. A quoted key is always read literally as a tag, never as the
+ * reserved word, so both filters coexist (issue #37).
  */
 export interface TagTerm {
   kind: 'tag';
@@ -32,7 +39,19 @@ export interface TextTerm {
   text: string;
 }
 
-export type FilterTerm = TagTerm | TextTerm;
+export interface CommentTerm {
+  kind: 'comment';
+  negated: boolean;
+  /**
+   * Matched as a case-insensitive substring of an attached comment's text.
+   * Substring rather than fuzzy: comment text is prose, and a fuzzy match
+   * across a sentence catches far more than anyone typed. Absent matches any
+   * comment.
+   */
+  text?: string;
+}
+
+export type FilterTerm = TagTerm | TextTerm | CommentTerm;
 
 export type FilterParseResult =
   | { ok: true; terms: FilterTerm[] }
@@ -101,6 +120,32 @@ export function parseFilter(expression: string): FilterParseResult {
     if (!key) {
       return { ok: false, message: `filter term "${token}" has no tag key` };
     }
+    // A quoted key is a literal tag key, which is how a tag named "comment"
+    // stays reachable past the reserved word.
+    const literalKey = /^"(.+)"$/.exec(key)?.[1];
+    if (literalKey !== undefined) {
+      terms.push({
+        kind: 'tag',
+        negated: negation === '-',
+        ...(value === undefined || value === '*' ? {} : { value }),
+        key: literalKey,
+      });
+      continue;
+    }
+    if (key === 'comment') {
+      // Comment text is prose, so `comment="fix this"` keeps a space inside
+      // one term. The quotes are the tokenizer's, not part of the text.
+      const unquoted =
+        value !== undefined && value.startsWith('"') && value.endsWith('"') && value.length >= 2
+          ? value.slice(1, -1)
+          : value;
+      terms.push({
+        kind: 'comment',
+        negated: negation === '-',
+        ...(unquoted === undefined || unquoted === '*' ? {} : { text: unquoted }),
+      });
+      continue;
+    }
     terms.push({
       kind: 'tag',
       negated: negation === '-',
@@ -115,6 +160,16 @@ export function parseFilter(expression: string): FilterParseResult {
 export function formatTerm(term: FilterTerm): string {
   const negation = term.negated ? '-' : '';
   if (term.kind === 'text') return `${negation}"${term.text}"`;
+  if (term.kind === 'comment') {
+    if (term.text === undefined) return `${negation}comment`;
+    const text = /\s/.test(term.text) ? `"${term.text}"` : term.text;
+    return `${negation}comment=${text}`;
+  }
+  // The tag key that collides with the reserved word is written quoted, and
+  // with an explicit value: a bare quoted key would read back as a text term.
+  if (term.key === 'comment') {
+    return `${negation}"comment"=${term.value ?? '*'}`;
+  }
   return `${negation}${term.key}${term.value === undefined ? '' : `=${term.value}`}`;
 }
 
@@ -163,14 +218,21 @@ function searchableName(element: Element): string {
 
 /**
  * True when the element satisfies every term. A key holds several values, and
- * a term matches when any one of them does.
+ * a term matches when any one of them does. A comment term reads the
+ * document's comments, so a caller filtering on them passes the map along.
  */
-export function matchesTerms(element: Element, terms: readonly FilterTerm[]): boolean {
+export function matchesTerms(
+  element: Element,
+  terms: readonly FilterTerm[],
+  comments: Record<Id, Comment> = {},
+): boolean {
   return terms.every((term) => {
     const present =
       term.kind === 'text'
         ? fuzzyMatches(term.text, searchableName(element))
-        : hasTag(element, term);
+        : term.kind === 'comment'
+          ? hasComment(element, term, comments)
+          : hasTag(element, term);
     return term.negated ? !present : present;
   });
 }
@@ -184,18 +246,35 @@ function hasTag(element: Element, term: TagTerm): boolean {
   );
 }
 
+function hasComment(
+  element: Element,
+  term: CommentTerm,
+  comments: Record<Id, Comment>,
+): boolean {
+  return Object.values(comments).some(
+    (comment) =>
+      comment.targets.includes(element.id) &&
+      (term.text === undefined ||
+        comment.text.toLowerCase().includes(term.text.toLowerCase())),
+  );
+}
+
 /**
  * Ids the filter selects. An empty or unparseable expression selects
  * everything, so a half-typed filter leaves the board readable.
  */
-export function selectIds(elements: Record<Id, Element>, expression: string): Set<Id> {
+export function selectIds(
+  elements: Record<Id, Element>,
+  expression: string,
+  comments: Record<Id, Comment> = {},
+): Set<Id> {
   const parsed = parseFilter(expression);
   const all = new Set(Object.keys(elements));
   if (!parsed.ok || parsed.terms.length === 0) return all;
 
   const selected = new Set<Id>();
   for (const [id, element] of Object.entries(elements)) {
-    if (matchesTerms(element, parsed.terms)) selected.add(id);
+    if (matchesTerms(element, parsed.terms, comments)) selected.add(id);
   }
   return selected;
 }

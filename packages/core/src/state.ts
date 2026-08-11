@@ -12,6 +12,7 @@ export function initialState(documentId: Id, title?: string): AppState {
     expanded: [],
     hidden: [],
     selectionHighlight: true,
+    commentOverlay: false,
     undo: { base: { id: document.id, title: document.title }, history: [], cursor: 0 },
   };
 }

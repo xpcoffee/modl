@@ -58,6 +58,7 @@ function slug(label: string): string {
 function testIdOf(option: SearchOption): string {
   if (option.kind === 'element') return `search-element-${option.id}`;
   if (option.term.kind === 'text') return `search-text-${slug(option.term.text)}`;
+  if (option.term.kind === 'comment') return `search-comment-${slug(option.label)}`;
   return `search-tag-${slug(option.label)}`;
 }
 
@@ -255,7 +256,11 @@ export function SearchMenu() {
     if (!term) return;
     setOpen(true);
     setMode({ kind: 'edit', index });
-    setQuery(term.kind === 'text' ? term.text : formatTerm(term));
+    // Text-bearing terms seed the words alone: the suggestions match against
+    // comment text and titles, and `comment=` punctuation is found in neither.
+    setQuery(
+      term.kind === 'text' ? term.text : term.kind === 'comment' ? (term.text ?? '') : formatTerm(term),
+    );
     setActive(0);
     setWindowStart(0);
   };
@@ -351,7 +356,7 @@ export function SearchMenu() {
                         title="Edit this filter"
                         onClick={() => editTermAt(index)}
                       >
-                        <FilterIcon />
+                        <TermIcon term={term} />
                         {formatTerm(term)}
                       </button>
                       <button
@@ -386,13 +391,13 @@ export function SearchMenu() {
                         onMouseEnter={() => setActive(index)}
                         onClick={() => choose(option)}
                       >
-                        {option.kind === 'filter' ? <FilterIcon /> : <GoToIcon />}
+                        {option.kind === 'filter' ? <TermIcon term={option.term} /> : <GoToIcon />}
                         <span className="search-menu__option-label">{option.label}</span>
                         <span className="search-menu__option-kind">
                           {option.kind === 'filter'
                             ? editing
                               ? 'change filter'
-                              : 'filter the board'
+                              : filterSublabel(option.term)
                             : option.sublabel}
                         </span>
                       </button>
@@ -417,6 +422,41 @@ export function SearchMenu() {
         </div>
       )}
     </div>
+  );
+}
+
+/** What applying this filter narrows by, so like-reading options tell apart. */
+function filterSublabel(term: FilterTerm): string {
+  if (term.kind === 'comment') return 'filter by comment';
+  if (term.kind === 'tag') return 'filter by tag';
+  return 'filter by name';
+}
+
+/**
+ * The symbol carrying a term's kind. A tag named "comment" and the comment
+ * filter would read identically as chips, so the kind shows as a glyph:
+ * a luggage tag for tags, a speech bubble for comments, the funnel for a
+ * name filter.
+ */
+function TermIcon({ term }: { term: FilterTerm }) {
+  if (term.kind === 'comment') return <CommentIcon />;
+  if (term.kind === 'tag') return <TagIcon />;
+  return <FilterIcon />;
+}
+
+function TagIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="search-menu__icon">
+      <path d="M21.41 11.58l-9-9A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 .59 1.42l9 9a2 2 0 0 0 2.82 0l7-7a2 2 0 0 0 0-2.84zM6.5 8A1.5 1.5 0 1 1 8 6.5 1.5 1.5 0 0 1 6.5 8z" />
+    </svg>
+  );
+}
+
+function CommentIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="search-menu__icon">
+      <path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z" />
+    </svg>
   );
 }
 

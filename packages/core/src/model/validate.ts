@@ -18,6 +18,7 @@ export type IssueCode =
   | 'version-unsupported'
   | 'schema-invalid'
   | 'id-key-mismatch'
+  | 'id-collision'
   | 'unknown-reference'
   | 'group-cycle'
   | 'not-a-group'
@@ -120,6 +121,34 @@ export function validateDocument(input: unknown): ValidationResult {
         });
       }
       warnings.push(...paradigmWarnings(element, elements));
+    }
+  }
+
+  for (const [key, comment] of Object.entries(document.comments)) {
+    if (key !== comment.id) {
+      errors.push({
+        code: 'id-key-mismatch',
+        elementId: comment.id,
+        message: `comment keyed as ${key} carries id ${comment.id}`,
+      });
+    }
+    // Comments and elements share the selection's id space, so one id naming
+    // both would make pointing at either ambiguous.
+    if (known.has(comment.id)) {
+      errors.push({
+        code: 'id-collision',
+        elementId: comment.id,
+        message: `comment ${comment.id} shares its id with an element`,
+      });
+    }
+    for (const ref of comment.targets) {
+      if (!known.has(ref)) {
+        errors.push({
+          code: 'unknown-reference',
+          elementId: comment.id,
+          message: `comment target ${ref} names no element in the document`,
+        });
+      }
     }
   }
 

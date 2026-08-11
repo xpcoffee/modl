@@ -1,4 +1,4 @@
-import { isConnection, type Element, type Id } from '../model/types.js';
+import { isConnection, type Comment, type Element, type Id } from '../model/types.js';
 import type { AppState } from '../commands/types.js';
 import { parseFilter, selectIds } from './filter.js';
 import { ancestorsOf, descendantsOf, visibleAnchor } from './groups.js';
@@ -83,8 +83,9 @@ export function filterGuidance(
   elements: Record<Id, Element>,
   expression: string,
   hidden: ReadonlySet<Id>,
+  comments: Record<Id, Comment> = {},
 ): { emphasised: Set<Id>; descendantMatches: Map<Id, number> } {
-  const emphasised = selectIds(elements, expression);
+  const emphasised = selectIds(elements, expression, comments);
   const descendantMatches = new Map<Id, number>();
 
   const parsed = parseFilter(expression);
@@ -110,7 +111,13 @@ export function boardEmphasis(state: AppState): BoardEmphasis {
 
   const muted = new Set<Id>();
   let descendantMatches = new Map<Id, number>();
-  const selection = state.selection.filter((id) => elements[id]);
+  // A selected comment stands for the elements it discusses, so its targets
+  // highlight exactly as if the reader had pointed at them.
+  const selection = state.selection.flatMap((id) =>
+    elements[id]
+      ? [id]
+      : (state.document.comments[id]?.targets.filter((target) => elements[target]) ?? []),
+  );
 
   if (selection.length > 0 && state.selectionHighlight) {
     // The selection and everything one drawn connection away stays readable.
@@ -142,7 +149,7 @@ export function boardEmphasis(state: AppState): BoardEmphasis {
       if (!near.has(id)) muted.add(id);
     }
   } else {
-    const guidance = filterGuidance(elements, state.filter, hidden);
+    const guidance = filterGuidance(elements, state.filter, hidden, state.document.comments);
     descendantMatches = guidance.descendantMatches;
     for (const id of Object.keys(elements)) {
       if (!guidance.emphasised.has(id)) muted.add(id);

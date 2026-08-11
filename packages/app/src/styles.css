@@ -5,6 +5,7 @@
   --text: #e6e8ee;
   --muted: #8b93a7;
   --accent: #5b8def;
+  --comment: #e0a94f;
   color-scheme: dark;
 }
 
@@ -1590,4 +1591,353 @@ select {
 .react-flow__controls-button.is-on {
   color: var(--accent);
   fill: var(--accent);
+}
+
+/* Comments (issue #37): a badge on everything a comment discusses, bubbles
+   holding the text while the element or the comment is selected, and the
+   editing fields inside the element editor. Warm against the blue accent, so
+   discussion reads apart from the model. */
+
+.comment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--comment);
+}
+
+.comment-badge__icon {
+  width: 10px;
+  height: 10px;
+  fill: currentColor;
+}
+
+.comment-badge__count {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.edge-label__title .comment-badge {
+  margin-left: 4px;
+}
+
+.connection-node .comment-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+}
+
+
+/* The discussion overlay: the model dims to a blueprint, comments draw at
+   full strength as cards, and a vertical timeline walks the discussion in
+   writing order. */
+
+.is-comment-overlay .entity-node,
+.is-comment-overlay .group-node,
+.is-comment-overlay .connection-node__face {
+  border-style: dashed;
+  opacity: 0.55;
+}
+
+.is-comment-overlay .connection-edge {
+  stroke-dasharray: 6 4;
+  opacity: 0.45;
+}
+
+/* What the filter shows is interactable here, and hovering says so. */
+.is-comment-overlay .react-flow__node:hover .entity-node:not(.is-dimmed),
+.is-comment-overlay .react-flow__node:hover .group-node:not(.is-dimmed),
+.is-comment-overlay .react-flow__node:hover .connection-node:not(.is-dimmed) .connection-node__face {
+  outline: 2px solid var(--comment);
+  opacity: 0.9;
+  cursor: pointer;
+}
+
+.is-comment-overlay .react-flow__node .is-dimmed {
+  cursor: default;
+}
+
+.comment-overlay__arcs {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.comment-overlay__arc {
+  stroke: var(--comment);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.55;
+  animation: comment-fade-in 0.3s ease;
+}
+
+.comment-overlay__arc.is-selected {
+  stroke-width: 1.6;
+  opacity: 1;
+}
+
+.comment-overlay__arc.is-out {
+  animation: comment-fade-out 0.3s ease both;
+}
+
+/* Cards paint above the board, selected elements and their editors
+   included: a remark being read outranks the boxes it is about. React Flow
+   raises a selected node by 1000 on top of the 1000 the derive sets, so the
+   portal has to clear 2000. */
+.react-flow__viewport-portal {
+  position: absolute;
+  z-index: 2001;
+}
+
+.comment-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--comment);
+  border-radius: 10px;
+  background: var(--panel);
+  cursor: grab;
+  /* The viewport portal is transparent to the pointer; the cards are not. */
+  pointer-events: all;
+}
+
+/* No fill on the mount fade: a filling animation owns opacity for good and
+   the dimming transition below never runs (general cards snapped to dim
+   when the overlay closed). */
+.comment-card {
+  animation: comment-fade-in 0.3s ease;
+  transition: opacity 0.3s ease;
+}
+
+.comment-card.is-out {
+  animation: comment-fade-out 0.3s ease both;
+}
+
+/* A general remark in model mode: present so it can be found, quiet so it
+   does not compete with the model, and full-strength under the pointer. */
+.comment-card.is-ambient {
+  opacity: 0.35;
+}
+
+.comment-card.is-ambient:hover,
+.comment-card.is-ambient.is-selected {
+  opacity: 1;
+}
+
+.comment-card.is-selected {
+  outline: 2px solid var(--comment);
+  z-index: 10;
+}
+
+@keyframes comment-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes comment-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+.comment-card__meta {
+  font-size: 10px;
+  color: var(--comment);
+  min-height: 0;
+}
+
+.comment-card__meta:empty {
+  display: none;
+}
+
+.comment-card__text {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.comment-text-box {
+  margin-top: 4px;
+  font-size: 12px;
+  resize: vertical;
+  border-color: var(--comment);
+  min-width: 180px;
+}
+
+/* The overlay's answer to a pane click: the outline of the card a second
+   click would write there, pulsing once. The overlay speaks in comments,
+   so its click language is a card rather than the model's gravity wave. */
+.comment-card-ghost {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 1.5px dashed var(--comment);
+  border-radius: 10px;
+  pointer-events: none;
+  animation: comment-ghost-pulse 0.65s ease-out forwards;
+}
+
+@keyframes comment-ghost-pulse {
+  0% {
+    opacity: 0;
+    transform-origin: center;
+  }
+  25% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* A card just written into being announces itself with one ring of light.
+   Named together with the mount fade, or the pulse would replace it. */
+.comment-card.is-born {
+  animation:
+    comment-fade-in 0.3s ease,
+    comment-born-pulse 0.7s ease-out;
+}
+
+@keyframes comment-born-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(224 169 79 / 70%);
+  }
+  100% {
+    box-shadow: 0 0 18px 10px rgb(224 169 79 / 0%);
+  }
+}
+
+/* The motion preference (preferences/motion.ts) stamps the html element, so
+   the reader's override reaches these too, either way round. */
+html[data-motion='reduced'] .comment-card,
+html[data-motion='reduced'] .comment-card-ghost,
+html[data-motion='reduced'] .comment-overlay__arc,
+html[data-motion='reduced'] .comment-timeline__entry {
+  animation: none;
+  transition: none;
+}
+
+html[data-motion='reduced'] .comment-card-ghost {
+  opacity: 0.7;
+}
+
+/* Spans the board's height, no chrome of its own: the current entry sits
+   centred, neighbours fade with distance, and the fades animate as the
+   selection walks the discussion. */
+.comment-timeline {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 220px;
+  overflow: hidden;
+  z-index: 6;
+  /* The rail spans the board's height; only its entries take the pointer,
+     so the controls sharing this edge stay clickable. */
+  pointer-events: none;
+}
+
+.comment-timeline__entry {
+  pointer-events: auto;
+}
+
+/* The reading position: a horizontal index line at the tape's centre, the
+   way a HUD instrument marks its current value, with the entries sliding
+   past it like the tape. A faint hairline runs the rail's width; a solid
+   stub at the edge carries the eye to it. */
+.comment-timeline__centre {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 1px;
+  transform: translateY(-50%);
+  background: rgb(224 169 79 / 30%);
+}
+
+.comment-timeline__centre::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: -1px;
+  width: 26px;
+  height: 3px;
+  background: var(--comment);
+}
+
+.comment-timeline__entry {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  width: 188px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.comment-timeline__entry:hover:enabled {
+  background: rgb(224 169 79 / 10%);
+  border: none;
+}
+
+.comment-timeline__entry.is-active .comment-timeline__snippet {
+  color: var(--text);
+}
+
+.comment-timeline__entry.is-active .comment-timeline__time {
+  color: var(--comment);
+}
+
+.comment-timeline__time {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.comment-timeline__snippet {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.comment-timeline__empty {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.overlay-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.overlay-toggle button {
+  padding: 4px 12px;
+  border: none;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.overlay-toggle button.is-active {
+  background: var(--comment);
+  color: var(--bg);
 }

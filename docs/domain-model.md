@@ -103,7 +103,7 @@ The whiteboard remembers the last style the reader chose and applies it to the n
 
 ### Versions
 
-`formatVersion` is 6. Older documents still load, and saving writes the current version, so a file upgrades the first time it is written.
+`formatVersion` is 7. Older documents still load, and saving writes the current version, so a file upgrades the first time it is written.
 
 | Change | What the reader does |
 |---|---|
@@ -112,6 +112,7 @@ The whiteboard remembers the last style the reader chose and applies it to the n
 | 3 → 4 | A `fork` becomes a `connection-node`, matching the word a reader sees |
 | 4 → 5 | Elements may carry `style`. Nothing is rewritten; the bump stops a version 4 build from stripping colours on save |
 | 5 → 6 | A connection node carries `labels`. Existing nodes gain an empty map; the bump stops a version 5 build from stripping the answers written against each branch |
+| 6 → 7 | The document carries `comments`. An older file gains an empty map; the bump stops a version 6 build from dropping the discussion on save |
 
 ## Paradigms
 
@@ -157,6 +158,7 @@ One JSON file. `.modl.json` by convention.
 ```
 
 - `model.elements` is the structure. A consumer needs nothing else.
+- `comments` is discussion about the structure, keyed by comment id (see [Comments](#comments)). Missing means an empty map.
 - `layout` is keyed by element id. Entities and forks carry `{x, y, width, height}`; an entity may also carry an optional `expanded: {width, height}`. The first is the size drawn when collapsed, the second the container box drawn when expanded, which also decides membership. They are independent, so opening a group to work inside it does not swell the node it shrinks back to. Connections carry `{waypoints: {x,y}[]}` for hand-placed bends, plus optional `sourceSide` and `targetSide` naming the points a reader dragged the line onto. Which side of a box a line touches says nothing about the domain, so a producer omits them and the renderer picks the nearest sides. An id missing from `layout` gets a computed default, so a generated document can omit `layout` entirely. The default walks entities in sorted id order and places them on a 4-column grid spaced 240 by 140, at 180 by 72 each. Connections get no default, and the renderer routes them between their endpoints.
 - `view` is the camera. Missing means origin at zoom 1.
 - `formatVersion` increments on any breaking change. A loader reading a higher version than it knows refuses the file and says which version it expected.
@@ -191,8 +193,9 @@ Two tiers, and they behave differently.
 |---|---|
 | `schema-invalid` | An element fails its schema: missing field, wrong type, unknown `kind`, malformed id |
 | `version-unsupported` | `formatVersion` is missing or from a newer release |
-| `id-key-mismatch` | An element's map key differs from its `id` |
-| `unknown-reference` | A `from`, `to`, or `groupId` names an id absent from `elements` |
+| `id-key-mismatch` | An element's or a comment's map key differs from its `id` |
+| `id-collision` | A comment shares its id with an element. The two maps feed one selection, so an id has to mean one thing |
+| `unknown-reference` | A `from`, `to`, `groupId`, or comment target names an id absent from `elements` |
 | `not-a-group` | `groupId` names a connection or a fork, and a group is an entity |
 | `unknown-command` | A dispatched command has a type the reducer does not know |
 | `group-cycle` | `groupId` chain closes a loop, including an element naming itself |
@@ -293,6 +296,29 @@ Expansion is session state rather than document state. Which groups a reader has
 
 Deleting a group lifts its members to whatever contained the group. Nothing is left pointing at an id that no longer exists.
 
+## Comments
+
+A comment is a remark about one or more elements: a question, an objection, a note for the next reader. It iterates on the model rather than describing the domain, so it lives in `comments`, a top-level map beside `model`: a consumer reading structure ignores it, and the discussion never pollutes the elements it is about. See [decision 016](decisions/016-comments.md).
+
+```ts
+interface Comment {
+  id: Id;
+  text: string;        // free text
+  createdAt?: string;  // ISO 8601, carried by the create command
+  targets: Id[];       // elements this discusses; empty means the whole document
+}
+```
+
+Targets can be any element, connections included. A comment with no targets is a general remark about the whole document. Deleting an element removes it from every attached comment's targets, and an attached comment losing its last target is deleted with it: it was written against that thing, while a general remark was written against nothing in particular. Duplicating elements does not copy their comments, since a remark is about the specific thing it was written against.
+
+`createdAt` orders a discussion for reading through. The create command carries it explicitly rather than the reducer reading a clock, so a trace replays identically; a comment written before the field existed sorts first.
+
+A comment the reader has arranged on the board keeps a pin in `layout` under its own id, `{x, y, width, height}`, written by `move-comment` and deleted with the comment. Absent means the renderer places the card near the comment's targets. The whiteboard reads the discussion through a temporary overlay whose mode is session state (`set-comment-overlay`); see [decision 017](decisions/017-discussion-overlay.md).
+
+Comment ids share the selection's id space with elements, so selecting a comment is the same gesture as selecting a box, and it highlights the elements the comment discusses. On the board a comment draws as a small badge on each target; its text shows only while the comment or a target is selected.
+
+The filter key `comment` is reserved: `comment` matches every element a comment is attached to, `comment=text` narrows to comments whose text contains `text` (case-insensitive substring), and quotes keep a space inside one term (`comment="fix this"`). A tag key literally named "comment" stays reachable by quoting the key: `"comment"=todo` filters on the tag and `"comment"=*` matches any value of it, so the tag filter and the comment filter coexist in one expression.
+
 ## Coverage
 
-Implemented: `Entity` across all four types, `Connection`, `ConnectionNode` with branch labels, element styles, groups with collapse and expand, the full document format, readable names, validation.
+Implemented: `Entity` across all four types, `Connection`, `ConnectionNode` with branch labels, element styles, comments, groups with collapse and expand, the full document format, readable names, validation.

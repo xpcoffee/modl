@@ -13,6 +13,7 @@ const SESSION_COMMANDS: ReadonlySet<Command['type']> = new Set([
   'set-view',
   'set-hidden',
   'set-selection-highlight',
+  'set-comment-overlay',
   'undo',
   'redo',
 ]);

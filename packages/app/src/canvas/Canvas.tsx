@@ -8,6 +8,7 @@ import {
   ReactFlow,
   useReactFlow,
   useStoreApi,
+  ViewportPortal,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -16,12 +17,14 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
+  COMMENT_CARD_SIZE,
   DEFAULT_ENTITY_SIZE,
   connectionTypeFor,
   descendantsOf,
   isConnection,
   isEntity,
   isEntityLayout,
+  selectIds,
   selectionSpanOf,
   type Id,
   type Point,
@@ -61,6 +64,15 @@ import { useSearchPreview } from './searchPreview.js';
 import { ExpansionMenu } from './ExpansionMenu.js';
 import { RelationsMenu } from './RelationsMenu.js';
 import { SelectionActions } from './SelectionActions.js';
+import {
+  addCommentTargets,
+  CommentOverlay,
+  openElementComment,
+  OverlayToggle,
+  quickAddComment,
+  toggleCommentTarget,
+} from './CommentOverlay.js';
+import { getCommentEdit } from './commentEditing.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
 import { useHighlightId } from './highlight.js';
 import { lastConnectionStyle, lastEntityStyle } from './styleMemory.js';
@@ -143,6 +155,9 @@ interface BoxGesture {
   /** Where the box opened, in flow coordinates. Converted at press time so
       auto-panning mid-drag cannot shift it. */
   start: Point;
+  /** The comment whose card was open when the box started: the boxed
+      elements join its targets instead of the selection. */
+  forComment: Id | null;
 }
 
 /**
@@ -203,9 +218,20 @@ export function Canvas() {
    * selection itself is untouched, so what is chosen stays chosen.
    */
   const preview = useSearchPreview();
-  const shown = useMemo(
-    () => (preview === null ? state : { ...state, filter: preview, selectionHighlight: false }),
-    [state, preview],
+  const overlay = state.commentOverlay;
+  // The discussion overlay suspends the selection highlight too: muting
+  // there follows the filter alone, which is also what gates interaction.
+  const shown = useMemo(() => {
+    if (preview !== null) return { ...state, filter: preview, selectionHighlight: false };
+    if (overlay) return { ...state, selectionHighlight: false };
+    return state;
+  }, [state, preview, overlay]);
+
+  /** What the filter lets the overlay touch. Everything, with no filter. */
+  const interactable = useMemo(
+    () =>
+      selectIds(state.document.model.elements, state.filter, state.document.comments),
+    [state.document.model.elements, state.filter, state.document.comments],
   );
 
   const derived = useMemo(
@@ -457,6 +483,21 @@ export function Canvas() {
 
   const onDoubleClick = useCallback(
     (event: React.MouseEvent) => {
+      // In the overlay a double-click on empty board writes a general
+      // remark; it never edits the model underneath.
+      if (store.getState().commentOverlay) {
+        const hit = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+        const emptyBoard =
+          hit?.closest(
+            '.react-flow__node, .edge-label, .comment-card, .comment-timeline, .overlay-toggle, .search-menu, .react-flow__controls, .react-flow__minimap',
+          ) === null;
+        // The remark lands where it was written, pinned in place.
+        if (emptyBoard) {
+          setCardGhost(null);
+          quickAddComment([], screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+        }
+        return;
+      }
       // A double-click on or beside the controls is a mis-aimed button press,
       // not a request for a component. Enabled buttons bubble their clicks up
       // to here, so without this a zoom spam-click drops components too.
@@ -573,13 +614,29 @@ export function Canvas() {
   );
 
   /**
+   * A ghost card pulsing where the pane was clicked in the overlay. It says
+   * what a second click writes there, in the overlay's own language rather
+   * than the model's gravity wave.
+   */
+  const [cardGhost, setCardGhost] = useState<{ at: Point; key: number } | null>(null);
+  const ghostTimer = useRef<number | undefined>(undefined);
+
+  /**
    * A lone click on empty canvas answers with a small wave: the spot is live,
-   * and a second click here creates an element.
+   * and a second click here creates an element. In the overlay the answer is
+   * the outline of the comment a second click would write instead.
    */
   const onPaneClick = useCallback(
     (event: React.MouseEvent) => {
       stopEditing();
-      pressRipple(screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+      const at = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      if (store.getState().commentOverlay) {
+        setCardGhost((previous) => ({ at, key: (previous?.key ?? 0) + 1 }));
+        window.clearTimeout(ghostTimer.current);
+        ghostTimer.current = window.setTimeout(() => setCardGhost(null), 650);
+        return;
+      }
+      pressRipple(at);
     },
     [screenToFlowPosition],
   );
@@ -644,6 +701,17 @@ export function Canvas() {
         }
       }
 
+      // A box drawn while a card is open gathers targets for the comment;
+      // the selection, which the overlay never shows for elements, is left
+      // alone. Only what the filter shows joins.
+      if (gesture.forComment !== null) {
+        addCommentTargets(
+          gesture.forComment,
+          [...boxed].filter((id) => interactable.has(id)),
+        );
+        return;
+      }
+
       const state = store.getState();
       const next = gesture.subtract
         ? [...gesture.prior].filter((id) => !boxed.has(id))
@@ -665,7 +733,7 @@ export function Canvas() {
         ),
       );
     },
-    [nodes, edges, screenToFlowPosition],
+    [nodes, edges, screenToFlowPosition, interactable],
   );
 
   /**
@@ -784,9 +852,10 @@ export function Canvas() {
   return (
     <div
       ref={canvasRef}
-      className={`canvas${pending ? ' is-placing' : ''}`}
+      className={`canvas${pending ? ' is-placing' : ''}${overlay ? ' is-comment-overlay' : ''}`}
       data-testid="canvas"
       data-placing={pending ?? undefined}
+      data-comment-overlay={overlay ? 'true' : undefined}
       // React Flow starts a node drag on mousedown, so stopping the
       // pointerdown below does not keep the original still by itself.
       onMouseDownCapture={(event) => {
@@ -807,6 +876,38 @@ export function Canvas() {
         // A gesture that ended without its click leaves nothing armed here.
         swallowClick.current = false;
         const target = event.target as HTMLElement;
+
+        // In the overlay every element press speaks comments: React Flow
+        // never sees it, so the normal selection UI never shows. One click
+        // opens the element's discussion (or a fresh card), and while a card
+        // is open ctrl+click toggles the element in and out of its targets.
+        // preventDefault keeps focus in the open text box, so writing
+        // continues across the toggles. Only what the filter shows reacts.
+        const pressedId =
+          target.closest<HTMLElement>('.react-flow__node')?.dataset['id'] ??
+          target.closest<HTMLElement>('.edge-label')?.dataset['connectionId'] ??
+          null;
+        if (overlay && pressedId !== null) {
+          // Cancelling the pointerdown does not cancel the click that
+          // follows it, and the click is where React Flow selects.
+          swallowClick.current = true;
+          event.preventDefault();
+          event.stopPropagation();
+          if (event.button !== 0 || !interactable.has(pressedId)) return;
+          const edit = getCommentEdit();
+          if ((event.ctrlKey || event.metaKey) && edit !== null) {
+            toggleCommentTarget(edit.commentId, pressedId);
+          } else {
+            openElementComment(pressedId);
+          }
+          return;
+        }
+
+        // Shift opens a box over the pane; while a card is open the box
+        // gathers targets for it, and keeping focus keeps the card open.
+        if (overlay && event.shiftKey && getCommentEdit() !== null) {
+          event.preventDefault();
+        }
 
         // Alt+drag copies what it grabs, or the whole selection when it holds
         // that element. The copies follow the pointer as ghosts and land on
@@ -833,6 +934,7 @@ export function Canvas() {
               prior: new Set(store.getState().selection),
               subtract: event.ctrlKey || event.metaKey,
               start: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+              forComment: overlay ? (getCommentEdit()?.commentId ?? null) : null,
             };
           }
           return;
@@ -897,6 +999,9 @@ export function Canvas() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onReconnect={onReconnect}
+        // The overlay reads and discusses; the model underneath holds still.
+        nodesDraggable={!overlay}
+        nodesConnectable={!overlay}
         reconnectRadius={16}
         // A junction's contact points are small dots on its vertices, so a
         // line dropped near one still lands on it rather than nowhere.
@@ -911,8 +1016,10 @@ export function Canvas() {
         onSelectionEnd={() => setBoxSelecting(false)}
         // Double-click creates an element, so it must not also zoom.
         zoomOnDoubleClick={false}
-        // Both keys delete, matching what either keyboard leads you to expect.
-        deleteKeyCode={['Delete', 'Backspace']}
+        // Both keys delete, matching what either keyboard leads you to
+        // expect. In the overlay they delete the selected comment instead
+        // (CommentOverlay handles that), never the model.
+        deleteKeyCode={overlay ? null : ['Delete', 'Backspace']}
         // React Flow matches key combinations exactly, so plain 'Shift' stops
         // matching the moment ctrl joins it and ctrl+shift+drag would pan.
         // Naming the combinations keeps the box open for subtraction.
@@ -936,6 +1043,9 @@ export function Canvas() {
         <Panel position="top-left">
           <HiddenStrip />
         </Panel>
+        <Panel position="top-right">
+          <OverlayToggle />
+        </Panel>
         <Controls>
           <HistoryControls />
           <BoardSettings />
@@ -953,6 +1063,21 @@ export function Canvas() {
         <SelectionActions nodes={nodes} />
         <RelationsMenu nodes={nodes} />
         <ExpansionMenu nodes={nodes} />
+        <CommentOverlay />
+        {cardGhost && (
+          <ViewportPortal>
+            <div
+              key={cardGhost.key}
+              className="comment-card-ghost"
+              data-testid="comment-ghost"
+              style={{
+                transform: `translate(${cardGhost.at.x - COMMENT_CARD_SIZE.width / 2}px, ${cardGhost.at.y - 12}px)`,
+                width: COMMENT_CARD_SIZE.width,
+                height: COMMENT_CARD_SIZE.height,
+              }}
+            />
+          </ViewportPortal>
+        )}
       </ReactFlow>
     </div>
   );

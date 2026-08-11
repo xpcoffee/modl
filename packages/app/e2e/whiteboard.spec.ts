@@ -4078,3 +4078,478 @@ test.describe('decision labels', () => {
     });
   });
 });
+
+test.describe('comments', () => {
+  const NOTE = 'is-this-current';
+  const NOTE2 = 'second-thought';
+
+  /** The sample domain with one comment discussing the UI and the gateway. */
+  function commentedDomain() {
+    return [
+      ...sampleDomain(),
+      {
+        type: 'create-comment' as const,
+        id: NOTE,
+        text: 'Retry on timeout is assumed here',
+        targets: [IDS.ui, IDS.gateway],
+      },
+    ];
+  }
+
+  test('a badge marks everything a comment discusses, and only that', async ({ page }) => {
+    await dispatch(page, commentedDomain());
+    await fit(page);
+
+    await expect(page.getByTestId(`comment-badge-${IDS.ui}`)).toBeVisible();
+    await expect(page.getByTestId(`comment-badge-${IDS.gateway}`)).toBeVisible();
+    await expect(page.getByTestId(`comment-badge-${IDS.ledger}`)).toHaveCount(0);
+  });
+
+  test('the text stays folded until a discussed element is selected', async ({ page }) => {
+    await dispatch(page, commentedDomain());
+    await fit(page);
+
+    await expect(page.getByTestId(`comment-card-${NOTE}`)).toHaveCount(0);
+
+    // Selecting a target shows the one movable card, in model mode.
+    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ui, IDS.gateway] }]);
+    const card = page.getByTestId(`comment-card-${NOTE}`);
+    await expect(card).toBeVisible();
+    // One comment on two elements says so, or it reads as two copies.
+    await expect(card.locator('.comment-card__meta')).toHaveText(
+      'one comment across 2 elements',
+    );
+  });
+
+  test('selecting the comment itself shows its text and highlights its targets', async ({ page }) => {
+    // The highlight keeps everything one connection away readable, so the
+    // element that must dim is one nothing in the selection touches.
+    const APART = 'floating-note-pad';
+    await dispatch(page, [
+      ...commentedDomain(),
+      { type: 'create-entity', id: APART, entityType: 'component', title: 'Apart', position: { x: 0, y: 300 } },
+    ]);
+    await fit(page);
+
+    await dispatch(page, [{ type: 'set-selection', ids: [NOTE] }]);
+    await expect(page.getByTestId(`comment-card-${NOTE}`)).toBeVisible();
+    await expect(page.getByTestId(`entity-${APART}`)).toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).not.toHaveClass(/is-dimmed/);
+  });
+
+  test('pressing c with a selection opens the overlay and a card for it', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await fit(page);
+
+    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ui, IDS.gateway] }]);
+    await page.keyboard.press('c');
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-comment-overlay', 'true');
+
+    const editor = page.locator('[data-testid^="comment-text-box-"]');
+    await editor.fill('this pair is provisional');
+    await page.getByTestId('canvas').click({ position: { x: 40, y: 400 } });
+
+    const document = await getDocument(page);
+    const written = Object.values(document.comments)[0];
+    expect(written).toMatchObject({
+      text: 'this pair is provisional',
+      targets: [IDS.ui, IDS.gateway],
+    });
+  });
+
+  test('the comment filter narrows the board to what is discussed', async ({ page }) => {
+    await dispatch(page, commentedDomain());
+    await fit(page);
+
+    await setFilter(page, 'comment');
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-dimmed/);
+
+    await setFilter(page, 'comment=retry');
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveClass(/is-dimmed/);
+  });
+
+  test('the search menu finds a comment from its words', async ({ page }) => {
+    await dispatch(page, [
+      ...commentedDomain(),
+      {
+        type: 'create-comment' as const,
+        id: NOTE2,
+        text: 'rename the ledger',
+        targets: [IDS.ledger],
+      },
+    ]);
+    await fit(page);
+
+    await openSearch(page);
+    await page.getByTestId('search-input').fill('retry on timeout');
+    // The option says which kind of filter it is, so a comment filter and a
+    // tag that happens to read alike tell apart in the list.
+    await expect(
+      page.getByTestId('search-comment-comment-retry-on-timeout').locator('.search-menu__option-kind'),
+    ).toHaveText('filter by comment');
+    await page.getByTestId('search-comment-comment-retry-on-timeout').click();
+
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveClass(/is-dimmed/);
+  });
+
+  test('a tag named "comment" shows in search beside the comment filter', async ({ page }) => {
+    await dispatch(page, [
+      ...commentedDomain(),
+      { type: 'set-tag', id: IDS.ledger, key: 'comment', values: ['todo'] },
+    ]);
+    await fit(page);
+
+    await openSearch(page);
+    await page.getByTestId('search-input').fill('comment');
+
+    // Both filters are offered: the tag through its quoted key, the comment
+    // filter through the reserved word, each marked with its kind.
+    await expect(page.getByTestId('search-tag-comment-todo')).toBeVisible();
+    await expect(page.getByTestId('search-comment-comment')).toBeVisible();
+    await expect(
+      page.getByTestId('search-tag-comment-todo').locator('.search-menu__option-kind'),
+    ).toHaveText('filter by tag');
+
+    // Choosing the tag narrows to the tagged element, so the reserved word
+    // did not swallow the tag filter.
+    await page.getByTestId('search-tag-comment-todo').click();
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveClass(/is-dimmed/);
+  });
+
+  test('a comment survives a save and a load', async ({ page }) => {
+    await dispatch(page, commentedDomain());
+
+    const saved = await serialize(page);
+    expect(JSON.parse(saved).comments[NOTE].targets).toEqual([IDS.ui, IDS.gateway].sort());
+
+    await page.evaluate((text) => {
+      const document = JSON.parse(text);
+      window.__modl.dispatch({ type: 'load-document', document });
+    }, saved);
+
+    expect((await getDocument(page)).comments[NOTE]).toMatchObject({
+      text: 'Retry on timeout is assumed here',
+    });
+  });
+
+  test('deleting the last discussed element takes the comment with it', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'create-comment' as const, id: NOTE, text: 'only about the ledger', targets: [IDS.ledger] },
+      { type: 'delete-element', id: IDS.ledger },
+    ]);
+
+    expect(Object.keys((await getDocument(page)).comments)).toHaveLength(0);
+  });
+});
+
+test.describe('discussion overlay', () => {
+  const FIRST = 'first-remark';
+  const SECOND = 'second-remark';
+  const GENERAL = 'board-remark';
+
+  /** The sample domain with two attached comments and one general remark. */
+  function discussedDomain() {
+    return [
+      ...sampleDomain(),
+      {
+        type: 'create-comment' as const,
+        id: FIRST,
+        text: 'retry on timeout is assumed here',
+        targets: [IDS.ui, IDS.gateway],
+        createdAt: '2026-08-10T09:00:00Z',
+      },
+      {
+        type: 'create-comment' as const,
+        id: SECOND,
+        text: 'rename the ledger',
+        targets: [IDS.ledger],
+        createdAt: '2026-08-10T10:00:00Z',
+      },
+      {
+        type: 'create-comment' as const,
+        id: GENERAL,
+        text: 'should this board split in two?',
+        targets: [],
+        createdAt: '2026-08-10T11:00:00Z',
+      },
+    ];
+  }
+
+  async function state(page: import('@playwright/test').Page) {
+    return page.evaluate(() => window.__modl.getState());
+  }
+
+  test('c opens the overlay, escape with nothing selected closes it', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+
+    await page.keyboard.press('c');
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-comment-overlay', 'true');
+    await expect(page.getByTestId(`comment-card-${FIRST}`)).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-comment-overlay', 'true');
+    await expect(page.getByTestId(`comment-card-${FIRST}`)).toHaveCount(0);
+  });
+
+  test('the mode toggle is the other way in and out', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+
+    await page.getByTestId('overlay-discussion').click();
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-comment-overlay', 'true');
+    await page.getByTestId('overlay-model').click();
+    await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-comment-overlay', 'true');
+  });
+
+  test('a general remark is a card on the board like any other', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+    await page.keyboard.press('c');
+
+    // Unpinned (as from a file), it draws beside the content, and dragging
+    // pins it like any other card. Its timeline entry pans the camera to it
+    // first, since "beside the content" sits outside the fitted framing.
+    await page.getByTestId(`timeline-entry-${GENERAL}`).click();
+    await page.waitForTimeout(400);
+    const card = page.getByTestId(`comment-card-${GENERAL}`);
+    await expect(card).toBeVisible();
+    const box = await card.boundingBox();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + 8);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + box!.width / 2 + 80, box!.y + 60, { steps: 4 });
+    await page.mouse.up();
+    expect((await getDocument(page)).layout[GENERAL]).toBeDefined();
+  });
+
+  test('a general remark stays visible in model mode, dimmed until read', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+
+    // No overlay: the remark is still on the board, quiet.
+    const card = page.getByTestId(`comment-card-${GENERAL}`);
+    await expect(card).toHaveClass(/is-ambient/);
+
+    await dispatch(page, [{ type: 'set-selection', ids: [GENERAL] }]);
+    await expect(card).not.toHaveClass(/is-ambient/);
+  });
+
+  test('the timeline walks the discussion in writing order', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+    await page.keyboard.press('c');
+
+    // Entries carry the writing time and the words, not an abstract mark.
+    const entry = page.getByTestId(`timeline-entry-${FIRST}`);
+    await expect(entry.locator('.comment-timeline__snippet')).toContainText('retry on timeout');
+    await expect(entry.locator('.comment-timeline__time')).not.toBeEmpty();
+
+    await entry.click();
+    expect((await state(page)).selection).toEqual([FIRST]);
+
+    await page.keyboard.press('ArrowDown');
+    expect((await state(page)).selection).toEqual([SECOND]);
+    await page.keyboard.press('ArrowUp');
+    expect((await state(page)).selection).toEqual([FIRST]);
+  });
+
+  test('escape deselects before it leaves the overlay', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+    await page.keyboard.press('c');
+
+    await page.getByTestId(`timeline-entry-${FIRST}`).click();
+    expect((await state(page)).selection).toEqual([FIRST]);
+
+    await page.keyboard.press('Escape');
+    expect((await state(page)).selection).toEqual([]);
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-comment-overlay', 'true');
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-comment-overlay', 'true');
+  });
+
+  test('one click on an element opens its discussion, or a fresh card', async ({ page }) => {
+    const BARE = 'floating-note-pad';
+    await dispatch(page, [
+      ...discussedDomain(),
+      { type: 'create-entity', id: BARE, entityType: 'component', title: 'Apart', position: { x: 0, y: 300 } },
+    ]);
+    await fit(page);
+    await page.keyboard.press('c');
+
+    // An element already discussed opens its latest comment for editing.
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+    await expect(page.getByTestId(`comment-text-box-${FIRST}`)).toBeVisible();
+    // Clicking off keeps a comment that has words.
+    await page.getByTestId('canvas').click({ position: { x: 60, y: 500 } });
+    expect((await getDocument(page)).comments[FIRST]).toBeDefined();
+
+    // An element with no discussion gets a fresh card; abandoning it empty
+    // deletes it.
+    await page.getByTestId(`entity-${BARE}`).click();
+    const editor = page.locator('[data-testid^="comment-text-box-"]');
+    await expect(editor).toBeVisible();
+    await page.getByTestId('canvas').click({ position: { x: 60, y: 500 } });
+    await expect(editor).toHaveCount(0);
+    expect(Object.keys((await getDocument(page)).comments)).toHaveLength(3);
+
+    // The element selection UI never showed for any of it.
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-selected/);
+  });
+
+  test('ctrl+click while a card is open toggles what it discusses', async ({ page }) => {
+    const BARE = 'floating-note-pad';
+    await dispatch(page, [
+      ...discussedDomain(),
+      { type: 'create-entity', id: BARE, entityType: 'component', title: 'Apart', position: { x: 0, y: 300 } },
+    ]);
+    await fit(page);
+    await page.keyboard.press('c');
+
+    await page.getByTestId(`entity-${BARE}`).click();
+    const editor = page.locator('[data-testid^="comment-text-box-"]');
+    await editor.fill('does this belong with the UI?');
+
+    await page.getByTestId(`entity-${IDS.ui}`).click({ modifiers: ['Control'] });
+    const card = page.locator('.comment-card', { hasText: 'does this belong' });
+    await expect(card.locator('.comment-card__meta')).toHaveText('one comment across 2 elements');
+
+    await page.getByTestId(`entity-${IDS.ui}`).click({ modifiers: ['Control'] });
+    await expect(card.locator('.comment-card__meta')).toBeHidden();
+
+    await page.getByTestId('canvas').click({ position: { x: 60, y: 500 } });
+    const written = Object.values((await getDocument(page)).comments).find(
+      (comment) => comment.text === 'does this belong with the UI?',
+    );
+    expect(written?.targets).toEqual([BARE]);
+  });
+
+  test('double-clicking empty board writes a general remark', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+    await page.keyboard.press('c');
+
+    await page.getByTestId('canvas').dblclick({ position: { x: 60, y: 500 } });
+    const editor = page.locator('[data-testid^="comment-text-box-"]');
+    await editor.fill('a remark about everything');
+    await page.getByTestId('canvas').click({ position: { x: 60, y: 560 } });
+
+    const written = Object.values((await getDocument(page)).comments).find(
+      (comment) => comment.text === 'a remark about everything',
+    );
+    expect(written?.targets).toEqual([]);
+    // The remark landed where it was written: pinned at the double-click.
+    expect((await getDocument(page)).layout[written!.id]).toBeDefined();
+    // No element was created by the double-click.
+    expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(5);
+  });
+
+  test('a pane click in the overlay pulses a card ghost, never the gravity wave', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+    await page.keyboard.press('c');
+
+    await page.getByTestId('canvas').click({ position: { x: 60, y: 500 } });
+    await expect(page.getByTestId('comment-ghost')).toBeVisible();
+    // The single click wrote nothing; the ghost only says what a double
+    // click would do.
+    expect(Object.keys((await getDocument(page)).comments)).toHaveLength(3);
+  });
+
+  test('a dragged card is pinned, and its arc follows during the drag', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+    await page.keyboard.press('c');
+
+    // Centre the card first: near the right edge it sits under the
+    // timeline's entries, which take the pointer.
+    await page.getByTestId(`timeline-entry-${SECOND}`).click();
+    await page.waitForTimeout(400);
+
+    const arc = page.getByTestId(`comment-arc-${SECOND}-0`);
+    const before = await arc.getAttribute('x1');
+
+    const card = page.getByTestId(`comment-card-${SECOND}`);
+    const box = await card.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + 8);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + box!.width / 2 + 120, box!.y + 88, { steps: 5 });
+
+    // Mid-drag, the button still down: the arc has already moved with the card.
+    expect(await arc.getAttribute('x1')).not.toBe(before);
+    await page.mouse.up();
+
+    const layout = (await getDocument(page)).layout[SECOND];
+    expect(layout).toBeDefined();
+    expect('x' in layout!).toBe(true);
+  });
+
+  test('the filter gates what the overlay can touch', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+    await setFilter(page, 'team=web');
+    await page.keyboard.press('c');
+
+    // The gateway does not match team=web, so clicking it opens nothing.
+    await page.getByTestId(`entity-${IDS.gateway}`).click({ force: true });
+    await expect(page.locator('[data-testid^="comment-text-box-"]')).toHaveCount(0);
+
+    // The UI matches, so its discussion opens.
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+    await expect(page.getByTestId(`comment-text-box-${FIRST}`)).toBeVisible();
+  });
+
+  test('arcs follow an element while it is dragged in model mode', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+
+    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ledger] }]);
+    const arc = page.getByTestId(`comment-arc-${SECOND}-0`);
+    await expect(arc).toHaveCount(1);
+    const before = await arc.getAttribute('x2');
+
+    const node = await page.getByTestId(`entity-${IDS.ledger}`).boundingBox();
+    await page.mouse.move(node!.x + node!.width / 2, node!.y + node!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(node!.x + node!.width / 2 - 100, node!.y + node!.height / 2 - 40, {
+      steps: 5,
+    });
+
+    // Mid-drag, the button still down: the arc already points at the element.
+    expect(await arc.getAttribute('x2')).not.toBe(before);
+    await page.mouse.up();
+  });
+
+  test('in model mode the card selects, edits, and deletes without opening the overlay', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+
+    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ledger] }]);
+    const card = page.getByTestId(`comment-card-${SECOND}`);
+    await expect(card).toBeVisible();
+
+    // A drag only moves the card: the element stays selected, the comment
+    // stays unselected, and the card stays where the reader can see it.
+    const box = await card.boundingBox();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + 8);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + box!.width / 2 - 90, box!.y + 60, { steps: 4 });
+    await page.mouse.up();
+    expect((await state(page)).selection).toEqual([IDS.ledger]);
+
+    await card.click();
+    expect((await state(page)).selection).toEqual([SECOND]);
+    await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-comment-overlay', 'true');
+
+    await page.keyboard.press('Delete');
+    expect((await getDocument(page)).comments[SECOND]).toBeUndefined();
+    await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-comment-overlay', 'true');
+  });
+});

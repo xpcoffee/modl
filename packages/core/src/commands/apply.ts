@@ -1,5 +1,6 @@
 import {
   ARROWHEADS,
+  COMMENT_CARD_SIZE,
   DEFAULT_ENTITY_SIZE,
   CONNECTION_NODE_SIZE,
   STROKE_STYLES,
@@ -7,6 +8,7 @@ import {
   isEntity,
   isEntityLayout,
   isConnectionNode,
+  type Comment,
   type Connection,
   type Direction,
   type Document,
@@ -79,6 +81,7 @@ function moveCursor(state: AppState, cursor: number, commandType: 'undo' | 'redo
     expanded: [],
     hidden: [],
     selectionHighlight: state.selectionHighlight,
+    commentOverlay: state.commentOverlay,
     undo: { ...state.undo, cursor },
   };
   for (const command of state.undo.history.slice(0, cursor)) {
@@ -103,16 +106,20 @@ function moveCursor(state: AppState, cursor: number, commandType: 'undo' | 'redo
 
   // The camera, filter, selection, and expansion are what the user is
   // looking at, not what they did: undoing a move must not also fling the
-  // viewport back. They carry over, pruned to elements that still exist.
+  // viewport back. They carry over, pruned to what still exists.
+  const comments = refolded.document.comments;
   return ok(
     {
       ...refolded,
       document: { ...refolded.document, view: state.document.view },
       filter: state.filter,
-      selection: state.selection.filter((id) => elements[id] !== undefined),
+      selection: state.selection.filter(
+        (id) => elements[id] !== undefined || comments[id] !== undefined,
+      ),
       expanded: state.expanded.filter((id) => elements[id] !== undefined),
       hidden: state.hidden.filter((id) => elements[id] !== undefined),
       selectionHighlight: state.selectionHighlight,
+      commentOverlay: state.commentOverlay,
     },
     events,
   );
@@ -700,10 +707,27 @@ function reduce(state: AppState, command: Command): CommandResult {
         events.push({ type: 'element-updated', id: candidate.id });
       }
 
+      // A comment follows what it discusses: deleted targets leave its list,
+      // and a comment with nothing left to discuss goes with them.
+      const comments = { ...state.document.comments };
+      for (const comment of Object.values(state.document.comments)) {
+        const targets = comment.targets.filter((ref) => !removed.has(ref));
+        if (targets.length === comment.targets.length) continue;
+        if (targets.length === 0) {
+          delete comments[comment.id];
+          delete layout[comment.id];
+          removed.add(comment.id);
+          events.push({ type: 'comment-deleted', id: comment.id });
+        } else {
+          comments[comment.id] = { ...comment, targets };
+          events.push({ type: 'comment-updated', id: comment.id });
+        }
+      }
+
       return ok(
         {
           ...state,
-          document: { ...state.document, model: { elements }, layout },
+          document: { ...state.document, model: { elements }, comments, layout },
           selection: state.selection.filter((id) => !removed.has(id)),
           expanded: state.expanded.filter((id) => !removed.has(id)),
           hidden: state.hidden.filter((id) => !removed.has(id)),
@@ -876,7 +900,9 @@ function reduce(state: AppState, command: Command): CommandResult {
 
     case 'set-selection': {
       for (const id of command.ids) {
-        if (!state.document.model.elements[id]) return unknown(command.type, id);
+        if (!state.document.model.elements[id] && !state.document.comments[id]) {
+          return unknown(command.type, id);
+        }
       }
       return ok({ ...state, selection: [...command.ids] }, [
         { type: 'selection-changed', ids: [...command.ids] },
@@ -926,6 +952,7 @@ function reduce(state: AppState, command: Command): CommandResult {
           expanded: [],
           hidden: [],
           selectionHighlight: state.selectionHighlight,
+          commentOverlay: false,
         },
         [{ type: 'document-loaded', id: result.document.id }],
       );
@@ -941,6 +968,7 @@ function reduce(state: AppState, command: Command): CommandResult {
       // the rest of the document alone. With stable ids the trace then shows
       // exactly what that round changed.
       const elements = { ...state.document.model.elements };
+      const comments = { ...state.document.comments };
       const layout = { ...state.document.layout };
       const events: DomainEvent[] = [];
 
@@ -950,8 +978,12 @@ function reduce(state: AppState, command: Command): CommandResult {
         const incoming = result.document.layout[id];
         if (incoming) layout[id] = incoming;
       }
+      for (const [id, comment] of Object.entries(result.document.comments)) {
+        events.push({ type: comments[id] ? 'comment-updated' : 'comment-created', id });
+        comments[id] = comment;
+      }
 
-      const merged = { ...state.document, model: { elements }, layout };
+      const merged = { ...state.document, model: { elements }, comments, layout };
       const check = loadDocument(merged);
       if (!check.ok) {
         return fail(
@@ -982,6 +1014,102 @@ function reduce(state: AppState, command: Command): CommandResult {
       ]);
     }
 
+    case 'create-comment': {
+      if (state.document.model.elements[command.id] || state.document.comments[command.id]) {
+        return fail(command.type, 'duplicate-id', `${command.id} already names something in the document`);
+      }
+      const targetError = checkCommentTargets(state, command.type, command.targets);
+      if (targetError) return { ok: false, error: targetError };
+
+      const comment: Comment = {
+        id: command.id,
+        text: command.text,
+        ...(command.createdAt === undefined ? {} : { createdAt: command.createdAt }),
+        targets: [...new Set(command.targets)],
+      };
+      return ok(withComment(state, comment), [{ type: 'comment-created', id: command.id }]);
+    }
+
+    case 'set-comment-text': {
+      const comment = state.document.comments[command.id];
+      if (!comment) return unknownComment(command.type, command.id);
+      return ok(withComment(state, { ...comment, text: command.text }), [
+        { type: 'comment-updated', id: command.id },
+      ]);
+    }
+
+    case 'set-comment-targets': {
+      const comment = state.document.comments[command.id];
+      if (!comment) return unknownComment(command.type, command.id);
+      const targetError = checkCommentTargets(state, command.type, command.targets);
+      if (targetError) return { ok: false, error: targetError };
+
+      return ok(
+        withComment(state, { ...comment, targets: [...new Set(command.targets)] }),
+        [{ type: 'comment-updated', id: command.id }],
+      );
+    }
+
+    case 'move-comment': {
+      const comment = state.document.comments[command.id];
+      if (!comment) return unknownComment(command.type, command.id);
+      if (!Number.isFinite(command.position.x) || !Number.isFinite(command.position.y)) {
+        return fail(command.type, 'schema-invalid', 'a position needs finite coordinates');
+      }
+
+      // The card's pin lives in `layout` like any other geometry: where a
+      // remark is drawn says nothing about what it means.
+      const previous = state.document.layout[command.id];
+      const existing = previous && 'width' in previous ? previous : { ...COMMENT_CARD_SIZE };
+      return ok(
+        {
+          ...state,
+          document: {
+            ...state.document,
+            layout: {
+              ...state.document.layout,
+              [command.id]: { ...existing, x: command.position.x, y: command.position.y },
+            },
+          },
+        },
+        [{ type: 'comment-updated', id: command.id }],
+      );
+    }
+
+    case 'delete-comment': {
+      const comment = state.document.comments[command.id];
+      if (!comment) return unknownComment(command.type, command.id);
+
+      const comments = { ...state.document.comments };
+      delete comments[command.id];
+      const layout = { ...state.document.layout };
+      delete layout[command.id];
+      return ok(
+        {
+          ...state,
+          document: { ...state.document, comments, layout },
+          selection: state.selection.filter((id) => id !== command.id),
+        },
+        [{ type: 'comment-deleted', id: command.id }],
+      );
+    }
+
+    case 'set-comment-overlay': {
+      // Opening drops any selected elements: the overlay never shows the
+      // element selection UI, and clicking an element there speaks comments.
+      // A selected comment rides along, since the overlay is its home.
+      const selection = command.open
+        ? state.selection.filter((id) => state.document.comments[id])
+        : state.selection;
+      const events: DomainEvent[] = [
+        { type: 'comment-overlay-changed', open: command.open },
+      ];
+      if (selection.length !== state.selection.length) {
+        events.push({ type: 'selection-changed', ids: [...selection] });
+      }
+      return ok({ ...state, commentOverlay: command.open, selection }, events);
+    }
+
     default: {
       // A caller guessing at a command name gets a rejection it can read,
       // rather than `undefined` crashing the dispatcher two frames later.
@@ -1001,6 +1129,41 @@ function ok(state: AppState, events: DomainEvent[]): CommandResult {
 
 function unknown(commandType: CommandType, id: Id): CommandResult {
   return fail(commandType, 'unknown-element', `element ${id} is not in the document`);
+}
+
+function unknownComment(commandType: CommandType, id: Id): CommandResult {
+  return fail(commandType, 'unknown-element', `comment ${id} is not in the document`);
+}
+
+/**
+ * Each target has to be an element. An empty list is legal: a comment with
+ * no targets is a general remark about the whole document.
+ */
+function checkCommentTargets(
+  state: AppState,
+  commandType: CommandType,
+  targets: Id[],
+): CommandError | null {
+  for (const ref of targets) {
+    if (!state.document.model.elements[ref]) {
+      return {
+        code: 'unknown-element',
+        message: `element ${ref} is not in the document`,
+        commandType,
+      };
+    }
+  }
+  return null;
+}
+
+function withComment(state: AppState, comment: Comment): AppState {
+  return {
+    ...state,
+    document: {
+      ...state.document,
+      comments: { ...state.document.comments, [comment.id]: comment },
+    },
+  };
 }
 
 function checkEndpoints(

@@ -1,5 +1,5 @@
 import type { AppState } from '../commands/types.js';
-import { isConnection, isEntity, type Element, type Id } from '../model/types.js';
+import { isConnection, isEntity, type Comment, type Element, type Id } from '../model/types.js';
 import { readableName } from '../naming/readable-name.js';
 import { fuzzyScore } from './fuzzy.js';
 import { formatTerm, parseFilter, tagKeys, tagValues, type FilterTerm } from './filter.js';
@@ -83,6 +83,43 @@ export function tagSuggestions(
   return suggestions.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label));
 }
 
+/**
+ * Comment filters matching the query. `comment` on its own shows everything
+ * discussed, and a query found inside a comment's text is offered as
+ * `comment=query`, which is how a remark is found from its words (issue #37).
+ */
+export function commentSuggestions(
+  comments: Record<Id, Comment>,
+  query: string,
+): Extract<SearchOption, { kind: 'filter' }>[] {
+  if (Object.keys(comments).length === 0) return [];
+
+  const suggestions: Extract<SearchOption, { kind: 'filter' }>[] = [];
+  const all: FilterTerm = { kind: 'comment', negated: false };
+  const allScore = fuzzyScore(query, 'comment');
+  if (allScore !== null) {
+    suggestions.push({ kind: 'filter', term: all, label: formatTerm(all), score: allScore });
+  }
+
+  const trimmed = query.trim();
+  const inText = Object.values(comments).some((comment) =>
+    comment.text.toLowerCase().includes(trimmed.toLowerCase()),
+  );
+  if (trimmed !== '' && inText) {
+    const term: FilterTerm = { kind: 'comment', negated: false, text: trimmed };
+    // Above the bare `comment` chip: the reader typed words, and the option
+    // carrying them is the one they are reaching for.
+    suggestions.push({
+      kind: 'filter',
+      term,
+      label: formatTerm(term),
+      score: (allScore ?? 0) + 1,
+    });
+  }
+
+  return suggestions.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label));
+}
+
 export interface SearchOptionsInput {
   /**
    * Leave elements out, for the filter editor: it changes which view the
@@ -121,7 +158,10 @@ export function searchOptions(
     const term: FilterTerm = { kind: 'text', negated: false, text: trimmed };
     filters.push({ kind: 'filter', term, label: formatTerm(term), score: Number.POSITIVE_INFINITY });
   }
-  if (allowNewFilter) filters.push(...tagSuggestions(elements, trimmed));
+  if (allowNewFilter) {
+    filters.push(...tagSuggestions(elements, trimmed));
+    filters.push(...commentSuggestions(state.document.comments, trimmed));
+  }
 
   return [...filters, ...hits];
 }

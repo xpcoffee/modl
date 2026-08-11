@@ -131,11 +131,20 @@ export const modelSchema = z.object({
   elements: z.record(idSchema, elementSchema),
 });
 
+export const commentSchema = z.object({
+  id: idSchema,
+  text: z.string(),
+  createdAt: z.iso.datetime({ offset: true }).optional(),
+  /** Empty means a general remark about the whole document. */
+  targets: z.array(idSchema),
+});
+
 export const documentSchema = z.object({
   formatVersion: z.number().int(),
   id: idSchema,
   title: z.string(),
   model: modelSchema,
+  comments: z.record(idSchema, commentSchema).default({}),
   layout: z.record(idSchema, elementLayoutSchema).default({}),
   view: viewSchema.default({ pan: { x: 0, y: 0 }, zoom: 1 }),
 });
