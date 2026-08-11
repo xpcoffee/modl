@@ -1796,17 +1796,17 @@ select {
   pointer-events: auto;
 }
 
-/* The reading position: the current entry always sits beside this mark. */
+/* The reading position: a horizontal index line at the tape's centre, the
+   way a HUD instrument marks its current value, with the entries sliding
+   past it like the tape. */
 .comment-timeline__centre {
   position: absolute;
   top: 50%;
-  right: 4px;
-  width: 8px;
-  height: 8px;
-  transform: translateY(-50%) rotate(45deg);
-  border: 1.5px solid var(--comment);
-  border-left: none;
-  border-bottom: none;
+  right: 0;
+  width: 14px;
+  height: 2px;
+  transform: translateY(-50%);
+  background: var(--comment);
 }
 
 .comment-timeline__entry {
