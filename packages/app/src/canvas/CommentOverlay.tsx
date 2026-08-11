@@ -11,6 +11,7 @@ import {
   type Id,
   type Point,
 } from '@modl/core';
+import { motionReduced } from '../preferences/motion.js';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 import { getCommentEdit, startCommentEdit, stopCommentEdit, useCommentEdit } from './commentEditing.js';
@@ -223,6 +224,22 @@ export function CommentOverlay() {
   const [liveDrag, setLiveDrag] = useState<{ id: Id; at: Point } | null>(null);
   // The click that ends a drag must not also select the card.
   const justDragged = useRef(false);
+  // Leaving the overlay keeps its extra cards mounted while they fade;
+  // reduced motion skips the wait and they go at once.
+  const [leaving, setLeaving] = useState(false);
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    const closed = wasOpen.current && !open;
+    wasOpen.current = open;
+    if (!closed || motionReduced()) {
+      setLeaving(false);
+      return;
+    }
+    setLeaving(true);
+    const timer = window.setTimeout(() => setLeaving(false), 300);
+    return () => window.clearTimeout(timer);
+  }, [open]);
+
   // The card just written into being, pulsing its border once.
   const [bornId, setBornId] = useState<Id | null>(null);
   useEffect(() => {
@@ -392,7 +409,15 @@ export function CommentOverlay() {
 
   // The card is the one rendering a comment has. The overlay shows every
   // card; model mode shows the ones being read.
-  const pinned = open ? cards : cards.filter((card) => isRead(state, card.comment));
+  // What model mode always shows: cards being read, and every general
+  // remark. A general remark belongs to no element, so if selection were the
+  // only way in, model mode could never find it; it sits dimmed instead
+  // until hovered or selected.
+  const modelVisible = (card: CardPlace): boolean =>
+    isRead(state, card.comment) || card.comment.targets.length === 0;
+
+  // Leaving the overlay fades the extra cards out before they unmount.
+  const pinned = open || leaving ? cards : cards.filter(modelVisible);
 
   return (
     <>
@@ -408,11 +433,13 @@ export function CommentOverlay() {
                 y1={card.at!.y + 12}
                 x2={anchor.x}
                 y2={anchor.y}
-                className={
-                  selectedComment === card.comment.id
-                    ? 'comment-overlay__arc is-selected'
-                    : 'comment-overlay__arc'
-                }
+                className={[
+                  'comment-overlay__arc',
+                  selectedComment === card.comment.id ? 'is-selected' : '',
+                  leaving && !open && !modelVisible(card) ? 'is-out' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
               />
             )),
           )}
@@ -425,6 +452,8 @@ export function CommentOverlay() {
             selected={selectedComment === card.comment.id}
             editing={edit?.commentId === card.comment.id}
             born={card.comment.id === bornId}
+            ambient={!open && !leaving && !isRead(state, card.comment)}
+            leaving={leaving && !open && !modelVisible(card)}
             justDragged={justDragged}
             onDragStart={dragCard(card.comment.id, card.at!)}
           />
@@ -441,6 +470,8 @@ function CommentCard({
   selected,
   editing,
   born,
+  ambient = false,
+  leaving = false,
   justDragged,
   onDragStart,
 }: {
@@ -449,6 +480,10 @@ function CommentCard({
   editing: boolean;
   /** True just after creation: the border pulses once to say "written here". */
   born: boolean;
+  /** A general remark sitting in model mode: dimmed until hovered or selected. */
+  ambient?: boolean;
+  /** Fading out with the overlay, about to unmount. */
+  leaving?: boolean;
   /** Set by a drag ending; the click that follows it must not select. */
   justDragged: React.MutableRefObject<boolean>;
   onDragStart?: (event: React.PointerEvent) => void;
@@ -460,6 +495,8 @@ function CommentCard({
     'nopan',
     selected ? 'is-selected' : '',
     born ? 'is-born' : '',
+    ambient ? 'is-ambient' : '',
+    leaving ? 'is-out' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -501,7 +538,9 @@ function CommentCard({
 }
 
 /** Vertical room one timeline entry takes, centre to centre. */
-const TIMELINE_SPACING = 64;
+const TIMELINE_SPACING = 84;
+/** How far beyond the rail's box the wheel still belongs to the timeline. */
+const TIMELINE_WHEEL_MARGIN = 24;
 /** How much dimmer each step away from the current entry draws. */
 const TIMELINE_FADE = 0.28;
 
@@ -533,22 +572,42 @@ function Timeline({
     cards.findIndex((card) => card.comment.id === selected),
   );
 
-  const step = (by: number): void => {
-    const next = cards[Math.min(cards.length - 1, Math.max(0, current + by))];
-    if (next && next.comment.id !== selected) onPick(next);
-  };
+  const step = useCallback(
+    (by: number): void => {
+      const next = cards[Math.min(cards.length - 1, Math.max(0, current + by))];
+      if (next && next.comment.id !== selected) onPick(next);
+    },
+    [cards, current, selected, onPick],
+  );
 
-  // The wheel lives on the entries rather than the rail: the rail spans the
-  // whole edge but stays transparent to the pointer, so the board and the
-  // controls beneath it keep working.
-  const onWheel = (event: React.WheelEvent): void => {
-    if (cards.length === 0 || event.deltaY === 0) return;
-    event.stopPropagation();
-    step(event.deltaY > 0 ? 1 : -1);
-  };
+  /**
+   * The whole strip owns the wheel, gaps between entries and a margin
+   * included, so rolling between two entries walks the discussion rather
+   * than zooming the board. The rail itself stays transparent to the
+   * pointer, so this is a window listener judging by geometry; capture and
+   * passive:false, or the zoom underneath fires first.
+   */
+  const rail = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onWheel = (event: WheelEvent): void => {
+      const rect = rail.current?.getBoundingClientRect();
+      if (!rect || event.deltaY === 0) return;
+      const inside =
+        event.clientX >= rect.left - TIMELINE_WHEEL_MARGIN &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom;
+      if (!inside) return;
+      event.preventDefault();
+      event.stopPropagation();
+      step(event.deltaY > 0 ? 1 : -1);
+    };
+    window.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    return () => window.removeEventListener('wheel', onWheel, { capture: true });
+  }, [step]);
 
   return (
-    <div className="comment-timeline nowheel nodrag nopan" data-testid="comment-timeline">
+    <div ref={rail} className="comment-timeline nowheel nodrag nopan" data-testid="comment-timeline">
       {/* Marks the reading position: the entry beside this is the current one. */}
       <span className="comment-timeline__centre" data-testid="timeline-centre" aria-hidden="true" />
       {cards.map((card, index) => {
@@ -566,7 +625,6 @@ function Timeline({
               ...(opacity === 0 ? { pointerEvents: 'none' as const } : {}),
             }}
             onClick={() => onPick(card)}
-            onWheel={onWheel}
           >
             <span className="comment-timeline__time">{timeLabel(card.comment)}</span>
             <span className="comment-timeline__snippet">

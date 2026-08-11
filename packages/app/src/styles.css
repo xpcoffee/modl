@@ -1667,11 +1667,16 @@ select {
   stroke-width: 1;
   stroke-dasharray: 4 4;
   opacity: 0.55;
+  animation: comment-fade-in 0.3s ease both;
 }
 
 .comment-overlay__arc.is-selected {
   stroke-width: 1.6;
   opacity: 1;
+}
+
+.comment-overlay__arc.is-out {
+  animation: comment-fade-out 0.3s ease both;
 }
 
 /* Cards paint above the board, selected elements and their editors
@@ -1696,9 +1701,41 @@ select {
   pointer-events: all;
 }
 
+.comment-card {
+  animation: comment-fade-in 0.3s ease both;
+}
+
+.comment-card.is-out {
+  animation: comment-fade-out 0.3s ease both;
+}
+
+/* A general remark in model mode: present so it can be found, quiet so it
+   does not compete with the model, and full-strength under the pointer. */
+.comment-card.is-ambient {
+  opacity: 0.35;
+  transition: opacity 0.2s ease;
+}
+
+.comment-card.is-ambient:hover,
+.comment-card.is-ambient.is-selected {
+  opacity: 1;
+}
+
 .comment-card.is-selected {
   outline: 2px solid var(--comment);
   z-index: 10;
+}
+
+@keyframes comment-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes comment-fade-out {
+  to {
+    opacity: 0;
+  }
 }
 
 .comment-card__meta {
@@ -1752,9 +1789,12 @@ select {
   }
 }
 
-/* A card just written into being announces itself with one ring of light. */
+/* A card just written into being announces itself with one ring of light.
+   Named together with the mount fade, or the pulse would replace it. */
 .comment-card.is-born {
-  animation: comment-born-pulse 0.7s ease-out;
+  animation:
+    comment-fade-in 0.3s ease both,
+    comment-born-pulse 0.7s ease-out;
 }
 
 @keyframes comment-born-pulse {
@@ -1766,14 +1806,18 @@ select {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .comment-card-ghost,
-  .comment-card.is-born {
-    animation: none;
-  }
-  .comment-card-ghost {
-    opacity: 0.7;
-  }
+/* The motion preference (preferences/motion.ts) stamps the html element, so
+   the reader's override reaches these too, either way round. */
+html[data-motion='reduced'] .comment-card,
+html[data-motion='reduced'] .comment-card-ghost,
+html[data-motion='reduced'] .comment-overlay__arc,
+html[data-motion='reduced'] .comment-timeline__entry {
+  animation: none;
+  transition: none;
+}
+
+html[data-motion='reduced'] .comment-card-ghost {
+  opacity: 0.7;
 }
 
 /* Spans the board's height, no chrome of its own: the current entry sits

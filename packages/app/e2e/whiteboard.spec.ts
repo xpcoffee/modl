@@ -4327,6 +4327,18 @@ test.describe('discussion overlay', () => {
     expect((await getDocument(page)).layout[GENERAL]).toBeDefined();
   });
 
+  test('a general remark stays visible in model mode, dimmed until read', async ({ page }) => {
+    await dispatch(page, discussedDomain());
+    await fit(page);
+
+    // No overlay: the remark is still on the board, quiet.
+    const card = page.getByTestId(`comment-card-${GENERAL}`);
+    await expect(card).toHaveClass(/is-ambient/);
+
+    await dispatch(page, [{ type: 'set-selection', ids: [GENERAL] }]);
+    await expect(card).not.toHaveClass(/is-ambient/);
+  });
+
   test('the timeline walks the discussion in writing order', async ({ page }) => {
     await dispatch(page, discussedDomain());
     await fit(page);
@@ -4454,6 +4466,11 @@ test.describe('discussion overlay', () => {
     await dispatch(page, discussedDomain());
     await fit(page);
     await page.keyboard.press('c');
+
+    // Centre the card first: near the right edge it sits under the
+    // timeline's entries, which take the pointer.
+    await page.getByTestId(`timeline-entry-${SECOND}`).click();
+    await page.waitForTimeout(400);
 
     const arc = page.getByTestId(`comment-arc-${SECOND}-0`);
     const before = await arc.getAttribute('x1');
