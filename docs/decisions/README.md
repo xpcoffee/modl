@@ -23,5 +23,6 @@ A decision earns a file when reversing it later would be expensive: it shapes th
 | [015](015-search-and-filter-menu.md) | One menu searches and filters, and a filter is a term in one expression |
 | [016](016-comments.md) | Comments live beside the model, and attach to elements |
 | [017](017-discussion-overlay.md) | Discussion is a temporary overlay, and its cards pin in layout |
+| [018](018-customizable-keybindings.md) | Input bindings are reader preferences, matched through one table |
 
 The build order these decisions were first applied in lives in [the bootstrap spec](../specs/001-bootstrap.md).

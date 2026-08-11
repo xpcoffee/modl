@@ -326,15 +326,9 @@ export function CommentOverlay() {
         return;
       }
 
-      if (event.key === 'Escape') {
-        // Deselect first, leave second: two presses back out of anything.
-        if (current.selection.length > 0) {
-          store.dispatch({ type: 'set-selection', ids: [] });
-        } else if (current.commentOverlay) {
-          store.dispatch({ type: 'set-comment-overlay', open: false });
-        }
-        return;
-      }
+      // Escape (the cancel binding) is handled by the board's one cancel
+      // chain in Canvas: gestures first, then the selection, then leaving
+      // this overlay.
 
       const selected = soleSelectedComment(current);
 

@@ -14,6 +14,7 @@ import {
   type SearchOption,
 } from '@modl/core';
 import { setSearchPreview } from '../canvas/searchPreview.js';
+import { matchesKey } from '../preferences/keybindings.js';
 import { motionReduced } from '../preferences/motion.js';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
@@ -139,11 +140,11 @@ export function SearchMenu() {
     setWindowStart(0);
   }, []);
 
-  // Ctrl+F reaches the menu from anywhere on the board.
+  // The search binding (ctrl+f out of the box) reaches the menu from
+  // anywhere on the board.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
-      if (event.key.toLowerCase() !== 'f') return;
+      if (!matchesKey('search', event)) return;
       event.preventDefault();
       // The focus follows in an effect: the input does not exist until the
       // state change that opens the bar has rendered.

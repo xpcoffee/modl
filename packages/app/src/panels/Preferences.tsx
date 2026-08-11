@@ -5,6 +5,25 @@ import {
   useSystemReducesMotion,
   type MotionPreference,
 } from '../preferences/motion.js';
+import {
+  ACTIONS,
+  MAX_COMBOS,
+  captureHint,
+  captureKeyCombo,
+  captureMouseCombo,
+  combosFor,
+  describeActionCombo,
+  duplicateOwners,
+  gestureMode,
+  matchesKey,
+  removeCombo,
+  resetKeybindings,
+  setCombo,
+  setGestureMode,
+  useKeybindingsVersion,
+  type ActionId,
+  type GestureMode,
+} from '../preferences/keybindings.js';
 
 /**
  * The reader's own settings, behind a gear at the end of the toolbar.
@@ -16,7 +35,8 @@ import {
  *
  * A native `<dialog>` carries the modal behaviour (Escape, the backdrop, and
  * the focus trap), so this only has to keep React's idea of open in step
- * with the element's.
+ * with the element's. The dialog holds one page at a time — the root, or the
+ * input bindings — and the breadcrumb in the header walks back up.
  */
 
 const MOTION_CHOICES: { value: MotionPreference; label: string }[] = [
@@ -25,11 +45,74 @@ const MOTION_CHOICES: { value: MotionPreference; label: string }[] = [
   { value: 'reduced', label: 'Never animate' },
 ];
 
+const MODE_CHOICES: { value: GestureMode; label: string }[] = [
+  { value: 'hold', label: 'Hold' },
+  { value: 'begin-end', label: 'Begin + end' },
+];
+
+type PreferencesPage = 'root' | 'keybindings';
+
+/** A binding slot waiting for a press. */
+interface Arming {
+  id: ActionId;
+  index: number;
+}
+
 export function Preferences() {
   const [open, setOpen] = useState(false);
+  const [page, setPage] = useState<PreferencesPage>('root');
+  const [arming, setArming] = useState<Arming | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  // Whether the click that follows a captured press should be swallowed
+  // before it reaches whatever control it landed on.
+  const swallowClick = useRef(false);
+  // Whether the context menu that follows a captured right press should be
+  // swallowed.
+  const swallowContextMenu = useRef(false);
+  // The armed slot, readable from listeners that outlive the arming state.
+  const armingRef = useRef<Arming | null>(null);
+  // Whether the press that opened the current click landed on the backdrop:
+  // a drag released over the backdrop must not read as a click outside.
+  const pressOnBackdrop = useRef(false);
   const preference = useMotionPreference();
   const systemReduces = useSystemReducesMotion();
+  useKeybindingsVersion();
+  armingRef.current = arming;
+
+  // The click (and context menu) that trail a captured press arrive after
+  // React has already disarmed and re-run effects, so the listeners that
+  // swallow them must outlive the arming state. Chromium suppresses those
+  // trailing events entirely when the pointerdown was cancelled, so a new
+  // press clears any swallow left waiting — this listener is registered
+  // before the arming one and runs first.
+  useEffect(() => {
+    const onPointerDown = () => {
+      swallowClick.current = false;
+      swallowContextMenu.current = false;
+    };
+    const onClick = (event: MouseEvent) => {
+      if (!swallowClick.current) return;
+      swallowClick.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const onContextMenu = (event: MouseEvent) => {
+      // While armed, a right press must not open the browser's menu; after
+      // a captured right press, neither must the menu the press trails.
+      if (armingRef.current === null && !swallowContextMenu.current) return;
+      swallowContextMenu.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('click', onClick, true);
+    window.addEventListener('contextmenu', onContextMenu, true);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('click', onClick, true);
+      window.removeEventListener('contextmenu', onContextMenu, true);
+    };
+  }, []);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -37,6 +120,62 @@ export function Preferences() {
     if (open && !dialog.open) dialog.showModal();
     if (!open && dialog.open) dialog.close();
   }, [open]);
+
+  // While a binding slot is armed, the next press anywhere is the answer.
+  // The listeners ride the capture phase and stop the event, so the press
+  // being recorded cannot also act on the board or the panel.
+  useEffect(() => {
+    if (arming === null) return;
+    const { id, index } = arming;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (matchesKey('cancel', event)) {
+        // preventDefault also keeps the dialog's own Escape from closing it.
+        event.preventDefault();
+        event.stopPropagation();
+        setArming(null);
+        return;
+      }
+      const combo = captureKeyCombo(id, event);
+      // Half a combo (a modifier alone) or a key on a mouse-only action:
+      // keep waiting.
+      if (combo === null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setCombo(id, index, combo);
+      setArming(null);
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      pressOnBackdrop.current = false;
+      const target = event.target as HTMLElement | null;
+      // Any press that can bind the slot binds it, wherever it lands — the
+      // bare left button included. Cancel (Escape) is the way out.
+      const combo = captureMouseCombo(id, event);
+      if (combo === null) {
+        // The press cannot bind this slot, so it is a click somewhere else.
+        // On the armed button itself the click that follows would arm it
+        // straight back.
+        const armedButton = `[data-testid="binding-${id}-${index}"], [data-testid="add-binding-${id}"]`;
+        if (target?.closest(armedButton)) swallowClick.current = true;
+        setArming(null);
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      swallowClick.current = true;
+      if (event.button === 2) swallowContextMenu.current = true;
+      setCombo(id, index, combo);
+      setArming(null);
+    };
+
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('pointerdown', onPointerDown, true);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('pointerdown', onPointerDown, true);
+    };
+  }, [arming]);
 
   return (
     <>
@@ -60,16 +199,42 @@ export function Preferences() {
         className="preferences"
         data-testid="preferences"
         aria-label="Preferences"
-        onClose={() => setOpen(false)}
+        onClose={() => {
+          setOpen(false);
+          setPage('root');
+          setArming(null);
+        }}
         // The backdrop is part of the dialog's own box, so a press that lands
-        // on the element itself landed outside the panel drawn inside it.
+        // on the element itself landed outside the panel drawn inside it. The
+        // click only dismisses when its press also started out there: a drag
+        // released over the backdrop stays inside.
+        onPointerDown={(event) => {
+          pressOnBackdrop.current = event.target === dialogRef.current;
+        }}
         onClick={(event) => {
-          if (event.target === dialogRef.current) setOpen(false);
+          if (event.target === dialogRef.current && pressOnBackdrop.current) setOpen(false);
         }}
       >
         <div className="preferences__panel">
           <header className="preferences__header">
-            <h2>Preferences</h2>
+            {page === 'root' ? (
+              <h2>Preferences</h2>
+            ) : (
+              <nav className="preferences__breadcrumbs" aria-label="Preferences pages">
+                <button
+                  type="button"
+                  data-testid="breadcrumb-preferences"
+                  onClick={() => {
+                    setPage('root');
+                    setArming(null);
+                  }}
+                >
+                  Preferences
+                </button>
+                <span aria-hidden="true">›</span>
+                <h2>Input bindings</h2>
+              </nav>
+            )}
             <button
               type="button"
               data-testid="close-preferences"
@@ -80,32 +245,175 @@ export function Preferences() {
             </button>
           </header>
 
-          <fieldset className="preferences__group">
-            <legend>Motion</legend>
-            <p className="preferences__note">
-              The board answers clicks, arrivals, and deletions with gravity waves through the
-              dot grid.
-            </p>
-            {MOTION_CHOICES.map((choice) => (
-              <label key={choice.value} className="preferences__choice">
-                <input
-                  type="radio"
-                  name="motion"
-                  data-testid={`motion-${choice.value}`}
-                  checked={preference === choice.value}
-                  onChange={() => setMotionPreference(choice.value)}
-                />
-                <span>
-                  {choice.label}
-                  {choice.value === 'system' && (
-                    <em data-testid="motion-system-state">
-                      {systemReduces ? ' — currently asking for no motion' : ' — currently allowing motion'}
-                    </em>
-                  )}
-                </span>
-              </label>
-            ))}
-          </fieldset>
+          {page === 'root' && (
+            <>
+              <fieldset className="preferences__group">
+                <legend>Motion</legend>
+                <p className="preferences__note">
+                  The board answers clicks, arrivals, and deletions with gravity waves through the
+                  dot grid.
+                </p>
+                {MOTION_CHOICES.map((choice) => (
+                  <label key={choice.value} className="preferences__choice">
+                    <input
+                      type="radio"
+                      name="motion"
+                      data-testid={`motion-${choice.value}`}
+                      checked={preference === choice.value}
+                      onChange={() => setMotionPreference(choice.value)}
+                    />
+                    <span>
+                      {choice.label}
+                      {choice.value === 'system' && (
+                        <em data-testid="motion-system-state">
+                          {systemReduces
+                            ? ' — currently asking for no motion'
+                            : ' — currently allowing motion'}
+                        </em>
+                      )}
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+
+              <fieldset className="preferences__group">
+                <legend>Input</legend>
+                <p className="preferences__note">
+                  Every gesture on the board can move to a different key or button.
+                </p>
+                <button
+                  type="button"
+                  className="preferences__page-link"
+                  data-testid="open-keybindings"
+                  onClick={() => setPage('keybindings')}
+                >
+                  Input bindings <span aria-hidden="true">›</span>
+                </button>
+              </fieldset>
+            </>
+          )}
+
+          {page === 'keybindings' && (
+            <fieldset className="preferences__group">
+              <legend>Input bindings</legend>
+              <p className="preferences__note">
+                Click a binding, then press the key or button it should answer to, with any
+                modifiers held. Cancel (Escape) backs out of a press. Changes apply as they are
+                made.
+              </p>
+              {ACTIONS.map((action) => {
+                const combos = combosFor(action.id);
+                return (
+                  <div key={action.id} className="preferences__row">
+                    <span className="preferences__action">
+                      {action.label}
+                      {action.beginEnd && (
+                        <span
+                          className="preferences__modes"
+                          role="radiogroup"
+                          aria-label={`${action.label} runs as`}
+                        >
+                          {MODE_CHOICES.map((choice) => (
+                            <button
+                              key={choice.value}
+                              type="button"
+                              data-testid={`mode-${action.id}-${choice.value}`}
+                              aria-pressed={gestureMode(action.id) === choice.value}
+                              className={
+                                gestureMode(action.id) === choice.value ? 'is-active' : undefined
+                              }
+                              onClick={() => {
+                                setGestureMode(action.id, choice.value);
+                                setArming(null);
+                              }}
+                            >
+                              {choice.label}
+                            </button>
+                          ))}
+                        </span>
+                      )}
+                    </span>
+                    <span className="preferences__combos">
+                      {combos.map((combo, index) => {
+                        const armedHere = arming?.id === action.id && arming.index === index;
+                        const others = duplicateOwners(action.id, combo);
+                        return (
+                        <span key={index} className="preferences__chip">
+                          <button
+                            type="button"
+                            className={`preferences__binding${armedHere ? ' is-armed' : ''}${
+                              others.length > 0 ? ' is-duplicate' : ''
+                            }`}
+                            data-testid={`binding-${action.id}-${index}`}
+                            data-duplicate={others.length > 0 ? 'true' : undefined}
+                            title={
+                              others.length > 0
+                                ? `Also bound to ${others.join(', ')}: both fire`
+                                : undefined
+                            }
+                            onClick={() =>
+                              setArming(armedHere ? null : { id: action.id, index })
+                            }
+                          >
+                            {armedHere
+                              ? captureHint(action.id)
+                              : describeActionCombo(action.id, combo)}
+                          </button>
+                          <button
+                            type="button"
+                            className="preferences__remove"
+                            data-testid={`remove-${action.id}-${index}`}
+                            aria-label={`Remove ${action.label} binding`}
+                            onClick={() => {
+                              removeCombo(action.id, index);
+                              setArming(null);
+                            }}
+                          >
+                            ×
+                          </button>
+                        </span>
+                        );
+                      })}
+                      {combos.length < MAX_COMBOS && (
+                        <button
+                          type="button"
+                          className={`preferences__binding preferences__add${
+                            arming?.id === action.id && arming.index === combos.length
+                              ? ' is-armed'
+                              : ''
+                          }`}
+                          data-testid={`add-binding-${action.id}`}
+                          aria-label={`Add ${action.label} binding`}
+                          onClick={() =>
+                            setArming(
+                              arming?.id === action.id && arming.index === combos.length
+                                ? null
+                                : { id: action.id, index: combos.length },
+                            )
+                          }
+                        >
+                          {arming?.id === action.id && arming.index === combos.length
+                            ? captureHint(action.id)
+                            : '+'}
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+              <button
+                type="button"
+                className="preferences__reset"
+                data-testid="reset-keybindings"
+                onClick={() => {
+                  resetKeybindings();
+                  setArming(null);
+                }}
+              >
+                Reset to defaults
+              </button>
+            </fieldset>
+          )}
         </div>
       </dialog>
     </>
