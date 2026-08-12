@@ -116,6 +116,9 @@ export interface DeriveOptions {
   editingId: Id | null;
   /** A selection box is being dragged, so element editors stay shut. */
   boxSelecting: boolean;
+  /** The selection menus sit at the dock, so the editor renders there
+      (DockedEditor) rather than on the element. */
+  dockedEditor: boolean;
   /** Connection the relations menu is pointing at, drawn emphasised. */
   highlightId: Id | null;
 }
@@ -560,7 +563,7 @@ function describeConnection(elements: Record<Id, Element>, connection: Connectio
  * pop an editor open under the pointer.
  */
 function onlySelected(state: AppState, options: DeriveOptions): Id | null {
-  if (options.boxSelecting) return null;
+  if (options.boxSelecting || options.dockedEditor) return null;
   return state.selection.length === 1 ? (state.selection[0] ?? null) : null;
 }
 

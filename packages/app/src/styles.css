@@ -722,16 +722,16 @@ select {
   color: var(--accent);
 }
 
-/* Delete, placed under the selection */
+/* Style, hide, show, and delete for a multi-selection, at the dock */
 
 .selection-actions {
   position: absolute;
   top: 0;
   left: 0;
-  margin-top: 8px;
   transform-origin: top left;
-  /* Above every node, which React Flow lifts as high as 1000 when selected. */
-  z-index: 1500;
+  /* Above a selected node's 2000 (React Flow's elevateNodesOnSelect adds
+     1000 to the app's 1000): the dock can sit over selected elements. */
+  z-index: 2500;
   pointer-events: all;
 }
 
@@ -754,9 +754,7 @@ select {
   height: 15px;
 }
 
-/* Centred under the multi-selection. */
 .selection-actions__panel {
-  transform: translateX(-50%);
   width: 240px;
   padding: 8px;
   border: 1px solid var(--accent);
@@ -888,6 +886,35 @@ select {
   /* Same stacking as .relations-menu: above a selected node's 2000. */
   z-index: 2500;
   pointer-events: all;
+}
+
+/* The selection-menu dock (decision 024): the single-selection editor's
+   wrapper while it sits at the bottom-centre dock. */
+
+.selection-dock-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  /* Same stacking as the other docked menus: above a selected node's 2000. */
+  z-index: 2500;
+  pointer-events: all;
+  cursor: default;
+}
+
+/* A menu travelling between its anchor and the dock. The transform carries
+   both the translation and the counter-zoom scale, so one transition moves
+   and resizes it together. */
+.relations-menu.is-travelling,
+.expansion-menu.is-travelling,
+.selection-dock-panel.is-travelling {
+  transition: transform 300ms ease;
+}
+
+:root[data-motion='reduced'] .relations-menu.is-travelling,
+:root[data-motion='reduced'] .expansion-menu.is-travelling,
+:root[data-motion='reduced'] .selection-dock-panel.is-travelling {
+  transition: none;
 }
 
 /* Roller menu: entrance pill, options rolling through the middle slot. */

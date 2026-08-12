@@ -429,6 +429,9 @@ test.describe('groups', () => {
     // inside the group.
     await page.setViewportSize({ width: 480, height: 360 });
     await groupPaymentsSide(page);
+    // Grouping selected the group, whose box overflows this small window, so
+    // its editor docks over the expand button. Deselect before clicking it.
+    await dispatch(page, [{ type: 'set-selection', ids: [] }]);
     await page.getByTestId(`expand-${GROUP}`).click();
     await dispatch(page, [
       { type: 'resize-element', id: GROUP, width: 900, height: 700 },
@@ -1246,12 +1249,14 @@ test.describe('selection actions', () => {
     expect(trash.y + trash.height).toBeLessThanOrEqual(editor.y + editor.height + 1);
   });
 
-  test('delete follows a dragged selection before the drop', async ({ page }) => {
+  test('the multi-selection panel holds the dock through a drag', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await fit(page);
     await page.getByTestId(`entity-${IDS.gateway}`).click();
     await page.getByTestId(`entity-${IDS.ledger}`).click({ modifiers: ['ControlOrMeta'] });
 
+    // A multi-selection has no one element to anchor to, so its panel sits
+    // at the dock and stays reachable while the elements move.
     const before = (await page.getByTestId('delete-selected').boundingBox())!;
     await page.locator(`.react-flow__node[data-id="${IDS.gateway}"]`).hover();
     await page.mouse.down();
@@ -1259,7 +1264,8 @@ test.describe('selection actions', () => {
 
     // Still mid-drag, before any command has fired.
     const during = (await page.getByTestId('delete-selected').boundingBox())!;
-    expect(during.y).not.toBe(before.y);
+    expect(during.x).toBe(before.x);
+    expect(during.y).toBe(before.y);
     await page.mouse.up();
   });
 
@@ -3276,6 +3282,157 @@ test.describe('expansion tooling', () => {
     // the selected group between them.
     expect(expansion.x + expansion.width).toBeLessThanOrEqual(node.x);
     expect(pan.x).toBeGreaterThanOrEqual(node.x + node.width);
+  });
+});
+
+test.describe('menu docking', () => {
+  /** Pans the camera through the bus and waits out the 300ms camera settle. */
+  async function panTo(page: import('@playwright/test').Page, x: number, y: number): Promise<void> {
+    await dispatch(page, [{ type: 'set-view', pan: { x, y }, zoom: 1 }]);
+    await page.waitForTimeout(500);
+  }
+
+  test('a multi-selection docks its menus at the bottom centre', async ({ page }) => {
+    const MEMBER_A = 'dock-member-a';
+    const MEMBER_B = 'dock-member-b';
+    const GROUP_A = 'dock-group-a';
+    const GROUP_B = 'dock-group-b';
+    await dispatch(page, [
+      { type: 'create-entity', id: MEMBER_A, entityType: 'component', title: 'A', position: { x: 40, y: 40 } },
+      { type: 'create-entity', id: MEMBER_B, entityType: 'component', title: 'B', position: { x: 340, y: 40 } },
+      { type: 'group-elements', id: GROUP_A, title: 'Group A', memberIds: [MEMBER_A], position: { x: 20, y: 20 } },
+      { type: 'group-elements', id: GROUP_B, title: 'Group B', memberIds: [MEMBER_B], position: { x: 320, y: 20 } },
+    ]);
+    await fit(page);
+
+    await page.getByTestId(`entity-${GROUP_A}`).click();
+    await page.getByTestId(`entity-${GROUP_B}`).click({ modifiers: ['ControlOrMeta'] });
+
+    const pane = (await page.locator('.react-flow__pane').boundingBox())!;
+    const panel = (await page.getByTestId('selection-actions').boundingBox())!;
+    expect(Math.abs(panel.x + panel.width / 2 - (pane.x + pane.width / 2))).toBeLessThan(2);
+    expect(panel.y + panel.height).toBeLessThanOrEqual(pane.y + pane.height);
+    expect(panel.y + panel.height).toBeGreaterThan(pane.y + pane.height - 40);
+
+    // The expansion roller docks beside the panel, on its left.
+    const expansion = (await page.getByTestId('expansion-menu-toggle').boundingBox())!;
+    expect(expansion.x + expansion.width).toBeLessThanOrEqual(panel.x);
+    expect(expansion.y).toBeGreaterThan(pane.y + pane.height / 2);
+  });
+
+  test('a single element panned offscreen docks its menus, and panning back re-attaches them', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+
+    // On screen, the editor sits on the element itself.
+    await expect(page.getByTestId(`editor-${IDS.gateway}`)).toBeVisible();
+    await expect(page.getByTestId('docked-editor')).toHaveCount(0);
+
+    await panTo(page, -4000, 0);
+
+    // The element is out of reach; the same editor now sits at the dock,
+    // bottom centre, fully on screen.
+    const pane = (await page.locator('.react-flow__pane').boundingBox())!;
+    const docked = (await page.getByTestId('docked-editor').boundingBox())!;
+    await expect(page.getByTestId(`editor-${IDS.gateway}`)).toBeVisible();
+    expect(Math.abs(docked.x + docked.width / 2 - (pane.x + pane.width / 2))).toBeLessThan(2);
+    expect(docked.y).toBeGreaterThanOrEqual(pane.y);
+    expect(docked.y + docked.height).toBeLessThanOrEqual(pane.y + pane.height);
+
+    // The relations roller docks to the panel's right, on screen too.
+    const toggle = (await page.getByTestId('relations-menu-toggle').boundingBox())!;
+    expect(toggle.x).toBeGreaterThanOrEqual(docked.x + docked.width);
+    expect(toggle.x + toggle.width).toBeLessThanOrEqual(pane.x + pane.width);
+
+    await panTo(page, 0, 0);
+
+    // Back in view, the editor re-attaches under the element.
+    await expect(page.getByTestId('docked-editor')).toHaveCount(0);
+    const element = (await page.getByTestId(`entity-${IDS.gateway}`).boundingBox())!;
+    const editor = (await page.getByTestId(`editor-${IDS.gateway}`).boundingBox())!;
+    expect(Math.abs(editor.x - element.x)).toBeLessThan(5);
+    expect(editor.y).toBeGreaterThan(element.y + element.height);
+  });
+
+  test('the docked roller still turns and chooses', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+    await panTo(page, -4000, 0);
+
+    await page.getByTestId('relations-menu-toggle').click();
+    const active = page.locator('.relations-menu .roller-menu__option.is-active');
+    const first = await active.textContent();
+
+    // A press in the step zone turns the roller one option.
+    const zone = (await page.getByTestId('relations-menu-down').boundingBox())!;
+    await page.mouse.click(zone.x + zone.width - 8, zone.y + zone.height - 8);
+    await expect(active).not.toHaveText(first ?? '');
+
+    // Choosing still pans: the camera centres the peer, which selects it.
+    await active.click();
+    await expect(async () => {
+      const selection = await page.evaluate(() => window.__modl.getState().selection);
+      expect(selection).toHaveLength(1);
+      expect(selection[0]).not.toBe(IDS.gateway);
+    }).toPass();
+  });
+
+  test('a dock flip waits while the editor holds a draft', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+
+    await page.getByTestId(`editor-add-tag-${IDS.gateway}`).click();
+    const draft = page.getByTestId(`editor-new-tag-${IDS.gateway}`);
+    await draft.pressSequentially('owner');
+
+    await panTo(page, -4000, 0);
+
+    // Re-homing the editor to the dock would remount it and destroy the
+    // draft, so while focus sits in the editor the flip waits: the editor
+    // stays on the element, mid-word, with focus intact.
+    await expect(page.getByTestId('docked-editor')).toHaveCount(0);
+    await expect(draft).toHaveValue('owner');
+    await expect(draft).toBeFocused();
+
+    // Typing continues, and committing the tag releases focus; the deferred
+    // flip then lands with the tag on the element.
+    await draft.pressSequentially('-team');
+    await draft.press('Enter');
+    await expect(page.getByTestId('docked-editor')).toBeVisible();
+
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.gateway]?.tags).toMatchObject({ 'owner-team': [] });
+  });
+
+  test('the docked editor still edits: a style applies from the dock', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+    await panTo(page, -4000, 0);
+
+    await page.getByTestId('docked-editor').getByTestId('style-fill-blue').click();
+
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.gateway]).toMatchObject({ style: { fill: '#5b8def' } });
+  });
+});
+
+test.describe('menu docking travel', () => {
+  test.use({ contextOptions: { reducedMotion: 'no-preference' } });
+
+  test('the menus travel to the dock rather than jumping', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+
+    await dispatch(page, [{ type: 'set-view', pan: { x: -4000, y: 0 }, zoom: 1 }]);
+
+    // The flip plays as a transition on the menu itself, then settles.
+    await expect(page.locator('.relations-menu')).toHaveClass(/is-travelling/);
+    await expect(page.locator('.relations-menu')).not.toHaveClass(/is-travelling/);
+
+    const pane = (await page.locator('.react-flow__pane').boundingBox())!;
+    const toggle = (await page.getByTestId('relations-menu-toggle').boundingBox())!;
+    expect(toggle.x).toBeGreaterThan(pane.x + pane.width / 2);
+    expect(toggle.y).toBeGreaterThan(pane.y + pane.height / 2);
   });
 });
 

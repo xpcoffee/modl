@@ -18,6 +18,7 @@ import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 import { setHighlight } from './highlight.js';
 import { RollerMenu, type RollerOption } from './RollerMenu.js';
+import { useDock, useDockedTransform } from './docking.js';
 import type { BoardNodeData } from './derive.js';
 
 /** The board rectangle a pan should centre on. */
@@ -56,6 +57,8 @@ export function RelationsMenu({ nodes }: { nodes: Node<BoardNodeData>[] }) {
   const { getViewport } = useReactFlow();
   const paneWidth = useFlowStore((flow) => flow.width);
   const paneHeight = useFlowStore((flow) => flow.height);
+  const { docked, travelling } = useDock();
+  const dockedTransform = useDockedTransform('relations', docked || travelling);
 
   const panTo = useCallback(
     (relation: Relation): void => {
@@ -89,12 +92,18 @@ export function RelationsMenu({ nodes }: { nodes: Node<BoardNodeData>[] }) {
     x: node.position.x + origin.x + (node.measured?.width ?? 0) + 10,
     y: node.position.y + origin.y,
   };
+  // The anchor holds until the travel to the dock begins, and takes back over
+  // when the travel home ends, so the transition has both ends to run between.
+  const transform =
+    docked && dockedTransform !== undefined
+      ? dockedTransform
+      : `translate(${corner.x}px, ${corner.y}px)`;
 
   return (
     <ViewportPortal>
       <div
-        className="relations-menu"
-        style={{ transform: `translate(${corner.x}px, ${corner.y}px)` }}
+        className={`relations-menu${travelling ? ' is-travelling' : ''}`}
+        style={{ transform }}
       >
         <Steps
           key={selectedId}

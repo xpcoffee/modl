@@ -1,22 +1,23 @@
-import { ViewportPortal, type Node } from '@xyflow/react';
+import { ViewportPortal } from '@xyflow/react';
 import { isConnection } from '@modl/core';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 import { DeleteButton } from './DeleteButton.js';
 import { StyleEditor } from './StyleEditor.js';
-import type { BoardNodeData } from './derive.js';
+import { useDockedTransform } from './docking.js';
 
 /**
- * Style, hide, show, and delete for a multi-selection, under the box that
- * holds it.
+ * Style, hide, show, and delete for a multi-selection, at the dock.
  *
  * A single selection carries its own editor, which travels with the element
- * for free. This reads the live React Flow nodes rather than the document, so
- * it keeps up while a drag is in flight.
+ * for free. A multi-selection has no one element to anchor a panel to — a
+ * select-all can span far past the viewport — so its panel always sits at
+ * the dock (docs/decisions/024-menu-docking.md).
  */
-export function SelectionActions({ nodes }: { nodes: Node<BoardNodeData>[] }) {
+export function SelectionActions() {
   const state = useAppState();
   const { selection } = state;
+  const transform = useDockedTransform('panel', selection.length >= 2);
   if (selection.length < 2) return null;
 
   // Connections cannot be hidden directly, so only the rest count. A mixed
@@ -29,31 +30,12 @@ export function SelectionActions({ nodes }: { nodes: Node<BoardNodeData>[] }) {
   });
   const showable = selection.filter((id) => hiddenSet.has(id));
 
-  const chosen = new Set(selection);
-  const boxes = nodes
-    .filter((node) => chosen.has(node.id))
-    .map((node) => {
-      const origin = (node.data.parentOrigin as { x: number; y: number }) ?? { x: 0, y: 0 };
-      return {
-        x: node.position.x + origin.x,
-        y: node.position.y + origin.y,
-        width: node.measured?.width ?? 0,
-        height: node.measured?.height ?? 0,
-      };
-    });
-
-  if (boxes.length === 0) return null;
-
-  const left = Math.min(...boxes.map((b) => b.x));
-  const right = Math.max(...boxes.map((b) => b.x + b.width));
-  const bottom = Math.max(...boxes.map((b) => b.y + b.height));
-
   return (
     <ViewportPortal>
       <div
         className="selection-actions nodrag nopan"
         data-testid="selection-actions"
-        style={{ transform: `translate(${(left + right) / 2}px, ${bottom}px)` }}
+        style={{ transform }}
       >
         {/* One panel for the whole selection: each row edits the elements it
             can mean something to, so a mixed selection still edits its
