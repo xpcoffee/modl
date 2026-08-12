@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { matchesKey } from '../preferences/keybindings.js';
+import { useRingStop, type RingSlot } from './focusRing.js';
 import { startHoldRepeat } from './holdRepeat.js';
 
 export interface RollerOption<T> {
@@ -55,6 +56,7 @@ export function RollerMenu<T>({
   startOpen = false,
   align = 'centre',
   depth = OPACITY_BY_DISTANCE.length - 1,
+  focusSlot,
   testId,
 }: {
   entranceLabel: string;
@@ -79,13 +81,25 @@ export function RollerMenu<T>({
   align?: 'centre' | 'left' | 'right';
   /** How many options sit either side of the active one before they fade out. */
   depth?: number;
+  /** The slot this menu holds on the keyboard focus ring (decision 025). */
+  focusSlot?: RingSlot;
   testId: string;
 }) {
   const [open, setOpen] = useState(startOpen);
   const [active, setActive] = useState(0);
   const menu = useRef<HTMLDivElement>(null);
+  const entrance = useRef<HTMLButtonElement>(null);
   const stopHold = useRef<(() => void) | null>(null);
   const wheelDebt = useRef(0);
+
+  useRingStop(focusSlot, menu, entrance, options.length > 0);
+
+  // A level reached without a click (chosen from the level above, or arrived
+  // by walking the graph) takes the keys with it: the entrance holds focus so
+  // the scroll bindings, Enter, and the cancel binding reach this menu at once.
+  useEffect(() => {
+    if (startOpen) entrance.current?.focus({ preventScroll: true });
+  }, [startOpen]);
 
   const endHold = (): void => {
     stopHold.current?.();
@@ -221,14 +235,28 @@ export function RollerMenu<T>({
           }
         } else if (event.key === 'Enter' && open && options[active]) {
           onSelect(options[active].value);
-        } else if (event.key === 'Escape') setOpen(false);
-        else return;
+        } else if (matchesKey('cancel', event) && open) {
+          setOpen(false);
+          // Focus may sit on an option about to unmount; the entrance takes
+          // it back, so the next press still speaks to this menu. A press
+          // while shut bubbles on instead: the cancel handler above the menu
+          // deselects, one level per press (decision 025).
+          entrance.current?.focus({ preventScroll: true });
+        } else return;
         event.preventDefault();
         event.stopPropagation();
       }}
       onKeyUp={endHold}
+      // Focus leaving the menu shuts the list, so the focus ring never leaves
+      // an open roller behind. Focus moving within the menu keeps it open.
+      onBlur={(event) => {
+        if (!open) return;
+        if (menu.current?.contains(event.relatedTarget as globalThis.Node | null)) return;
+        setOpen(false);
+      }}
     >
       <button
+        ref={entrance}
         type="button"
         className="roller-menu__entrance"
         data-testid={`${testId}-toggle`}

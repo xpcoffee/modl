@@ -2900,12 +2900,12 @@ test.describe('relations menu', () => {
     await page.getByTestId(`relation-${IDS.gateway}`).click();
 
     // Focus moved with the camera: the destination is selected, the highlight
-    // follows it, and its own roller stands ready, closed.
+    // follows it, and its own roller arrives open so the walk can continue
+    // (decision 025 revised decision 009's closed arrival).
     expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([IDS.gateway]);
     await expect(page.getByTestId(`entity-${IDS.gateway}`)).toHaveClass(/is-selected/);
     await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
-    await expect(page.getByTestId('relations-menu-toggle')).toContainText('2');
-    await expect(page.getByTestId('relations-menu-list')).toHaveCount(0);
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveClass(/is-active/);
   });
 
   test('choosing a relation pans the camera to the peer', async ({ page }) => {
@@ -3433,6 +3433,172 @@ test.describe('menu docking travel', () => {
     const toggle = (await page.getByTestId('relations-menu-toggle').boundingBox())!;
     expect(toggle.x).toBeGreaterThan(pane.x + pane.width / 2);
     expect(toggle.y).toBeGreaterThan(pane.y + pane.height / 2);
+  });
+});
+
+test.describe('menu focus', () => {
+  const CLUSTER = 'focus-cluster';
+  const LEAF = 'focus-leaf';
+  const PEER = 'focus-peer';
+
+  /** A collapsed group with a relation, so one selection carries all three menus. */
+  function threeMenuDomain(): import('@modl/core').Command[] {
+    return [
+      { type: 'create-entity', id: LEAF, entityType: 'component', title: 'Leaf', position: { x: 40, y: 40 } },
+      { type: 'create-entity', id: PEER, entityType: 'component', title: 'Peer', position: { x: 520, y: 20 } },
+      { type: 'group-elements', id: CLUSTER, title: 'Cluster', memberIds: [LEAF], position: { x: 20, y: 20 } },
+      { type: 'create-connection', id: 'focus-line', connectionType: 'interaction', from: [CLUSTER], to: [PEER], title: 'talks to' },
+    ];
+  }
+
+  test('tab cycles the selection menus and wraps', async ({ page }) => {
+    await dispatch(page, threeMenuDomain());
+
+    await page.getByTestId(`entity-${CLUSTER}`).click();
+
+    // Left roller, bottom panel, right roller, then around again.
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('expansion-menu-toggle')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId(`editor-${CLUSTER}`)).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('relations-menu-toggle')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('expansion-menu-toggle')).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(page.getByTestId('relations-menu-toggle')).toBeFocused();
+  });
+
+  test('enter opens the focused roller and the scroll bindings turn it', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('relations-menu-toggle')).toBeFocused();
+
+    // Enter is the entrance button's own click, so it opens like one.
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveClass(/is-active/);
+
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId(`relation-${IDS.ledger}`)).toHaveClass(/is-active/);
+
+    // Enter chooses the active option: the pan selects the peer.
+    await page.keyboard.press('Enter');
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([IDS.ledger]);
+  });
+
+  test('enter moves into the panel and tab cycles its controls', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId(`editor-${IDS.gateway}`)).toBeFocused();
+
+    // Enter steps inside: the first control is the type chip.
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId(`editor-type-${IDS.gateway}`)).toBeFocused();
+
+    // Tab now walks the panel's own controls and stays inside the panel.
+    const editor = page.getByTestId(`editor-${IDS.gateway}`);
+    for (let presses = 0; presses < 12; presses += 1) {
+      await page.keyboard.press('Tab');
+      expect(
+        await editor.evaluate((panel) => panel.contains(document.activeElement)),
+        'focus left the panel',
+      ).toBe(true);
+    }
+
+    // The cancel binding steps back out to the panel's slot on the ring.
+    await page.keyboard.press('Escape');
+    await expect(editor).toBeFocused();
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([IDS.gateway]);
+  });
+
+  test('escape steps out one level at a time and finally deselects', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toBeVisible();
+
+    // First press: the roller closes, focus returns to its entrance, and the
+    // selection holds.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('relations-menu-list')).toHaveCount(0);
+    await expect(page.getByTestId('relations-menu-toggle')).toBeFocused();
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([IDS.gateway]);
+
+    // Second press reaches the cancel handler at the top level: deselect.
+    await page.keyboard.press('Escape');
+    await expect(async () => {
+      expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([]);
+    }).toPass();
+  });
+
+  test('tab with nothing selected soft-focuses elements in reading order, and enter selects', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    // The walk is a soft focus: visible, but never a selection.
+    await page.keyboard.press('Tab');
+    await expect(page.locator(`.react-flow__node[data-id="${IDS.ui}"]`)).toBeFocused();
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([]);
+
+    await page.keyboard.press('Tab');
+    await expect(page.locator(`.react-flow__node[data-id="${IDS.gateway}"]`)).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(page.locator(`.react-flow__node[data-id="${IDS.ui}"]`)).toBeFocused();
+    await page.keyboard.press('Tab');
+
+    // Enter turns the soft focus into the selection, through the bus.
+    await page.keyboard.press('Enter');
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([IDS.gateway]);
+    const trace = await getTrace(page);
+    expect(trace.some((entry) => entry.command.type === 'set-selection')).toBe(true);
+  });
+
+  test('choosing through the relations roller arrives ready to keep walking', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+    await page.getByTestId('relations-menu-toggle').click();
+
+    await page.getByTestId(`relation-${IDS.gateway}`).click();
+
+    // The destination's roller is already open and holds the keys: the next
+    // stop is one turn and one Enter away, no clicks in between.
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([IDS.gateway]);
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveClass(/is-active/);
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId(`relation-${IDS.ledger}`)).toHaveClass(/is-active/);
+    await page.keyboard.press('Enter');
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([IDS.ledger]);
+  });
+
+  test('the ring works the same while the menus are docked', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+
+    // Pan the selection out of reach, so the menus sit at the dock.
+    await dispatch(page, [{ type: 'set-view', pan: { x: -4000, y: 0 }, zoom: 1 }]);
+    await page.waitForTimeout(500);
+    await expect(page.getByTestId('docked-editor')).toBeVisible();
+
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId(`editor-${IDS.gateway}`)).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('relations-menu-toggle')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId(`editor-${IDS.gateway}`)).toBeFocused();
+
+    // The docked roller opens and turns under the same keys.
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveClass(/is-active/);
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId(`relation-${IDS.ledger}`)).toHaveClass(/is-active/);
   });
 });
 
