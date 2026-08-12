@@ -30,5 +30,6 @@ A decision earns a file when reversing it later would be expensive: it shapes th
 | [022](022-comment-resolution.md) | Resolving a comment deletes it, and version control keeps the history |
 | [023](023-roller-menu-input.md) | The roller menu opens on click and turns under held input |
 | [024](024-menu-docking.md) | Selection menus dock at the bottom centre when their anchors fail |
+| [025](025-menu-focus.md) | Tab moves real DOM focus: a ring over the selection menus, a soft focus over the board |
 
 The build order these decisions were first applied in lives in [the bootstrap spec](../specs/001-bootstrap.md).

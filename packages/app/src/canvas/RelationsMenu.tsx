@@ -41,6 +41,21 @@ function labelOf(state: AppState, nodeId: Id, connectionId: Id): string {
 }
 
 /**
+ * Armed when a relation is chosen, so the destination arrives with its own
+ * roller open and holding focus: a reader keeps walking the graph without
+ * re-opening the menu at every stop (issue #68, revising decision 009's
+ * closed arrival). Session state, like the highlight beside it.
+ */
+let walkTo: Id | null = null;
+
+/** Consumes the walk arrival for this element; any mount clears a stale one. */
+function takeWalkArrival(id: Id): boolean {
+  const armed = walkTo === id;
+  walkTo = null;
+  return armed;
+}
+
+/**
  * The relations menu: a roller beside the selected element listing everything
  * it connects to. Turning the roller emphasises each connection on the board.
  *
@@ -73,8 +88,9 @@ export function RelationsMenu({ nodes }: { nodes: Node<BoardNodeData>[] }) {
         zoom,
       });
       // The reader's focus moved with the camera, so selection follows: the
-      // highlight lands on the destination, and its own roller takes over
-      // (closed, since the options changed under the menu).
+      // highlight lands on the destination, and its own roller takes over,
+      // already open and focused so the walk can continue (decision 025).
+      walkTo = relation.peerId;
       store.dispatch({ type: 'set-selection', ids: [relation.peerId] });
     },
     [getViewport, paneWidth, paneHeight],
@@ -139,6 +155,8 @@ function Steps({
   onPan: (relation: Relation) => void;
 }) {
   const [step, setStep] = useState<Step>({ at: 'relations' });
+  // Latched on mount: a later render must not re-open a roller the reader shut.
+  const [arrivedOpen] = useState(() => takeWalkArrival(elementId));
 
   const emphasise = useCallback(
     (relation: Relation | null) => setHighlight(relation?.connectionId ?? null),
@@ -198,6 +216,9 @@ function Steps({
           if (!open) setStep({ at: 'relations' });
         }}
         depth={1}
+        // The submenu stands where the top-level roller stood, so it holds
+        // the same slot on the focus ring.
+        focusSlot="relations"
         testId="relation-actions"
       />
     );
@@ -228,6 +249,8 @@ function Steps({
       options={options}
       onSelect={(relation) => (branches ? setStep({ at: 'actions', relation }) : onPan(relation))}
       onActiveChange={emphasise}
+      startOpen={arrivedOpen}
+      focusSlot="relations"
       // The menu sits at the element's right corner, so the pills open away
       // from it: over a junction they would otherwise cover the shape.
       align="left"
