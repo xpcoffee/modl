@@ -2,8 +2,11 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-  // PR previews are served from a subdirectory, so assets need a matching base.
-  base: process.env['BASE_PATH'] ?? '/',
+  // Relative, so one build serves from anywhere: the Pages site root, a
+  // pr-<number>/ preview directory, or the render CLI's local server. An
+  // absolute base baked in at build time made `modl render` time out on
+  // assets its server could not resolve (#56).
+  base: './',
   plugins: [react()],
   server: {
     port: 5173,

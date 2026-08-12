@@ -20,7 +20,7 @@ Two workflows, first-party actions only.
 
 GitHub Pages serves one site per repository. Per-PR previews come from putting each build in its own directory on the branch Pages serves.
 
-1. **Build.** `actions/checkout` and `actions/setup-node` (reading `.nvmrc`), then `npm ci` and `npm run build`. Vite's `base` comes from `BASE_PATH`, set to `/modl/pr-<number>/`, so the built asset URLs resolve under the subdirectory rather than the domain root.
+1. **Build.** `actions/checkout` and `actions/setup-node` (reading `.nvmrc`), then `npm ci` and `npm run build`. Vite builds with a relative asset base (`./`), so the same dist resolves its assets wherever its directory is served: under `pr-<number>/`, at the site root, or from the render CLI's local server.
 2. **Publish.** The job adds a `git worktree` for the `gh-pages` branch, creating it as an orphan the first time, copies `packages/app/dist` into `pr-<number>/`, and pushes. A worktree keeps the source checkout untouched, so the build and the publish do not interfere.
 3. **Link.** A step queries the PR's comments for one starting with an HTML marker, then edits it or posts a new one. Editing keeps a push from stacking up comments.
 4. **Clean up.** The `closed` event removes the directory and pushes again.
@@ -50,3 +50,7 @@ Wanting previews on fork PRs, which needs `pull_request_target` and the care tha
 ## Amended by #8: the permanent site
 
 Pushes to `main` now deploy to the root of the same Pages site (`deploy-main.yml`), so the latest main is always at the bare project URL. The root replace skips the `pr-<number>/` directories, and the previews never touch the root, so the two coexist on one branch. A merge fires the main deploy and the preview cleanup in the same instant and both push `gh-pages`; the main deploy rebases and retries rather than failing on the race.
+
+## Amended by #56: a relative asset base
+
+The base originally came from a `BASE_PATH` environment variable, set per workflow to the absolute serving path. That baked the path into the dist: a build made with `BASE_PATH` set could not serve from anywhere else, and `modl render`, which serves the dist at `/` from a local server, timed out waiting for an app whose script tag pointed at a path the server did not have (issue #56). A relative base makes one build valid at every location, and removes the variable.

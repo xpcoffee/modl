@@ -30,10 +30,9 @@ jobs:
 
       - run: npm ci
 
-      - name: Build for the site root
-        env:
-          BASE_PATH: /${{ github.event.repository.name }}/
-        run: npm run build
+      # The build uses a relative asset base, so the same dist works at the
+      # site root without a per-path rebuild.
+      - run: npm run build
 
       - name: Publish to the gh-pages branch
         run: |

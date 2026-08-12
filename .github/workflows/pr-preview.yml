@@ -29,10 +29,9 @@ jobs:
 
       - run: npm ci
 
-      - name: Build for the preview path
-        env:
-          BASE_PATH: /${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/
-        run: npm run build
+      # The build uses a relative asset base, so the same dist works under
+      # the pr-<number>/ directory without a per-path rebuild.
+      - run: npm run build
 
       - name: Publish to the gh-pages branch
         env:
