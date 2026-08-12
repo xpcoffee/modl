@@ -7,6 +7,8 @@ The loop is: write structure, ask whether it reads, look at it.
 ```bash
 npm run build                          # once, so `render` has an app to drive
 npm run modl -- check   domain.modl.json   # alias: validate
+npm run modl -- dump    domain.modl.json
+npm run modl -- query   domain.modl.json checkout-ui
 npm run modl -- layout  domain.modl.json
 npm run modl -- reflow  domain.modl.json --expand-all
 npm run modl -- render  domain.modl.json -o domain.png
@@ -93,6 +95,18 @@ The app reflows over the groups the reader has expanded, and a file has no reade
 ```bash
 npm run modl -- render domain.modl.json -o domain.png --width 2000 --height 1200
 ```
+
+## Read it back
+
+`modl dump` prints the model as text: an element table (id, kind, type, title, group) and a connection list with the endpoints already joined, sorted by id so the same document always prints the same text. It replaces the jq passes a reader otherwise writes, and a document checked into a repository reviews as a plain diff.
+
+```
+connections
+  authorise  interaction  Checkout UI -> Payment gateway  "authorise"
+  settle     interaction  Card ok? -> Ledger  "post entry"  [funds held]
+```
+
+`modl query` prints one element's neighbourhood: its incoming and outgoing connections, its group siblings, its members when it is a group, and the comments attached to it. That is the read that precedes acting on a review comment, so it is one command rather than four passes over the file. `--json` prints the same structure for a program, and `neighbourhoodOf` is exported from `@modl/core` for the same job in process.
 
 ## Driving the running app instead
 

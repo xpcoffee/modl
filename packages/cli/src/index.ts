@@ -3,25 +3,31 @@
  * modl command line, for building and checking documents without the board.
  *
  *   modl check   <file>                report structure and layout problems
+ *   modl dump    <file>                print the model as text
+ *   modl query   <file> <id>           print one element's neighbourhood
  *   modl layout  <file> [-o out]       fill in missing positions
  *   modl reflow  <file> [-o out]       re-space what is already placed
  *   modl render  <file> [-o out.png]   draw the document as the app would
  *   modl schema  [-o out.json]         emit the format as JSON Schema
  *
- * Written for an agent producing a document as part of some other job: it can
- * emit structure, ask whether the layout reads, and look at the result.
+ * Written for an agent producing or reviewing a document as part of some
+ * other job: it can emit structure, read it back, ask whether the layout
+ * reads, and look at the result.
  */
 import { readFile, writeFile } from 'node:fs/promises';
 import {
   applyAll,
   autoLayout,
   documentJsonSchema,
+  dumpDocument,
   groupIds,
   initialState,
   inspectLayout,
+  neighbourhoodOf,
   parseDocument,
   planCompact,
   planReflow,
+  renderNeighbourhood,
   serializeDocument,
 } from '@modl/core';
 import type { Document } from '@modl/core';
@@ -30,6 +36,8 @@ import { renderDocument } from './render.ts';
 const USAGE = `modl <command> <file> [options]
 
   check    <file>               structure and layout problems (alias: validate)
+  dump     <file>               the model as text: an element table and a connection list
+  query    <file> <id>          one element's connections, siblings, members, and comments
   layout   <file> [-o <file>]   place entities that have no position
   reflow   <file> [-o <file>]   re-space what is already placed
   render   <file> [-o <file>]   draw the document to a PNG
@@ -43,16 +51,19 @@ Options
                      instead of holding room for every connection label
   --width <px>       render width (default 1600)
   --height <px>      render height (default 1000)
+  --json             query only: print the neighbourhood as JSON
 `;
 
 interface Args {
   command: string;
   file: string;
+  id: string | undefined;
   out: string | undefined;
   expandAll: boolean;
   compact: boolean;
   width: number;
   height: number;
+  json: boolean;
 }
 
 function parseArgs(argv: string[]): Args | null {
@@ -65,11 +76,13 @@ function parseArgs(argv: string[]): Args | null {
   const rest = takesFile ? more : [second, ...more].filter((x): x is string => x !== undefined);
   if (takesFile && !file) return null;
 
+  let id: string | undefined;
   let out: string | undefined;
   let expandAll = false;
   let compact = false;
   let width = 1600;
   let height = 1000;
+  let json = false;
 
   for (let i = 0; i < rest.length; i += 1) {
     const flag = rest[i];
@@ -87,9 +100,14 @@ function parseArgs(argv: string[]): Args | null {
     } else if (flag === '--height' && value) {
       height = Number(value);
       i += 1;
+    } else if (flag === '--json') {
+      json = true;
+    } else if (flag !== undefined && !flag.startsWith('-') && id === undefined) {
+      id = flag;
     }
   }
-  return { command, file, out, expandAll, compact, width, height };
+  if (command === 'query' && id === undefined) return null;
+  return { command, file, id, out, expandAll, compact, width, height, json };
 }
 
 async function load(file: string): Promise<Document> {
@@ -138,6 +156,24 @@ async function check(args: Args): Promise<void> {
   console.log('\n`modl layout` places entities that have no position.');
   console.log('`modl reflow --expand-all` re-spaces overlapping ones inside their containers.');
   process.exit(1);
+}
+
+/** Prints the model as text, for a terminal or a PR diff. */
+async function dump(args: Args): Promise<void> {
+  const document = await load(args.file);
+  console.log(dumpDocument(document));
+}
+
+/** Prints one element's neighbourhood, so acting on it needs no jq pass. */
+async function query(args: Args): Promise<void> {
+  const document = await load(args.file);
+  const id = args.id ?? '';
+  const found = neighbourhoodOf(document, id);
+  if (!found) {
+    console.error(`no element with id "${id}" in ${args.file}`);
+    process.exit(1);
+  }
+  console.log(args.json ? JSON.stringify(found, null, 2) : renderNeighbourhood(document, id));
 }
 
 /** Fills in positions the producer did not supply. */
@@ -204,6 +240,8 @@ if (!args) {
 const commands: Record<string, (args: Args) => Promise<void>> = {
   check,
   validate: check,
+  dump,
+  query,
   layout,
   reflow,
   render,

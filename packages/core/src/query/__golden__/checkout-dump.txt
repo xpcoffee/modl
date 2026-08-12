@@ -1,0 +1,15 @@
+Checkout domain
+3 entities, 0 connection nodes, 2 connections, 1 comment
+
+elements
+  11111111-1111-4111-8111-111111111111  entity  component  Checkout UI
+  22222222-2222-4222-8222-222222222222  entity  component  Payment gateway
+  33333333-3333-4333-8333-333333333333  entity  component  Ledger
+
+connections
+  44444444-4444-4444-8444-444444444444  interaction  Checkout UI -> Payment gateway  "authorise"
+  55555555-5555-4555-8555-555555555555  interaction  Payment gateway -> Ledger  "post entry"
+
+comments
+  99999999-9999-4999-8999-999999999999  on Checkout UI, Payment gateway
+    Does the gateway retry on timeout? The checkout flow assumes it does.

@@ -122,12 +122,14 @@ There is a command line for building documents without the board, meant for an a
 ```bash
 npm run build                                     # once, so render has an app to drive
 npm run modl -- check  domain.modl.json           # does the layout read?
+npm run modl -- dump   domain.modl.json           # read the model as text
+npm run modl -- query  domain.modl.json <id>      # one element's neighbourhood
 npm run modl -- layout domain.modl.json           # place anything with no position
 npm run modl -- reflow domain.modl.json --expand-all  # re-space what collides
 npm run modl -- render domain.modl.json -o d.png  # draw it as the app would
 ```
 
-`check` reports overlapping elements, members outside their container, stranded elements, and missing positions, and exits non-zero when it finds any. It also prints the loader's warnings, such as a document of 30 or more elements with no tags at all, without failing. `render` drives the real app, so the picture is what the whiteboard draws. See [docs/agents.md](docs/agents.md).
+`check` reports overlapping elements, members outside their container, stranded elements, and missing positions, and exits non-zero when it finds any. It also prints the loader's warnings, such as a document of 30 or more elements with no tags at all, without failing. `dump` prints an element table and a connection list in id order, so a document reads in a terminal and reviews as a diff. `query` prints one element's incoming and outgoing connections, group siblings, members, and comments, or the same as JSON with `--json`. `render` drives the real app, so the picture is what the whiteboard draws. See [docs/agents.md](docs/agents.md).
 
 ### Driving the running app
 
