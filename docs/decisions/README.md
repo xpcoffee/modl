@@ -28,5 +28,6 @@ A decision earns a file when reversing it later would be expensive: it shapes th
 | [020](020-compact-packing.md) | Compact packs each scope into banded rows, through the reflow command |
 | [021](021-default-expanded.md) | A document hint seeds first-open expansion, and the session owns it after |
 | [022](022-comment-resolution.md) | Resolving a comment deletes it, and version control keeps the history |
+| [023](023-roller-menu-input.md) | The roller menu opens on click and turns under held input |
 
 The build order these decisions were first applied in lives in [the bootstrap spec](../specs/001-bootstrap.md).

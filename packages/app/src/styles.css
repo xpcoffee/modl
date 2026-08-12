@@ -967,24 +967,33 @@ select {
   text-overflow: ellipsis;
 }
 
-/* Turns the roller a step at a time, for a reader without a wheel. */
-.roller-menu__step {
+/* A step zone: one end of the roller, sized and placed by the component.
+   The rationale lives on `zone` in RollerMenu.tsx. */
+.roller-menu__zone {
   position: absolute;
-  top: 0;
   left: 0;
-  width: 22px;
-  height: 16px;
-  padding: 0;
-  border-radius: 6px;
+  display: flex;
+  justify-content: center;
+  padding: 4px 0;
+  border: none;
+  border-radius: 8px;
   font-size: 8px;
   line-height: 1;
   color: var(--muted);
-  background: var(--panel);
+  background: transparent;
 }
 
-.roller-menu__step:hover {
+.roller-menu__zone--up {
+  align-items: flex-start;
+}
+
+.roller-menu__zone--down {
+  align-items: flex-end;
+}
+
+.roller-menu__zone:hover {
   color: var(--text);
-  border-color: var(--accent);
+  background: rgb(91 141 239 / 8%);
 }
 
 /* The label editor, which takes the roller's place when a branch is chosen. */

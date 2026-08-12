@@ -182,13 +182,12 @@ function Steps({
         options={actions}
         onSelect={(act) => act()}
         align="left"
-        // Already chosen from the level above, so it opens under the pointer
-        // rather than asking for a second hover. Leaving it steps back.
+        // Already chosen from the level above, so asking for another click
+        // to open this one would be asking twice. Closing it steps back.
         startOpen
         onOpenChange={(open) => {
           if (!open) setStep({ at: 'relations' });
         }}
-        steppers
         depth={1}
         testId="relation-actions"
       />
@@ -220,7 +219,6 @@ function Steps({
       options={options}
       onSelect={(relation) => (branches ? setStep({ at: 'actions', relation }) : onPan(relation))}
       onActiveChange={emphasise}
-      steppers
       // The menu sits at the element's right corner, so the pills open away
       // from it: over a junction they would otherwise cover the shape.
       align="left"

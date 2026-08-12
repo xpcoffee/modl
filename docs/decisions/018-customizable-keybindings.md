@@ -1,6 +1,6 @@
 # 018: Input bindings are reader preferences, matched through one table
 
-**Status**: accepted · **Date**: 2026-08-11 · **Revised**: 2026-08-11 (PR #42 review)
+**Status**: accepted · **Date**: 2026-08-11 · **Revised**: 2026-08-11 (PR #42 review), and 2026-08-12 for issue #66, which moved the roller and timeline arrows onto scroll actions (see [decision 023](023-roller-menu-input.md))
 
 ## Context
 
@@ -30,7 +30,7 @@ Every input gesture on the board was hard-coded where it was handled: undo and r
 
 Conflicts are allowed but visible. Two actions bound to the same combo both fire; the panel marks each such chip amber and names the other owners, and leaves the choice with the reader. The bindings that stay expressible are bounded by React Flow where React Flow owns the gesture: a delete combo becomes its combo strings (with ctrl written as both Control and Meta), a box-select combo becomes exact-match selection key codes with its combine variants (or `selectionOnDrag` for the bare left button), and pan reduces to buttons. React Flow only draws its selection box for the left button, so a box-select drag bound elsewhere selects correctly and draws nothing.
 
-Editor-local keys (Enter and Escape in inline editors, arrows in the roller and search list) stay hard-coded: they belong to the focused control, not to the board.
+Editor-local keys (Enter and Escape in inline editors, arrows in the search list) stay hard-coded: they belong to the focused control, not to the board. The roller and the comment timeline no longer qualify: issue #66 moved their arrows onto the `scroll-up` and `scroll-down` actions, remappable like any other (see [decision 023](023-roller-menu-input.md)). The search list stays hard-coded because it is a focused text input, and a printable key bound to scroll would collide with typing into it.
 
 A stored override that no longer parses, names an unknown action, or breaks its action's capture rule is dropped on load, so a stale or hand-edited store degrades to defaults rather than to a broken board.
 

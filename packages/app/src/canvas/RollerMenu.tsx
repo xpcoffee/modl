@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { matchesKey } from '../preferences/keybindings.js';
+import { startHoldRepeat } from './holdRepeat.js';
 
 export interface RollerOption<T> {
   /** Stable key among this menu's options. */
@@ -16,24 +18,29 @@ const SLOT_HEIGHT = 30;
 const TALL_SLOT_HEIGHT = 44;
 /** Neighbours of the active option stay readable; anything further fades out. */
 const OPACITY_BY_DISTANCE = [1, 0.45, 0.12];
-/** How far past the last visible option a stepper button sits, in pixels. */
-const STEP_GAP = 28;
+/** How far past the last visible option a step zone keeps catching clicks. */
+const ZONE_REACH = 44;
+/** Sideways room a step zone offers, in pixels. Wider than any pill's core. */
+const ZONE_WIDTH = 160;
 /**
- * How long the list waits before closing once the pointer leaves it.
- *
- * Turning the roller slides the options, so a stationary pointer can find
- * itself over the gap between two pills for as long as that takes. Closing on
- * the first mouseleave shut the menu out from under a reader who had not
- * moved, and took the level they were on with it.
+ * Accumulated wheel distance spent per turn, in pixels. A mouse wheel notch
+ * reports around 100–120 at once; a trackpad reports the same swipe as a
+ * stream of small deltas. Stepping once per event turned a notch and a
+ * finger-twitch into the same full turn (issue #66), so deltas pool here and
+ * a turn costs a notch's worth.
  */
-const CLOSE_DELAY = 250;
+const WHEEL_STEP = 100;
+/** Pixels per line, for a wheel that reports lines instead (deltaMode 1). */
+const WHEEL_LINE_HEIGHT = 40;
 
 /**
- * A roller menu: a pill that expands on hover into a vertical list whose
- * active option sits in the middle, over where the pill was. Arrow keys, the
- * mouse wheel, and the optional stepper buttons turn the roller, options slide
- * into place, and clicking the middle option chooses it. Clicking a faded
- * option turns the roller to it.
+ * A roller menu: a pill that expands on click into a vertical list whose
+ * active option sits in the middle, over where the pill was. The scroll
+ * bindings (arrow keys out of the box), the mouse wheel, and the zones above
+ * and below the list turn the roller; holding a zone or a key keeps it
+ * turning. Options slide into place, clicking the middle option chooses it,
+ * and clicking a faded option turns the roller to it. A click anywhere else,
+ * or Escape, closes the list.
  *
  * Generic on purpose: the first consumer pans to a connection, and the same
  * control now also carries a decision's connections (issue #12).
@@ -46,7 +53,6 @@ export function RollerMenu<T>({
   onActiveChange,
   onOpenChange,
   startOpen = false,
-  steppers = false,
   align = 'centre',
   depth = OPACITY_BY_DISTANCE.length - 1,
   testId,
@@ -61,12 +67,10 @@ export function RollerMenu<T>({
   onOpenChange?: (open: boolean) => void;
   /**
    * Opens the list on mount, for a level reached by choosing from the level
-   * above: the pointer is already over it, so asking for a second hover would
-   * be asking twice for the same thing.
+   * above: the reader just clicked their way here, so asking for a second
+   * click would be asking twice for the same thing.
    */
   startOpen?: boolean;
-  /** Buttons above and below the list, for turning it without a wheel. */
-  steppers?: boolean;
   /**
    * Where the options sit against the entrance. `centre` puts them over it;
    * `left` and `right` hang them off one of its edges, so a menu placed beside
@@ -79,36 +83,43 @@ export function RollerMenu<T>({
 }) {
   const [open, setOpen] = useState(startOpen);
   const [active, setActive] = useState(0);
-  const closing = useRef<number | null>(null);
   const menu = useRef<HTMLDivElement>(null);
+  const stopHold = useRef<(() => void) | null>(null);
+  const wheelDebt = useRef(0);
 
-  const holdOpen = (): void => {
-    if (closing.current !== null) window.clearTimeout(closing.current);
-    closing.current = null;
-    setOpen(true);
+  const endHold = (): void => {
+    stopHold.current?.();
+    stopHold.current = null;
   };
-  const closeSoon = (): void => {
-    if (closing.current !== null) window.clearTimeout(closing.current);
-    closing.current = window.setTimeout(() => {
-      // The pointer may never have left: choosing an option replaces the
-      // pills under it, and a removed element reports a mouseleave on its way
-      // out. Asking the browser where the pointer actually is settles it.
-      if (menu.current?.querySelector(':hover')) return;
+  // Cleanup only: a hold must not outlive the component that started it.
+  useEffect(() => () => endHold(), []);
+
+  // Clicking anywhere else shuts the list, which is the way out of it that
+  // needs no aim (issue #66); Escape is the other.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent): void => {
+      if (menu.current?.contains(event.target as globalThis.Node)) return;
       setOpen(false);
-    }, CLOSE_DELAY);
-  };
-  useEffect(() => () => {
-    if (closing.current !== null) window.clearTimeout(closing.current);
-  }, []);
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => window.removeEventListener('pointerdown', onPointerDown);
+  }, [open]);
+
+  // A hold belongs to the open list; wheel debt belongs to the turn it was
+  // building.
+  useEffect(() => {
+    if (open) return;
+    endHold();
+    wheelDebt.current = 0;
+  }, [open]);
 
   // Options changing underneath (a new selection, a hidden peer) restart the
   // roller rather than leaving it pointing at a slot that no longer exists.
   const optionKeys = options.map((option) => option.id).join(' ');
   useEffect(() => {
-    // A close waiting out its delay belongs to the options that were showing.
-    // Left running, it shut the level the reader had just stepped into.
-    if (closing.current !== null) window.clearTimeout(closing.current);
-    closing.current = null;
+    endHold();
+    wheelDebt.current = 0;
     setOpen(startOpen);
     setActive(0);
   }, [optionKeys, startOpen]);
@@ -137,25 +148,40 @@ export function RollerMenu<T>({
     setActive((current) => (current + by + options.length) % options.length);
   };
 
+  /** One press turns once; the repeat carries the rest until release. */
+  const beginHold = (by: number): void => {
+    endHold();
+    step(by);
+    stopHold.current = startHoldRepeat(() => step(by));
+  };
+
   /**
-   * One end of the roller, drawn just past the furthest option still shown.
-   * Past it rather than a whole slot further: the slot beyond the last visible
-   * option holds a faded one, and a stepper landing on top of it would take
-   * the clicks meant for that option once the roller turns.
+   * One end of the roller: everything above (or below) the active option is
+   * a single press that turns the roller a step towards that end, and
+   * holding it keeps turning. A whole stretch rather than a button, so a
+   * trackpad hand does not have to land on a 22-pixel target (issue #66).
+   * The faded options render on top of it, so a click exactly on one still
+   * turns straight to it.
    */
-  const stepper = (by: number, glyph: string, name: string) => (
+  const zone = (by: number, glyph: string, name: string) => (
     <button
       type="button"
-      className={`roller-menu__step roller-menu__step--${name}`}
+      className={`roller-menu__zone roller-menu__zone--${name}`}
       data-testid={`${testId}-${name}`}
       aria-label={`${name === 'up' ? 'Previous' : 'Next'} option`}
       style={{
-        transform: `translate(${acrossBy}, calc(-50% + ${by * (depth * slot + STEP_GAP)}px))`,
+        transform: `translate(${acrossBy}, 0)`,
+        top: by < 0 ? -(slot / 2 + depth * slot + ZONE_REACH) : slot / 2,
+        width: ZONE_WIDTH,
+        height: depth * slot + ZONE_REACH,
       }}
-      onClick={(event) => {
+      onPointerDown={(event) => {
         event.stopPropagation();
-        step(by);
+        beginHold(by);
       }}
+      onPointerUp={endHold}
+      onPointerLeave={endHold}
+      onPointerCancel={endHold}
     >
       {glyph}
     </button>
@@ -166,21 +192,38 @@ export function RollerMenu<T>({
       ref={menu}
       className="roller-menu nodrag nopan nowheel"
       data-testid={testId}
-      onMouseEnter={holdOpen}
-      onMouseLeave={closeSoon}
       onWheel={(event) => {
         event.stopPropagation();
-        if (event.deltaY !== 0) step(event.deltaY > 0 ? 1 : -1);
+        if (event.deltaY === 0) return;
+        const delta =
+          event.deltaMode === 0 ? event.deltaY : event.deltaY * WHEEL_LINE_HEIGHT;
+        // Reversing direction forgives the debt: the pooled remainder of an
+        // overshoot must not mute the swipe correcting it.
+        const carried = Math.sign(wheelDebt.current) === Math.sign(delta) ? wheelDebt.current : 0;
+        let pooled = carried + delta;
+        while (Math.abs(pooled) >= WHEEL_STEP) {
+          step(pooled > 0 ? 1 : -1);
+          pooled -= Math.sign(pooled) * WHEEL_STEP;
+        }
+        wheelDebt.current = pooled;
       }}
       onKeyDown={(event) => {
-        if (event.key === 'ArrowDown') step(1);
-        else if (event.key === 'ArrowUp') step(-1);
-        else if (event.key === 'Enter' && open && options[active]) onSelect(options[active].value);
-        else if (event.key === 'Escape') setOpen(false);
+        const by = matchesKey('scroll-down', event) ? 1 : matchesKey('scroll-up', event) ? -1 : 0;
+        if (by !== 0) {
+          // The browser's own key repeat is ignored: the hold runs on the
+          // same two-speed timer as the zones, not at the OS repeat rate.
+          if (!event.repeat) {
+            if (open) beginHold(by);
+            else step(by);
+          }
+        } else if (event.key === 'Enter' && open && options[active]) {
+          onSelect(options[active].value);
+        } else if (event.key === 'Escape') setOpen(false);
         else return;
         event.preventDefault();
         event.stopPropagation();
       }}
+      onKeyUp={endHold}
     >
       <button
         type="button"
@@ -188,12 +231,10 @@ export function RollerMenu<T>({
         data-testid={`${testId}-toggle`}
         aria-label={entranceAriaLabel}
         aria-expanded={open}
-        // Hover already opened the list, so a click closing it again would
-        // undo the hover. Leaving closes it; Escape does too.
-        onClick={holdOpen}
+        onClick={() => setOpen(true)}
         // The middle option takes the entrance's place while open. Opacity
         // rather than visibility, so a click on the entrance keeps focus and
-        // the arrow keys still reach the menu.
+        // the scroll keys still reach the menu.
         style={open ? { opacity: 0, pointerEvents: 'none' } : undefined}
       >
         {entranceLabel}
@@ -204,10 +245,10 @@ export function RollerMenu<T>({
           className={`roller-menu__viewport${align === 'centre' ? '' : ` is-${align}`}`}
           data-testid={`${testId}-list`}
         >
-          {steppers && options.length > 1 && (
+          {options.length > 1 && (
             <>
-              {stepper(-1, '▲', 'up')}
-              {stepper(1, '▼', 'down')}
+              {zone(-1, '▲', 'up')}
+              {zone(1, '▼', 'down')}
             </>
           )}
           {options.map((option, index) => {
@@ -222,7 +263,7 @@ export function RollerMenu<T>({
                   transform: `translate(${acrossBy}, calc(-50% + ${offset * slot}px))`,
                   opacity: Math.abs(offset) > depth ? 0 : (OPACITY_BY_DISTANCE[Math.abs(offset)] ?? 0),
                   // A fully faded option would still catch clicks meant for
-                  // the board behind it.
+                  // the step zone behind it.
                   pointerEvents: Math.abs(offset) > depth ? 'none' : 'auto',
                 }}
                 // No hover-to-activate: turning the roller slides the options,
