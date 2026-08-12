@@ -1,4 +1,4 @@
-# 022: Resolving a comment deletes it, and version control keeps the history
+# 023: Resolving a comment deletes it, and version control keeps the history
 
 **Status**: accepted · **Date**: 2026-08-12
 

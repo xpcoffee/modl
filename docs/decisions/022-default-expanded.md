@@ -1,4 +1,4 @@
-# 021: A document hint seeds first-open expansion
+# 022: A document hint seeds first-open expansion
 
 **Status**: accepted · **Date**: 2026-08-12
 

@@ -26,7 +26,7 @@ A decision earns a file when reversing it later would be expensive: it shapes th
 | [018](018-customizable-keybindings.md) | Input bindings are reader preferences, matched through one table |
 | [019](019-save-in-place.md) | Save writes back to a remembered file, chosen through the system picker |
 | [020](020-compact-packing.md) | Compact packs each scope into banded rows, through the reflow command |
-| [021](021-default-expanded.md) | A document hint seeds first-open expansion, and the session owns it after |
-| [022](022-comment-resolution.md) | Resolving a comment deletes it, and version control keeps the history |
+| [022](022-default-expanded.md) | A document hint seeds first-open expansion, and the session owns it after |
+| [023](023-comment-resolution.md) | Resolving a comment deletes it, and version control keeps the history |
 
 The build order these decisions were first applied in lives in [the bootstrap spec](../specs/001-bootstrap.md).

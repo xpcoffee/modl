@@ -313,7 +313,7 @@ interface Comment {
 
 Targets can be any element, connections included. A comment with no targets is a general remark about the whole document. Deleting an element removes it from every attached comment's targets, and an attached comment losing its last target is deleted with it: it was written against that thing, while a general remark was written against nothing in particular. Duplicating elements does not copy their comments, since a remark is about the specific thing it was written against.
 
-Resolving a comment means deleting it. The document holds open discussion only, and the file's version control keeps the history of what was raised and settled; see [decision 022](decisions/022-comment-resolution.md).
+Resolving a comment means deleting it. The document holds open discussion only, and the file's version control keeps the history of what was raised and settled; see [decision 023](decisions/023-comment-resolution.md).
 
 `createdAt` orders a discussion for reading through. The create command carries it explicitly rather than the reducer reading a clock, so a trace replays identically; a comment written before the field existed sorts first.
 
