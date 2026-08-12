@@ -140,9 +140,15 @@ export function planCompact(state: Pick<AppState, 'document' | 'expanded'>): Ref
 
     const area = boxes.reduce((sum, box) => sum + (box.width + GAP.x) * (box.height + GAP.y), 0);
     const bound = Math.max(Math.ceil(Math.sqrt(area * ASPECT)), ...boxes.map((box) => box.width));
+    // The anchor and each offset round separately. The anchor is fractional
+    // on the first pack and already rounded on the next, while offsets
+    // accumulate raw fractional sizes either time; rounding their sum lets
+    // the two fractions straddle .5 differently between packs, and a second
+    // pack would shift a box by one pixel. Rounded apart, the second pack
+    // reproduces the first's arithmetic exactly.
     const anchor = {
-      x: Math.min(...boxes.map((box) => box.x)),
-      y: Math.min(...boxes.map((box) => box.y)),
+      x: Math.round(Math.min(...boxes.map((box) => box.x))),
+      y: Math.round(Math.min(...boxes.map((box) => box.y))),
     };
 
     let x = 0;
@@ -155,8 +161,8 @@ export function planCompact(state: Pick<AppState, 'document' | 'expanded'>): Ref
         rowHeight = 0;
       }
       moveWithDescendants(box.id, {
-        x: Math.round(anchor.x + x) - box.x,
-        y: Math.round(anchor.y + y) - box.y,
+        x: anchor.x + Math.round(x) - box.x,
+        y: anchor.y + Math.round(y) - box.y,
       });
       x += box.width + GAP.x;
       rowHeight = Math.max(rowHeight, box.height);

@@ -237,6 +237,26 @@ describe('planCompact', () => {
     expect(plan!.waypoints[LINK]).toEqual([{ x: 100 + average.x, y: 100 + average.y }]);
   });
 
+  it('is a fixed point on fractional geometry', () => {
+    // Fractional sizes with a fractional anchor straddling .5: rounding the
+    // anchor and offsets as one sum let a second pack shift a box by 1px,
+    // so `modl reflow --compact` run twice wrote two different files.
+    const state = must(
+      initialState(DOC),
+      entity(A, 0.4, 0),
+      entity(B, 500, 0),
+      entity(C, 1000, 0),
+      ...[A, B, C].map(
+        (id): Command => ({ type: 'resize-element', id, width: 100.2, height: 72 }),
+      ),
+    );
+    const plan = planCompact(state);
+    expect(plan).not.toBeNull();
+
+    const applied = must(state, { type: 'reflow-layout', ...plan! });
+    expect(planCompact(applied)).toBeNull();
+  });
+
   it('is a fixed point: compacting the result changes nothing', () => {
     const pile = ids(12, '3333');
     const state = must(
