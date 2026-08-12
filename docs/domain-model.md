@@ -212,10 +212,11 @@ Version checking short-circuits: an unreadable `formatVersion` returns on its ow
 | `duplicate-title` | Two elements in the same group share a non-empty title. The same role name in two different groups reads naturally |
 | `connection-node-one-sided` | A connection node has connections on only one side |
 | `label-unattached` | A connection node labels something that is not a connection touching it |
+| `document-untagged` | A document of 30 or more elements where no element carries a tag. Filters match on tags, and a board that size needs them |
 
 A connection pointing at targets from several paradigms produces no `paradigm-mismatch`, because a cross-paradigm connection is legal and only one of its endpoints can be satisfied.
 
-Validation returns `{ errors: Issue[]; warnings: Issue[] }`, where each `Issue` carries a code, an element id, and a message. Nothing throws.
+Validation returns `{ errors: Issue[]; warnings: Issue[] }`, where each `Issue` carries a code, a message, and the id of the element it concerns, absent for a document-level issue. Nothing throws.
 
 ## Connection nodes
 

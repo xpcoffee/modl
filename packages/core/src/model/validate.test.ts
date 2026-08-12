@@ -196,6 +196,42 @@ describe('warnings', () => {
     document['model']['elements']['55555555-5555-4555-8555-555555555555']['type'] = 'transition';
     expect(codes(validateDocument(document).warnings)).not.toContain('paradigm-mismatch');
   });
+
+  /** The fixture grown to `count` elements, every tag stripped. */
+  function untagged(count: number): Record<string, any> {
+    const document = fixture();
+    const elements = document['model']['elements'];
+    for (const element of Object.values(elements) as Record<string, any>[]) {
+      element['tags'] = {};
+    }
+    for (let i = Object.keys(elements).length; i < count; i += 1) {
+      const id = `service-${i}`;
+      elements[id] = { ...elements[UI], id, title: `Service ${i}` };
+    }
+    return document;
+  }
+
+  it('document-untagged: a document at the threshold with no tags', () => {
+    const result = validateDocument(untagged(30));
+    expect(codes(result.warnings)).toContain('document-untagged');
+    expect(isLoadable(result)).toBe(true);
+  });
+
+  it('document-untagged: stays quiet below the threshold', () => {
+    expect(codes(validateDocument(untagged(29)).warnings)).not.toContain('document-untagged');
+  });
+
+  it('document-untagged: one tagged element silences it', () => {
+    const document = untagged(30);
+    document['model']['elements'][UI]['tags'] = { flow: ['checkout'] };
+    expect(codes(validateDocument(document).warnings)).not.toContain('document-untagged');
+  });
+
+  it('document-untagged: a tag key with no values does not count', () => {
+    const document = untagged(30);
+    document['model']['elements'][UI]['tags'] = { flow: [] };
+    expect(codes(validateDocument(document).warnings)).toContain('document-untagged');
+  });
 });
 
 describe('decision labels', () => {

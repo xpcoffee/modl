@@ -60,7 +60,7 @@ bounds 660 x 72
 layout reads cleanly
 ```
 
-It reports overlapping entities, a member drawn outside the container that claims it, an entity stranded far from everything else, a connection whose ends sit in the same place, and entities with no position at all. Structural problems (a dangling endpoint, a group cycle) come from the loader before any of this runs.
+It reports overlapping entities, a member drawn outside the container that claims it, an entity stranded far from everything else, a connection whose ends sit in the same place, and entities with no position at all. The member check judges a position against the container's expanded box, so a `groupId` changed by hand shows up until the member moves inside or its stale layout entry is deleted and layout re-run. Structural problems (a dangling endpoint, a group cycle) come from the loader before any of this runs. The loader's warnings print too, without failing the check; one nudges a producer whose document has 30 or more elements and no tags at all, since filters have nothing to match on such a board.
 
 `inspectLayout` is exported from `@modl/core` if you would rather call it directly. It is pure and needs no browser.
 

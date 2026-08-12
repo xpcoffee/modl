@@ -28,7 +28,8 @@ export type IssueCode =
   | 'orphan-entity'
   | 'duplicate-title'
   | 'connection-node-one-sided'
-  | 'label-unattached';
+  | 'label-unattached'
+  | 'document-untagged';
 
 export interface Issue {
   code: IssueCode;
@@ -41,6 +42,15 @@ export interface ValidationResult {
   errors: Issue[];
   warnings: Issue[];
 }
+
+/**
+ * Element count at which an untagged document draws a warning.
+ *
+ * Filters match on tags, and filtering starts to matter once a board no
+ * longer fits in one look, which happens around 30 elements. Below that a
+ * reader takes the document in whole and the nudge would be noise.
+ */
+export const UNTAGGED_WARNING_THRESHOLD = 30;
 
 /**
  * Checks a parsed document. Never throws.
@@ -241,6 +251,19 @@ export function validateDocument(input: unknown): ValidationResult {
         message: `title "${title}" is shared by ${ids.length} elements in the same group`,
       });
     }
+  }
+
+  // A single tagged element shows the producer knows about tags, so the
+  // nudge only fires when nothing in the document carries one.
+  const elementCount = Object.keys(elements).length;
+  const anyTagged = Object.values(elements).some((element) =>
+    Object.values(element.tags).some((values) => values.length > 0),
+  );
+  if (elementCount >= UNTAGGED_WARNING_THRESHOLD && !anyTagged) {
+    warnings.push({
+      code: 'document-untagged',
+      message: `none of the ${elementCount} elements carries a tag, add tags such as flow or team so filters have something to match`,
+    });
   }
 
   return { errors, warnings };
