@@ -11,6 +11,7 @@ import {
   type Id,
   type Point,
 } from '@modl/core';
+import { matchesKey } from '../preferences/keybindings.js';
 import { motionReduced } from '../preferences/motion.js';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
@@ -308,10 +309,35 @@ export function CommentOverlay() {
   /** One keyboard for the feature; which keys are live depends on the mode. */
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.ctrlKey || event.metaKey || event.altKey) return;
       const current = store.getState();
 
       if (isTyping(event.target)) return;
+
+      // Reading order: the scroll bindings (arrows out of the box) walk the
+      // discussion as it was written. Checked before the modifier guard, so
+      // a rebound combo carrying a modifier still reaches it. A held key
+      // repeats at the browser's own rate: each step is a jump to another
+      // comment, not a slot on a dial, so the roller's two-speed clock does
+      // not apply (decision 023).
+      if (current.commentOverlay) {
+        const by = matchesKey('scroll-down', event) ? 1 : matchesKey('scroll-up', event) ? -1 : 0;
+        if (by !== 0) {
+          const ordered = placeCards(current);
+          if (ordered.length === 0) return;
+          event.preventDefault();
+          const selected = soleSelectedComment(current);
+          const index = ordered.findIndex((card) => card.comment.id === selected);
+          const next =
+            index === -1
+              ? ordered[by === 1 ? 0 : ordered.length - 1]!
+              : ordered[(index + by + ordered.length) % ordered.length]!;
+          store.dispatch({ type: 'set-selection', ids: [next.comment.id] });
+          if (next.at) panTo(next.at);
+          return;
+        }
+      }
+
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
 
       // `c` is the way to write: it opens the overlay, and with elements
       // selected it opens a fresh card on them in the same stroke.
@@ -331,23 +357,6 @@ export function CommentOverlay() {
       // this overlay.
 
       const selected = soleSelectedComment(current);
-
-      // Reading order: up and down walk the discussion as it was written.
-      if (current.commentOverlay && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
-        const ordered = placeCards(current);
-        if (ordered.length === 0) return;
-        event.preventDefault();
-        const index = ordered.findIndex((card) => card.comment.id === selected);
-        const step = event.key === 'ArrowDown' ? 1 : -1;
-        const next =
-          index === -1
-            ? ordered[event.key === 'ArrowDown' ? 0 : ordered.length - 1]!
-            : ordered[(index + step + ordered.length) % ordered.length]!;
-        store.dispatch({ type: 'set-selection', ids: [next.comment.id] });
-        if (next.at) panTo(next.at);
-        return;
-      }
-
       if (selected === null) return;
 
       // These work in either mode and change neither: editing or deleting a
@@ -552,7 +561,8 @@ function timeLabel(comment: Comment): string {
  * The discussion down the right edge, in writing order. The current comment
  * sits vertically centred with its neighbours above and below, and entries
  * fade with distance, so what is bright is what is being read. Click an
- * entry, roll the wheel, or use the arrow keys; there are no buttons.
+ * entry, roll the wheel, or use the scroll bindings (arrow keys out of the
+ * box); there are no buttons.
  */
 function Timeline({
   cards,

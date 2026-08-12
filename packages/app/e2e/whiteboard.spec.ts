@@ -2955,18 +2955,58 @@ test.describe('relations menu', () => {
     await expect(page.getByTestId(`relation-${IDS.ledger}`)).toHaveClass(/is-active/);
   });
 
-  test('the mouse wheel turns the roller', async ({ page }) => {
+  test('the mouse wheel turns the roller, one notch per turn', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`entity-${IDS.gateway}`).click();
 
-    await page.getByTestId('relations-menu-toggle').hover();
-    // The container itself has no box; the options carry the size.
+    // The click leaves the pointer over the menu, where the wheel lands.
+    await page.getByTestId('relations-menu-toggle').click();
     await expect(page.getByTestId(`relation-${IDS.ui}`)).toBeVisible();
 
     await page.mouse.wheel(0, 120);
     await expect(page.getByTestId(`relation-${IDS.ledger}`)).toHaveClass(/is-active/);
     await page.mouse.wheel(0, -120);
     await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveClass(/is-active/);
+  });
+
+  test('a trackpad swipe pools its small deltas into whole turns', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+    await page.getByTestId('relations-menu-toggle').click();
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveClass(/is-active/);
+
+    // Two-thirds of a turn's worth: the roller holds still.
+    await page.mouse.wheel(0, 40);
+    await page.mouse.wheel(0, 26);
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveClass(/is-active/);
+
+    // The stream keeps coming; crossing the threshold spends one turn.
+    await page.mouse.wheel(0, 40);
+    await expect(page.getByTestId(`relation-${IDS.ledger}`)).toHaveClass(/is-active/);
+  });
+
+  test('hovering the pill no longer opens the roller', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+
+    await page.getByTestId('relations-menu-toggle').hover();
+    await page.waitForTimeout(300);
+
+    await expect(page.getByTestId('relations-menu-list')).toHaveCount(0);
+  });
+
+  test('a click away from the roller closes it', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+    await page.getByTestId('relations-menu-toggle').click();
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toBeVisible();
+
+    // On the selected element itself: the selection holds, the list shuts.
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+
+    await expect(page.getByTestId('relations-menu-list')).toHaveCount(0);
+    await expect(page.getByTestId('relations-menu-toggle')).toBeVisible();
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([IDS.gateway]);
   });
 
   test('clicking a faded option turns the roller to it instead of acting', async ({ page }) => {
@@ -2986,6 +3026,107 @@ test.describe('relations menu', () => {
     await expect(async () => {
       expect(await page.locator('.react-flow__viewport').getAttribute('style')).not.toBe(before);
     }).toPass();
+  });
+
+  const HUB = 'hub';
+  const PEERS = ['peer-1', 'peer-2', 'peer-3', 'peer-4', 'peer-5'];
+
+  /** A hub with five peers, so a hold has room to walk before wrapping. */
+  function spokeDomain(): import('@modl/core').Command[] {
+    return [
+      { type: 'create-entity', id: HUB, entityType: 'component', title: 'Hub', position: { x: 0, y: 240 } },
+      ...PEERS.flatMap((peer, index): import('@modl/core').Command[] => [
+        { type: 'create-entity', id: peer, entityType: 'component', title: `Peer ${index + 1}`, position: { x: 360, y: index * 120 } },
+        { type: 'create-connection', id: `line-${index + 1}`, connectionType: 'interaction', from: [HUB], to: [peer], title: `line ${index + 1}` },
+      ]),
+      { type: 'set-selection', ids: [HUB] },
+    ];
+  }
+
+  /** A point inside the down zone but clear of the faded pills over it. */
+  async function downZonePoint(page: import('@playwright/test').Page): Promise<{ x: number; y: number }> {
+    const zone = (await page.getByTestId('relations-menu-down').boundingBox())!;
+    return { x: zone.x + zone.width - 8, y: zone.y + zone.height - 8 };
+  }
+
+  test('holding the zone below the middle turns slowly, then fast', async ({ page }) => {
+    await dispatch(page, spokeDomain());
+    await fit(page);
+    await page.clock.install();
+
+    await page.getByTestId('relations-menu-toggle').click();
+    await expect(page.getByTestId('relation-peer-1')).toHaveClass(/is-active/);
+
+    const at = await downZonePoint(page);
+    await page.mouse.move(at.x, at.y);
+    await page.mouse.down();
+    // The press itself turns once.
+    await expect(page.getByTestId('relation-peer-2')).toHaveClass(/is-active/);
+
+    // A turn every half-second while the hold is young: two more by 1.1s.
+    await page.clock.fastForward(1100);
+    await expect(page.getByTestId('relation-peer-4')).toHaveClass(/is-active/);
+
+    // Four more slow turns carry it to the three-second mark, wrapping.
+    await page.clock.fastForward(1900);
+    await expect(page.getByTestId('relation-peer-3')).toHaveClass(/is-active/);
+
+    // Past three seconds the hold runs at three turns per second.
+    await page.clock.fastForward(1050);
+    await expect(page.getByTestId('relation-peer-1')).toHaveClass(/is-active/);
+
+    // Release ends the hold; time alone turns nothing further.
+    await page.mouse.up();
+    await page.clock.fastForward(2000);
+    await expect(page.getByTestId('relation-peer-1')).toHaveClass(/is-active/);
+  });
+
+  test('two fast presses in the zone turn twice without creating a component', async ({ page }) => {
+    await dispatch(page, spokeDomain());
+    await fit(page);
+    const count = async () =>
+      page.evaluate(() => Object.keys(window.__modl.getDocument().model.elements).length);
+    const before = await count();
+
+    await page.getByTestId('relations-menu-toggle').click();
+    const at = await downZonePoint(page);
+    // Reads as a double-click, which drops a component on the bare board.
+    await page.mouse.dblclick(at.x, at.y);
+
+    await expect(page.getByTestId('relation-peer-3')).toHaveClass(/is-active/);
+    expect(await count()).toBe(before);
+  });
+
+  test('a click in the zone turns one step, not more', async ({ page }) => {
+    await dispatch(page, spokeDomain());
+    await fit(page);
+
+    await page.getByTestId('relations-menu-toggle').click();
+    const at = await downZonePoint(page);
+    await page.mouse.click(at.x, at.y);
+
+    await expect(page.getByTestId('relation-peer-2')).toHaveClass(/is-active/);
+    await page.waitForTimeout(1100);
+    await expect(page.getByTestId('relation-peer-2')).toHaveClass(/is-active/);
+  });
+
+  test('a held arrow key turns on the same two-speed clock, and stops on release', async ({ page }) => {
+    await dispatch(page, spokeDomain());
+    await fit(page);
+    await page.clock.install();
+
+    await page.getByTestId('relations-menu-toggle').click();
+    await expect(page.getByTestId('relation-peer-1')).toHaveClass(/is-active/);
+
+    await page.keyboard.down('ArrowDown');
+    await expect(page.getByTestId('relation-peer-2')).toHaveClass(/is-active/);
+
+    await page.clock.fastForward(1100);
+    await expect(page.getByTestId('relation-peer-4')).toHaveClass(/is-active/);
+
+    await page.keyboard.up('ArrowDown');
+    await page.clock.fastForward(3000);
+    await expect(page.getByTestId('relation-peer-4')).toHaveClass(/is-active/);
   });
 });
 
@@ -4206,18 +4347,19 @@ test.describe('decision labels', () => {
     await expect(page.getByTestId(`connection-${ASKS}`)).not.toHaveClass(/is-highlighted/);
   });
 
-  test('the stepper buttons turn the roller, wrapping at the ends', async ({ page }) => {
+  test('the step zones turn the roller, wrapping at the ends', async ({ page }) => {
     await dispatch(page, [...branchingDomain(), { type: 'set-selection', ids: [DECISION] }]);
     await fit(page);
 
     await openMenu(page);
     await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveClass(/is-active/);
 
-    await page.getByTestId('relations-menu-down').click();
+    // Clicks land in a zone corner, clear of the faded pills drawn over it.
+    await page.getByTestId('relations-menu-down').click({ position: { x: 150, y: 80 } });
     await expect(page.getByTestId(`relation-${REFUSED}`)).toHaveClass(/is-active/);
 
-    await page.getByTestId('relations-menu-up').click();
-    await page.getByTestId('relations-menu-up').click();
+    await page.getByTestId('relations-menu-up').click({ position: { x: 150, y: 8 } });
+    await page.getByTestId('relations-menu-up').click({ position: { x: 150, y: 8 } });
     // Up from the first wraps round to the last.
     await expect(page.getByTestId(`relation-${PAID}`)).toHaveClass(/is-active/);
   });

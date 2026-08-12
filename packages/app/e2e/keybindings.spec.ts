@@ -506,3 +506,51 @@ test('the search binding follows the reader, and never reaches the document or t
   expect((await getTrace(page)).length).toBe(0);
   expect(await page.evaluate(() => window.__modl.serialize())).not.toContain('binding');
 });
+
+test('a rebound scroll key turns the roller, and the arrow it left behind stops', async ({
+  page,
+}) => {
+  await dispatch(page, sampleDomain());
+  await page.getByTestId(`entity-${IDS.gateway}`).click();
+
+  await openBindings(page);
+  await expect(page.getByTestId('binding-scroll-down-0')).toContainText('ArrowDown');
+  await page.getByTestId('binding-scroll-down-0').click();
+  await page.keyboard.press('j');
+  await expect(page.getByTestId('binding-scroll-down-0')).toContainText('J');
+  await page.getByTestId('close-preferences').click();
+
+  await page.getByTestId('relations-menu-toggle').click();
+  await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveClass(/is-active/);
+
+  // The key that moved away no longer turns the roller.
+  await page.keyboard.press('ArrowDown');
+  await page.waitForTimeout(100);
+  await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveClass(/is-active/);
+
+  await page.keyboard.press('j');
+  await expect(page.getByTestId(`relation-${IDS.ledger}`)).toHaveClass(/is-active/);
+});
+
+test('a rebound scroll key walks the comment timeline', async ({ page }) => {
+  const FIRST = 'comment-first';
+  const SECOND = 'comment-second';
+  await dispatch(page, [
+    ...sampleDomain(),
+    { type: 'create-comment', id: FIRST, text: 'first thought', targets: [IDS.ui], createdAt: '2026-08-10T09:00:00Z' },
+    { type: 'create-comment', id: SECOND, text: 'second thought', targets: [IDS.ledger], createdAt: '2026-08-10T10:00:00Z' },
+  ]);
+  await fit(page);
+
+  await openBindings(page);
+  await page.getByTestId('binding-scroll-down-0').click();
+  await page.keyboard.press('j');
+  await page.getByTestId('close-preferences').click();
+
+  await page.keyboard.press('c');
+  await page.getByTestId(`timeline-entry-${FIRST}`).click();
+  await expect.poll(() => selection(page)).toEqual([FIRST]);
+
+  await page.keyboard.press('j');
+  await expect.poll(() => selection(page)).toEqual([SECOND]);
+});

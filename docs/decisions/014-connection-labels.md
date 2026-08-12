@@ -1,6 +1,6 @@
 # 014: A junction labels its branches, and the labels live on the junction
 
-**Status**: accepted · **Date**: 2026-08-09
+**Status**: accepted · **Date**: 2026-08-09 · **Revised**: 2026-08-12 for issue #66, which removed the close delay along with hover-to-open (see [decision 023](023-roller-menu-input.md))
 
 ## Context
 
@@ -22,7 +22,7 @@ The tension is where a label belongs, and what the menu is for. A label is about
 
 **Labelling extends the relations menu rather than adding a second control.** The roller beside a selected element already lists everything it connects to; on a junction, choosing a relation now branches into *go to* and *label* instead of panning straight away. Everywhere else it still pans, because nothing else has an answer to give. Two rollers beside one element, both listing the same connections and differing only in what choosing one does, is a menu split down the middle. `RollerMenu` gained two-line pills, stepper buttons, an option depth, and an opening level for this, and it stays generic: components get connection points of their own in issue #6, and the same control will carry them.
 
-**The list closes on a delay.** Turning the roller slides its options, so a stationary pointer can find itself over the gap between two pills. Closing on the first mouseleave shut the menu out from under a reader who had not moved, and took the level they were on with it.
+**The list closes on a delay.** Turning the roller slides its options, so a stationary pointer can find itself over the gap between two pills. Closing on the first mouseleave shut the menu out from under a reader who had not moved, and took the level they were on with it. *(Superseded by decision 023: the roller now opens on click and closes on a click elsewhere, so there is no mouseleave to soften.)*
 
 **A junction anchors its branches at its vertices, not at its centre.** Four contact points instead of one. With every line leaving the same point, two answers to the same question are drawn on top of each other, and there is nowhere for a reader to aim when they want *that* branch. Which vertex a line uses stays layout, chosen by geometry and overridable by dragging, the same rule a box's sides follow.
 

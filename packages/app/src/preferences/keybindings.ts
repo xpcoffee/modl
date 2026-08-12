@@ -23,6 +23,8 @@ export type ActionId =
   | 'save-as'
   | 'delete'
   | 'cancel'
+  | 'scroll-up'
+  | 'scroll-down'
   | 'box-select'
   | 'duplicate'
   | 'pan';
@@ -119,6 +121,11 @@ export const ACTIONS: ActionSpec[] = [
   },
   { id: 'delete', label: 'Delete', kind: 'key', gesture: 'press', defaults: [key('Delete'), key('Backspace')] },
   { id: 'cancel', label: 'Cancel', kind: 'key', gesture: 'press', defaults: [key('Escape')] },
+  // One pair for every list that scrolls: the roller menus and the comment
+  // timeline. Held down, the consumers repeat the step on a two-speed timer
+  // (see canvas/holdRepeat.ts).
+  { id: 'scroll-up', label: 'Scroll up', kind: 'key', gesture: 'press', defaults: [key('ArrowUp')] },
+  { id: 'scroll-down', label: 'Scroll down', kind: 'key', gesture: 'press', defaults: [key('ArrowDown')] },
   {
     id: 'box-select',
     label: 'Box select',
