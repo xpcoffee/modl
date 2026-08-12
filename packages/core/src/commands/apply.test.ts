@@ -1051,6 +1051,105 @@ describe('load-document', () => {
   });
 });
 
+describe('load-document seeding from view.defaultExpanded', () => {
+  /** A document holding two groups: A inside B, C inside D. */
+  const grouped = (defaultExpanded?: true | string[]): AppState['document'] => {
+    const built = must(
+      initialState('55555555-5555-4555-8555-555555555555'),
+      entity(A, 'Member one'),
+      entity(B, 'Group one', 240),
+      entity(C, 'Member two', 480),
+      entity(LINK, 'Group two', 720),
+      { type: 'set-group', id: A, groupId: B },
+      { type: 'set-group', id: C, groupId: LINK },
+    );
+    const view =
+      defaultExpanded === undefined
+        ? built.document.view
+        : { ...built.document.view, defaultExpanded };
+    return { ...built.document, view };
+  };
+
+  it('starts collapsed when the hint is absent', () => {
+    const state = must(base, { type: 'load-document', document: grouped() });
+    expect(state.expanded).toEqual([]);
+  });
+
+  it('`true` opens every group', () => {
+    const state = must(base, { type: 'load-document', document: grouped(true) });
+    expect([...state.expanded].sort()).toEqual([B, LINK].sort());
+  });
+
+  it('a list opens exactly the listed groups', () => {
+    const state = must(base, { type: 'load-document', document: grouped([B]) });
+    expect(state.expanded).toEqual([B]);
+  });
+
+  it('drops listed ids that are not groups', () => {
+    const state = must(base, { type: 'load-document', document: grouped([B, A, MISSING]) });
+    expect(state.expanded).toEqual([B]);
+  });
+
+  it('the reader expanding and collapsing never writes back', () => {
+    const loaded = must(base, { type: 'load-document', document: grouped([B]) });
+    const state = must(
+      loaded,
+      { type: 'set-expanded', id: B, expanded: false },
+      { type: 'set-expanded', id: LINK, expanded: true },
+    );
+    expect(state.expanded).toEqual([LINK]);
+    expect(state.document.view.defaultExpanded).toEqual([B]);
+    expect(serializeDocument(state.document)).toBe(serializeDocument(loaded.document));
+  });
+});
+
+describe('set-default-expanded', () => {
+  it('writes `true` into the view', () => {
+    const state = must(base, { type: 'set-default-expanded', defaultExpanded: true });
+    expect(state.document.view.defaultExpanded).toBe(true);
+  });
+
+  it('writes a list into the view and leaves the camera alone', () => {
+    const state = must(base, { type: 'set-default-expanded', defaultExpanded: [A] });
+    expect(state.document.view.defaultExpanded).toEqual([A]);
+    expect(state.document.view.pan).toEqual(base.document.view.pan);
+    expect(state.document.view.zoom).toBe(base.document.view.zoom);
+  });
+
+  it('`null` clears the hint', () => {
+    const state = must(
+      base,
+      { type: 'set-default-expanded', defaultExpanded: true },
+      { type: 'set-default-expanded', defaultExpanded: null },
+    );
+    expect(state.document.view.defaultExpanded).toBeUndefined();
+  });
+
+  it('unknown-element: refuses an id absent from the document', () => {
+    const result = apply(base, { type: 'set-default-expanded', defaultExpanded: [MISSING] });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('unknown-element');
+  });
+
+  it('survives a later set-view', () => {
+    const state = must(
+      base,
+      { type: 'set-default-expanded', defaultExpanded: true },
+      { type: 'set-view', pan: { x: 10, y: 20 }, zoom: 2 },
+    );
+    expect(state.document.view).toEqual({ pan: { x: 10, y: 20 }, zoom: 2, defaultExpanded: true });
+  });
+
+  it('undo removes the hint and redo restores it', () => {
+    let state = must(base, { type: 'set-default-expanded', defaultExpanded: [A] });
+    state = must(state, { type: 'undo' });
+    expect(state.document.view.defaultExpanded).toBeUndefined();
+    state = must(state, { type: 'redo' });
+    expect(state.document.view.defaultExpanded).toEqual([A]);
+  });
+});
+
 describe('unknown commands', () => {
   it('rejects rather than returning nothing', () => {
     // A caller guessing a name gets something it can read, instead of

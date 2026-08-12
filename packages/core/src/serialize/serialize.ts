@@ -57,6 +57,14 @@ export function serializeDocument(document: Document): string {
     view: {
       pan: { x: document.view.pan.x, y: document.view.pan.y },
       zoom: document.view.zoom,
+      ...(document.view.defaultExpanded === undefined
+        ? {}
+        : {
+            defaultExpanded:
+              document.view.defaultExpanded === true
+                ? true
+                : [...document.view.defaultExpanded].sort(),
+          }),
     },
   };
 

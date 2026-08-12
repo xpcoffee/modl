@@ -168,6 +168,13 @@ export type ElementLayout = EntityLayout | ConnectionLayout;
 export interface View {
   pan: Point;
   zoom: number;
+  /**
+   * The author's hint for how the document first opens: `true` opens every
+   * group, a list opens exactly the listed groups. Missing means collapsed.
+   * The hint seeds the session's expanded set on load; the reader's own
+   * expands and collapses never write back (issue #50).
+   */
+  defaultExpanded?: true | Id[];
 }
 
 export interface Document {
@@ -200,10 +207,13 @@ export interface Document {
  *         but kept beside the model. Additive, and the bump exists for the
  *         same reason as the last two: a version 6 build would silently drop
  *         every comment on save.
+ * 7 -> 8: the view may carry `defaultExpanded`, the author's first-open
+ *         hint. Additive; the bump stops a version 7 build from stripping
+ *         the hint on save.
  *
  * Older documents still load: the reader migrates them.
  */
-export const FORMAT_VERSION = 7;
+export const FORMAT_VERSION = 8;
 export const OLDEST_READABLE_VERSION = 1;
 
 export const DEFAULT_ENTITY_SIZE = { width: 180, height: 72 } as const;

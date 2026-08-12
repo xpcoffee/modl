@@ -18,9 +18,11 @@ import {
   type ElementStyle,
   type Id,
   type Point,
+  type View,
 } from '../model/types.js';
 import { COLOR_PATTERN } from '../model/schema.js';
 import { isConnectionType, isEntityType } from '../model/paradigm.js';
+import { seededExpansion } from '../query/expansion.js';
 import { parseFilter } from '../query/filter.js';
 import { membersOf, wouldCycle } from '../query/groups.js';
 import { hiddenElementIds, suppressedConnectionIds } from '../query/view.js';
@@ -106,12 +108,23 @@ function moveCursor(state: AppState, cursor: number, commandType: 'undo' | 'redo
 
   // The camera, filter, selection, and expansion are what the user is
   // looking at, not what they did: undoing a move must not also fling the
-  // viewport back. They carry over, pruned to what still exists.
+  // viewport back. They carry over, pruned to what still exists. The
+  // first-open hint is an edit rather than a way of looking, so it refolds
+  // with the document.
   const comments = refolded.document.comments;
   return ok(
     {
       ...refolded,
-      document: { ...refolded.document, view: state.document.view },
+      document: {
+        ...refolded.document,
+        view: {
+          pan: state.document.view.pan,
+          zoom: state.document.view.zoom,
+          ...(refolded.document.view.defaultExpanded === undefined
+            ? {}
+            : { defaultExpanded: refolded.document.view.defaultExpanded }),
+        },
+      },
       filter: state.filter,
       selection: state.selection.filter(
         (id) => elements[id] !== undefined || comments[id] !== undefined,
@@ -1014,7 +1027,39 @@ function reduce(state: AppState, command: Command): CommandResult {
       if (!Number.isFinite(command.zoom) || command.zoom <= 0) {
         return fail(command.type, 'schema-invalid', `zoom must be a positive number`);
       }
-      const view = { pan: { ...command.pan }, zoom: command.zoom };
+      const view: View = {
+        ...state.document.view,
+        pan: { ...command.pan },
+        zoom: command.zoom,
+      };
+      return ok({ ...state, document: { ...state.document, view } }, [
+        { type: 'view-changed', view },
+      ]);
+    }
+
+    case 'set-default-expanded': {
+      if (Array.isArray(command.defaultExpanded)) {
+        const missing = command.defaultExpanded.filter(
+          (id) => !state.document.model.elements[id],
+        );
+        if (missing.length > 0) {
+          return fail(
+            command.type,
+            'unknown-element',
+            `no element with id ${missing.join(', ')}`,
+          );
+        }
+      }
+      const view: View = {
+        pan: { ...state.document.view.pan },
+        zoom: state.document.view.zoom,
+        ...(command.defaultExpanded === null
+          ? {}
+          : {
+              defaultExpanded:
+                command.defaultExpanded === true ? true : [...command.defaultExpanded],
+            }),
+      };
       return ok({ ...state, document: { ...state.document, view } }, [
         { type: 'view-changed', view },
       ]);
@@ -1033,14 +1078,16 @@ function reduce(state: AppState, command: Command): CommandResult {
         return fail(command.type, code, result.errors.map((e) => e.message).join('; '));
       }
       // Highlighting is a preference rather than a view of one document, so
-      // it is the only session field a load keeps.
+      // it is the only session field a load keeps. The expanded set starts
+      // as the document's first-open hint says; from here it is the
+      // reader's own.
       return ok(
         {
           ...state,
           document: result.document,
           filter: '',
           selection: [],
-          expanded: [],
+          expanded: seededExpansion(result.document),
           hidden: [],
           selectionHighlight: state.selectionHighlight,
           commentOverlay: false,

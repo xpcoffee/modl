@@ -55,6 +55,43 @@ describe('round trip', () => {
   });
 });
 
+describe('view.defaultExpanded', () => {
+  it('round-trips `true` byte for byte', () => {
+    const document = loadCheckout();
+    const hinted: Document = {
+      ...document,
+      view: { ...document.view, defaultExpanded: true },
+    };
+    const text = serializeDocument(hinted);
+    expect(JSON.parse(text).view.defaultExpanded).toBe(true);
+
+    const reread = parseDocument(text);
+    expect(reread.ok).toBe(true);
+    if (!reread.ok) return;
+    expect(serializeDocument(reread.document)).toBe(text);
+  });
+
+  it('round-trips a list of ids, written sorted', () => {
+    const document = loadCheckout();
+    const hinted: Document = {
+      ...document,
+      view: { ...document.view, defaultExpanded: ['group-b', 'group-a'] },
+    };
+    const text = serializeDocument(hinted);
+    expect(JSON.parse(text).view.defaultExpanded).toEqual(['group-a', 'group-b']);
+
+    const reread = parseDocument(text);
+    expect(reread.ok).toBe(true);
+    if (!reread.ok) return;
+    expect(serializeDocument(reread.document)).toBe(text);
+  });
+
+  it('writes no key when the hint is absent', () => {
+    const text = serializeDocument(loadCheckout());
+    expect(text).not.toContain('defaultExpanded');
+  });
+});
+
 describe('parseDocument', () => {
   it('reports invalid JSON without throwing', () => {
     const result = parseDocument('{ not json');

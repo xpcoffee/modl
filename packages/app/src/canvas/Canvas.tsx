@@ -414,6 +414,12 @@ export function Canvas() {
     const prior = seenView.current;
     seenView.current = { view: state.document.view, loads: loadCount };
     if (state.document.view === prior.view || loadCount !== prior.loads) return;
+    // The view also carries the first-open hint; an edit that leaves the
+    // camera numbers alone must not snap a hand-panned board back to them.
+    const { pan, zoom } = state.document.view;
+    if (pan.x === prior.view.pan.x && pan.y === prior.view.pan.y && zoom === prior.view.zoom) {
+      return;
+    }
     void setViewport(
       { x: state.document.view.pan.x, y: state.document.view.pan.y, zoom: state.document.view.zoom },
       { duration: 300 },

@@ -125,6 +125,13 @@ export const elementLayoutSchema = z.union([entityLayoutSchema, connectionLayout
 export const viewSchema = z.object({
   pan: pointSchema,
   zoom: z.number().finite().positive(),
+  /**
+   * The author's first-open hint: `true` opens every group, a list opens
+   * exactly the listed groups. Missing means collapsed. Ids that are not
+   * groups are dropped when the hint seeds a session, so a hint that has
+   * gone stale does not refuse the file.
+   */
+  defaultExpanded: z.union([z.literal(true), z.array(idSchema)]).optional(),
 });
 
 export const modelSchema = z.object({
