@@ -8,6 +8,7 @@ The loop is: write structure, ask whether it reads, look at it.
 npm run build                          # once, so `render` has an app to drive
 npm run modl -- check   domain.modl.json   # alias: validate
 npm run modl -- layout  domain.modl.json
+npm run modl -- reflow  domain.modl.json --expand-all
 npm run modl -- render  domain.modl.json -o domain.png
 npm run modl -- schema  -o modl.schema.json
 ```
@@ -71,6 +72,19 @@ Positions are optional. The loader places anything without one, putting members 
 `modl layout` does the same and writes the result back to the file, so the positions are in the document rather than recomputed on every load. It leaves anything already placed alone, so it is safe over a document a human has arranged.
 
 `autoLayout` is exported from `@modl/core` for the same job in process.
+
+## Re-space what is already placed
+
+`modl layout` never moves a placed element, so a document whose placed elements collide stays colliding. `modl reflow` re-spaces the board the way the app's reflow button does: neighbours clear each other and connection labels get room, while every element keeps its place in the reading order.
+
+```bash
+npm run modl -- reflow domain.modl.json --expand-all
+npm run modl -- reflow domain.modl.json --expand-all --compact
+```
+
+The app reflows over the groups the reader has expanded, and a file has no reader: by default every group stays collapsed, matching how the app and `modl render` first draw it, so only the top level re-spaces. `--expand-all` opens every container so members re-space inside the container that holds them, which is what a generated document with placed members needs.
+
+`--compact` trades label room for density. Reflow holds connected boxes far enough apart for their widest label, and on a big board a few long titles stretch the root into one enormous row; compact instead packs each scope into rows of bounded width, bottom-up, so the board comes out as a block a camera can frame. See [decision 020](decisions/020-compact-packing.md). `planReflow` and `planCompact` are exported from `@modl/core` for the same jobs in process.
 
 ## Look at it
 

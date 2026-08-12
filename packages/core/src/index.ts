@@ -10,6 +10,7 @@ export * from './commands/types.js';
 export * from './commands/apply.js';
 export * from './commands/undo.js';
 export * from './query/comments.js';
+export * from './query/compact.js';
 export * from './query/duplication.js';
 export * from './query/filter.js';
 export * from './query/fuzzy.js';

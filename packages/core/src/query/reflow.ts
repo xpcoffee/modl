@@ -2,6 +2,7 @@ import {
   isConnection,
   isEntityLayout,
   isConnectionNode,
+  type Document,
   type Id,
   type Point,
 } from '../model/types.js';
@@ -791,32 +792,7 @@ export function planReflow(state: Pick<AppState, 'document' | 'expanded'>): Refl
     if (maxShift(before) === 0) break;
   }
 
-  // Bends travel with the line's endpoints: each connection's waypoints shift
-  // by the average of how far its ends moved, so a hand-drawn route keeps its
-  // shape between the boxes it was drawn between.
-  const waypoints: Record<Id, Point[]> = {};
-  for (const id of Object.keys(elements).sort()) {
-    const element = elements[id]!;
-    if (!isConnection(element)) continue;
-    const entry = document.layout[id];
-    if (!entry || isEntityLayout(entry) || entry.waypoints.length === 0) continue;
-
-    const ends = [...element.from, ...element.to].filter((end) => original.has(end));
-    if (ends.length === 0) continue;
-    const delta = {
-      x: Math.round(
-        ends.reduce((sum, end) => sum + next.get(end)!.x - original.get(end)!.x, 0) / ends.length,
-      ),
-      y: Math.round(
-        ends.reduce((sum, end) => sum + next.get(end)!.y - original.get(end)!.y, 0) / ends.length,
-      ),
-    };
-    if (delta.x === 0 && delta.y === 0) continue;
-    waypoints[id] = entry.waypoints.map((point) => ({
-      x: point.x + delta.x,
-      y: point.y + delta.y,
-    }));
-  }
+  const waypoints = carriedWaypoints(document, original, next);
 
   const positions: Record<Id, Point> = {};
   for (const id of [...next.keys()].sort()) {
@@ -843,4 +819,42 @@ export function planReflow(state: Pick<AppState, 'document' | 'expanded'>): Refl
     return null;
   }
   return { positions, waypoints, expanded };
+}
+
+/**
+ * Bends travel with the line's endpoints: each connection's waypoints shift
+ * by the average of how far its ends moved, so a hand-drawn route keeps its
+ * shape between the boxes it was drawn between. Shared by every plan that
+ * moves boxes wholesale (reflow, and the compact pack in `compact.ts`).
+ */
+export function carriedWaypoints(
+  document: Document,
+  original: ReadonlyMap<Id, Point>,
+  next: ReadonlyMap<Id, Point>,
+): Record<Id, Point[]> {
+  const elements = document.model.elements;
+  const waypoints: Record<Id, Point[]> = {};
+  for (const id of Object.keys(elements).sort()) {
+    const element = elements[id]!;
+    if (!isConnection(element)) continue;
+    const entry = document.layout[id];
+    if (!entry || isEntityLayout(entry) || entry.waypoints.length === 0) continue;
+
+    const ends = [...element.from, ...element.to].filter((end) => original.has(end));
+    if (ends.length === 0) continue;
+    const delta = {
+      x: Math.round(
+        ends.reduce((sum, end) => sum + next.get(end)!.x - original.get(end)!.x, 0) / ends.length,
+      ),
+      y: Math.round(
+        ends.reduce((sum, end) => sum + next.get(end)!.y - original.get(end)!.y, 0) / ends.length,
+      ),
+    };
+    if (delta.x === 0 && delta.y === 0) continue;
+    waypoints[id] = entry.waypoints.map((point) => ({
+      x: point.x + delta.x,
+      y: point.y + delta.y,
+    }));
+  }
+  return waypoints;
 }
