@@ -3377,6 +3377,33 @@ test.describe('menu docking', () => {
     }).toPass();
   });
 
+  test('a dock flip waits while the editor holds a draft', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+
+    await page.getByTestId(`editor-add-tag-${IDS.gateway}`).click();
+    const draft = page.getByTestId(`editor-new-tag-${IDS.gateway}`);
+    await draft.pressSequentially('owner');
+
+    await panTo(page, -4000, 0);
+
+    // Re-homing the editor to the dock would remount it and destroy the
+    // draft, so while focus sits in the editor the flip waits: the editor
+    // stays on the element, mid-word, with focus intact.
+    await expect(page.getByTestId('docked-editor')).toHaveCount(0);
+    await expect(draft).toHaveValue('owner');
+    await expect(draft).toBeFocused();
+
+    // Typing continues, and committing the tag releases focus; the deferred
+    // flip then lands with the tag on the element.
+    await draft.pressSequentially('-team');
+    await draft.press('Enter');
+    await expect(page.getByTestId('docked-editor')).toBeVisible();
+
+    const document = await getDocument(page);
+    expect(document.model.elements[IDS.gateway]?.tags).toMatchObject({ 'owner-team': [] });
+  });
+
   test('the docked editor still edits: a style applies from the dock', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`entity-${IDS.gateway}`).click();

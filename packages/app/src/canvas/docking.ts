@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useReducer, useSyncExternalStore } from 'react';
 import { useStore as useFlowStore, type Node } from '@xyflow/react';
 import type { Id } from '@modl/core';
 import { motionReduced } from '../preferences/motion.js';
@@ -152,6 +152,18 @@ function shouldDock(
 }
 
 /**
+ * Whether keyboard focus sits inside a selection editor panel. A dock flip
+ * re-homes the single-selection editor between its node and the dock, and
+ * the two homes are different DOM: a remount destroys a tag draft and drops
+ * focus mid-word (PR #69 review). While the editor holds focus, the flip
+ * waits.
+ */
+function editorHoldsFocus(): boolean {
+  const active = document.activeElement;
+  return active instanceof HTMLElement && active.closest('.element-editor') !== null;
+}
+
+/**
  * Watches the selection against the viewport and publishes the dock state.
  * Rendered once inside the flow, so the per-pan-frame re-render this
  * subscription costs stays out of the Canvas component itself.
@@ -167,7 +179,29 @@ export function DockSentinel({
   const width = useFlowStore((flow) => flow.width);
   const height = useFlowStore((flow) => flow.height);
 
-  const docked = shouldDock(nodes, selection, transform, width, height);
+  // Focus moves re-run the check below, so a flip deferred while the reader
+  // types lands the moment focus leaves the editor, even with the camera and
+  // the document both still.
+  const [, onFocusMoved] = useReducer((count: number) => count + 1, 0);
+  useEffect(() => {
+    let frame = 0;
+    const schedule = (): void => {
+      window.cancelAnimationFrame(frame);
+      // A frame later, once the browser has settled where focus went:
+      // during focusout the active element still reads as the body.
+      frame = window.requestAnimationFrame(onFocusMoved);
+    };
+    window.addEventListener('focusin', schedule);
+    window.addEventListener('focusout', schedule);
+    return () => {
+      window.removeEventListener('focusin', schedule);
+      window.removeEventListener('focusout', schedule);
+      window.cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  const wanted = shouldDock(nodes, selection, transform, width, height);
+  const docked = wanted !== state.docked && editorHoldsFocus() ? state.docked : wanted;
   useEffect(() => setDocked(docked), [docked]);
   return null;
 }

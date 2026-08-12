@@ -18,6 +18,8 @@ The tension: menus on the element are where the eye is, and menus on the screen 
 
 **The transition travels.** Anchor and dock positions are both transforms on the same element, so a dock flip plays as one CSS transition (300ms) carrying translation and counter-zoom scale together: pan away and the menus glide to the dock, pan back and they glide home. The single-selection editor lives inside its node while attached; while docked (or still travelling) the node's copy stands down and `DockedEditor` renders the same `ElementEditor` at the panel slot, entering from the element's own anchor so it travels like the rollers. Reduced motion (`data-motion='reduced'`, decision 010) swaps instantly: the travelling flag never raises and the CSS transition is off.
 
+**Typing pins the editor's home.** A dock flip re-homes the single-selection editor between its node and the dock, and the two homes are different DOM: a remount destroys a tag draft and drops keyboard focus mid-word, which wheel-panning while typing can reach (PR #69 review). While focus sits inside the editor panel the whole cluster holds its current state, docked or attached, and the deferred flip lands when focus leaves. Deferring beats preserving state across the remount: the draft fields, the open pickers, the focus target, and the caret would each need carrying by hand, and any one missed is the same data loss.
+
 **The dock is presentation.** Nothing about it enters the document, the trace, or the command bus. Docked menus are the same components with the same behaviour: the rollers turn, choose, and hold-repeat as decision 023 shaped them, and the panel edits the same selection.
 
 ## Consequences
