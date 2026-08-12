@@ -81,8 +81,22 @@ export function usePanelStop(): {
       if (event.target === frame.current) return;
       event.stopPropagation();
       // A control that already spent this press (a tag draft abandoning
-      // itself) keeps its own level; the next press leaves the panel.
-      if (event.defaultPrevented) return;
+      // itself) keeps its own level; the next press leaves the panel. The
+      // control unmounts on its own dispatch and focus would fall to the
+      // body, so once the unmount settles, the control now in its slot (the
+      // add-tag button, where the draft row was) takes the focus.
+      if (event.defaultPrevented) {
+        const frameEl = frame.current;
+        if (frameEl === null) return;
+        const slot = controlsOf(frameEl).indexOf(event.target as HTMLElement);
+        window.requestAnimationFrame(() => {
+          if (!frameEl.isConnected || frameEl.contains(document.activeElement)) return;
+          const controls = controlsOf(frameEl);
+          const taker = controls[Math.min(Math.max(slot, 0), controls.length - 1)] ?? frameEl;
+          taker.focus({ preventScroll: true });
+        });
+        return;
+      }
       event.preventDefault();
       frame.current?.focus({ preventScroll: true });
       return;

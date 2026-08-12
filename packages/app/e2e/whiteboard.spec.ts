@@ -3600,6 +3600,61 @@ test.describe('menu focus', () => {
     await page.keyboard.press('ArrowDown');
     await expect(page.getByTestId(`relation-${IDS.ledger}`)).toHaveClass(/is-active/);
   });
+
+  test('escape disarms an armed placement without touching the selection', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+
+    await page.getByTestId('add-element').click();
+    await page.getByTestId('add-type-component').click();
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-placing', 'component');
+
+    // Focus back on the board, then onto the ring: the press arrives from
+    // inside the canvas, where a duplicate handler used to disarm and
+    // deselect on the same press.
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('relations-menu-toggle')).toBeFocused();
+
+    // One press, one level: the placement disarms, the selection holds.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-placing');
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([IDS.gateway]);
+
+    // The next press takes the next level: deselect.
+    await page.keyboard.press('Escape');
+    await expect(async () => {
+      expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([]);
+    }).toPass();
+  });
+
+  test('a tag draft escape steps out one level at a time', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+
+    await page.getByTestId(`editor-add-tag-${IDS.gateway}`).click();
+    await page.getByTestId(`editor-new-tag-${IDS.gateway}`).fill('tier');
+
+    // First press abandons the draft only; focus re-seats inside the panel,
+    // on the add-tag button now standing where the draft row was.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId(`editor-new-tag-${IDS.gateway}`)).toHaveCount(0);
+    await expect(page.getByTestId(`editor-add-tag-${IDS.gateway}`)).toBeFocused();
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([IDS.gateway]);
+    expect((await getDocument(page)).model.elements[IDS.gateway]?.tags).not.toHaveProperty('tier');
+
+    // Second press leaves the panel for its slot on the ring.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId(`editor-${IDS.gateway}`)).toBeFocused();
+    expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([IDS.gateway]);
+
+    // Third press deselects.
+    await page.keyboard.press('Escape');
+    await expect(async () => {
+      expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([]);
+    }).toPass();
+  });
 });
 
 test.describe('styles', () => {
