@@ -13,6 +13,7 @@ import {
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 import { RollerMenu, type RollerOption } from './RollerMenu.js';
+import { useDock, useDockedTransform } from './docking.js';
 import type { BoardNodeData } from './derive.js';
 
 /** One pick of the menu: the groups to touch and the state to put them in. */
@@ -117,6 +118,8 @@ export function ExpansionMenu({ nodes }: { nodes: Node<BoardNodeData>[] }) {
   const state = useAppState();
   const elements = state.document.model.elements;
   const expanded = new Set(state.expanded);
+  const { docked, travelling } = useDock();
+  const dockedTransform = useDockedTransform('expansion', docked || travelling);
 
   const options = optionsFor(elements, expanded, state.selection);
   if (options.length === 0) return null;
@@ -133,6 +136,14 @@ export function ExpansionMenu({ nodes }: { nodes: Node<BoardNodeData>[] }) {
   const left = Math.min(...corners.map((corner) => corner.x));
   const top = Math.min(...corners.map((corner) => corner.y));
 
+  // The trailing -100% puts the pill's right edge at the offset point, clear
+  // of the selection's left edge. The dock takes over when the menus leave
+  // their anchors (docs/decisions/024-menu-docking.md).
+  const transform =
+    docked && dockedTransform !== undefined
+      ? dockedTransform
+      : `translate(${left - 10}px, ${top}px) translateX(-100%)`;
+
   const roll = (value: Roll): void => {
     // One set-expanded per group rather than a batched command, so the trace
     // replays step by step and shows the sweep's order. The toolbar batches
@@ -147,10 +158,8 @@ export function ExpansionMenu({ nodes }: { nodes: Node<BoardNodeData>[] }) {
   return (
     <ViewportPortal>
       <div
-        className="expansion-menu"
-        // The trailing -100% puts the pill's right edge at the offset point,
-        // clear of the selection's left edge.
-        style={{ transform: `translate(${left - 10}px, ${top}px) translateX(-100%)` }}
+        className={`expansion-menu${travelling ? ' is-travelling' : ''}`}
+        style={{ transform }}
       >
         <RollerMenu
           entranceLabel="±"

@@ -81,6 +81,8 @@ import { useSearchPreview } from './searchPreview.js';
 import { ExpansionMenu } from './ExpansionMenu.js';
 import { RelationsMenu } from './RelationsMenu.js';
 import { SelectionActions } from './SelectionActions.js';
+import { DockedEditor } from './DockedEditor.js';
+import { DockSentinel, useDock } from './docking.js';
 import {
   addCommentTargets,
   CommentOverlay,
@@ -269,9 +271,13 @@ export function Canvas() {
   useKeybindingsVersion();
   const warping = useWarpingIds();
   const [draft, setDraft] = useState<{ from: Point; to: Point | null } | null>(null);
+  // The dock keeps the editor away from the element while the menus are
+  // there or still travelling back, so it never renders in two homes at once.
+  const { docked, travelling } = useDock();
+  const dockedEditor = docked || travelling;
   const options = useMemo(
-    () => ({ editingId, boxSelecting, highlightId }),
-    [editingId, boxSelecting, highlightId],
+    () => ({ editingId, boxSelecting, highlightId, dockedEditor }),
+    [editingId, boxSelecting, highlightId, dockedEditor],
   );
   /**
    * What the board draws while someone types in the search menu: the same
@@ -1399,9 +1405,11 @@ export function Canvas() {
           nodeStrokeColor="transparent"
           onClick={onMiniMapClick}
         />
-        <SelectionActions nodes={nodes} />
+        <DockSentinel nodes={nodes} selection={state.selection} />
+        <SelectionActions />
         <RelationsMenu nodes={nodes} />
         <ExpansionMenu nodes={nodes} />
+        <DockedEditor nodes={nodes} boxSelecting={boxSelecting} />
         <CommentOverlay />
         {cardGhost && (
           <ViewportPortal>
