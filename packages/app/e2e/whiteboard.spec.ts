@@ -3063,20 +3063,38 @@ test.describe('relations menu', () => {
     // The press itself turns once.
     await expect(page.getByTestId('relation-peer-2')).toHaveClass(/is-active/);
 
-    // One turn per second while the hold is young: two more by 2.5s.
-    await page.clock.fastForward(2500);
+    // A turn every half-second while the hold is young: two more by 1.1s.
+    await page.clock.fastForward(1100);
     await expect(page.getByTestId('relation-peer-4')).toHaveClass(/is-active/);
 
-    // Past three seconds the hold runs at three turns per second.
-    await page.clock.fastForward(500);
-    await expect(page.getByTestId('relation-peer-5')).toHaveClass(/is-active/);
-    await page.clock.fastForward(1050);
+    // Four more slow turns carry it to the three-second mark, wrapping.
+    await page.clock.fastForward(1900);
     await expect(page.getByTestId('relation-peer-3')).toHaveClass(/is-active/);
+
+    // Past three seconds the hold runs at three turns per second.
+    await page.clock.fastForward(1050);
+    await expect(page.getByTestId('relation-peer-1')).toHaveClass(/is-active/);
 
     // Release ends the hold; time alone turns nothing further.
     await page.mouse.up();
     await page.clock.fastForward(2000);
+    await expect(page.getByTestId('relation-peer-1')).toHaveClass(/is-active/);
+  });
+
+  test('two fast presses in the zone turn twice without creating a component', async ({ page }) => {
+    await dispatch(page, spokeDomain());
+    await fit(page);
+    const count = async () =>
+      page.evaluate(() => Object.keys(window.__modl.getDocument().model.elements).length);
+    const before = await count();
+
+    await page.getByTestId('relations-menu-toggle').click();
+    const at = await downZonePoint(page);
+    // Reads as a double-click, which drops a component on the bare board.
+    await page.mouse.dblclick(at.x, at.y);
+
     await expect(page.getByTestId('relation-peer-3')).toHaveClass(/is-active/);
+    expect(await count()).toBe(before);
   });
 
   test('a click in the zone turns one step, not more', async ({ page }) => {
@@ -3103,7 +3121,7 @@ test.describe('relations menu', () => {
     await page.keyboard.down('ArrowDown');
     await expect(page.getByTestId('relation-peer-2')).toHaveClass(/is-active/);
 
-    await page.clock.fastForward(2500);
+    await page.clock.fastForward(1100);
     await expect(page.getByTestId('relation-peer-4')).toHaveClass(/is-active/);
 
     await page.keyboard.up('ArrowDown');

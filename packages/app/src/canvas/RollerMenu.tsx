@@ -192,6 +192,9 @@ export function RollerMenu<T>({
       ref={menu}
       className="roller-menu nodrag nopan nowheel"
       data-testid={testId}
+      // Two fast presses on a step zone read as a double-click, which the
+      // board would take as "create a component here" (issue #67 review).
+      onDoubleClick={(event) => event.stopPropagation()}
       onWheel={(event) => {
         event.stopPropagation();
         if (event.deltaY === 0) return;
