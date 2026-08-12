@@ -124,6 +124,16 @@ function v6ToV7(document: Loose): Loose {
   return { ...document, formatVersion: 7, comments: document['comments'] ?? {} };
 }
 
+/**
+ * 7 -> 8: the view may carry `defaultExpanded`, the author's first-open
+ * hint (issue #50). Nothing to rewrite, since the field is new and optional;
+ * the bump exists so a version 7 build refuses the file rather than
+ * stripping the hint on the next save.
+ */
+function v7ToV8(document: Loose): Loose {
+  return { ...document, formatVersion: 8 };
+}
+
 const MIGRATIONS: Record<number, (document: Loose) => Loose> = {
   1: v1ToV2,
   2: v2ToV3,
@@ -131,6 +141,7 @@ const MIGRATIONS: Record<number, (document: Loose) => Loose> = {
   4: v4ToV5,
   5: v5ToV6,
   6: v6ToV7,
+  7: v7ToV8,
 };
 
 export function migrateDocument(raw: unknown): MigrationResult {

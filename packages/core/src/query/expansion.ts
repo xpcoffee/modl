@@ -1,5 +1,5 @@
-import type { Element, Id } from '../model/types.js';
-import { descendantGroupsOf, isGroup, membersOf } from './groups.js';
+import type { Document, Element, Id } from '../model/types.js';
+import { descendantGroupsOf, groupIds, isGroup, membersOf } from './groups.js';
 
 /**
  * Batch expansion operations for the expansion menu (issue #20). Each helper
@@ -93,4 +93,19 @@ export function collapseAllTargets(
   itemIds: readonly Id[],
 ): Id[] {
   return groupsWithin(elements, itemIds).filter((id) => expanded.has(id));
+}
+
+/**
+ * The expanded set a freshly loaded document starts with, from the author's
+ * `view.defaultExpanded` hint (issue #50): `true` opens every group, a list
+ * opens exactly the listed groups, and missing means collapsed. Listed ids
+ * that are not groups (the hint went stale as the model changed) are dropped
+ * rather than kept as dead entries. After the seed, expansion is the
+ * reader's session state and never writes back to the document.
+ */
+export function seededExpansion(document: Document): Id[] {
+  const hint = document.view.defaultExpanded;
+  if (hint === undefined) return [];
+  if (hint === true) return groupIds(document.model.elements);
+  return [...new Set(hint)].filter((id) => isGroup(document.model.elements, id)).sort();
 }

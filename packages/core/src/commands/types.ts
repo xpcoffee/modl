@@ -159,6 +159,13 @@ export type Command =
   | { type: 'set-selection'; ids: Id[] }
   | { type: 'set-filter'; expression: string }
   | { type: 'set-view'; pan: Point; zoom: number }
+  /**
+   * Writes the document's first-open hint: `true` opens every group on load,
+   * a list opens exactly the listed groups, `null` clears the hint so the
+   * document opens collapsed again. An edit to the document, unlike
+   * `set-expanded`, which is the reader's session.
+   */
+  | { type: 'set-default-expanded'; defaultExpanded: true | Id[] | null }
   | { type: 'set-sources'; id: Id; sources: SourceRef[] }
   | { type: 'create-comment'; id: Id; text: string; targets: Id[]; createdAt?: string }
   | { type: 'set-comment-text'; id: Id; text: string }

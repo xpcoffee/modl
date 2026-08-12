@@ -4716,3 +4716,75 @@ test.describe('discussion overlay', () => {
     await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-comment-overlay', 'true');
   });
 });
+
+test.describe('first-open expansion (issue #50)', () => {
+  /** One group holding one member, with the given first-open hint. */
+  function groupedDocument(defaultExpanded?: true | string[]) {
+    return {
+      formatVersion: 8,
+      id: 'grouped-doc',
+      title: 'Grouped',
+      model: {
+        elements: {
+          box: { id: 'box', kind: 'entity', type: 'component', title: 'Box',
+                 description: '', tags: {}, sources: [], groupId: null },
+          member: { id: 'member', kind: 'entity', type: 'component', title: 'Member',
+                    description: '', tags: {}, sources: [], groupId: 'box' },
+        },
+      },
+      comments: {},
+      layout: {},
+      view: {
+        pan: { x: 0, y: 0 },
+        zoom: 1,
+        ...(defaultExpanded === undefined ? {} : { defaultExpanded }),
+      },
+    };
+  }
+
+  test('a document hinting `true` opens with its group expanded', async ({ page }) => {
+    const result = await page.evaluate(
+      (doc) => window.__modl.dispatch({ type: 'load-document', document: doc as never }),
+      groupedDocument(true),
+    );
+    expect(result.ok).toBe(true);
+    await expect(page.getByTestId('entity-member')).toBeVisible();
+  });
+
+  test('a document without the hint opens collapsed', async ({ page }) => {
+    await page.evaluate(
+      (doc) => window.__modl.dispatch({ type: 'load-document', document: doc as never }),
+      groupedDocument(),
+    );
+    await expect(page.getByTestId('entity-box')).toBeVisible();
+    await expect(page.getByTestId('entity-member')).toHaveCount(0);
+  });
+
+  test('the toggle captures the current expansion into the saved file', async ({ page }) => {
+    const GROUP = '77777777-7777-4777-8777-777777777777';
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'create-entity', id: GROUP, entityType: 'component', title: 'Payments', position: { x: 900, y: 0 } },
+      { type: 'set-group', id: IDS.gateway, groupId: GROUP },
+      { type: 'set-expanded', id: GROUP, expanded: true },
+    ]);
+
+    await page.getByTestId('first-open-toggle').click();
+    await page.getByTestId('save').click();
+    await expect(page.getByTestId('toolbar-message')).toContainText('Saved');
+
+    const saved = JSON.parse((await savedFile(page, 'Untitled domain.modl.json'))!);
+    expect(saved.view.defaultExpanded).toEqual([GROUP]);
+  });
+
+  test('pressing the toggle again clears the hint', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'set-default-expanded', defaultExpanded: true },
+    ]);
+
+    await page.getByTestId('first-open-toggle').click();
+
+    expect((await getDocument(page)).view.defaultExpanded).toBeUndefined();
+  });
+});
