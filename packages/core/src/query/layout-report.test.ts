@@ -9,6 +9,7 @@ const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
 const LINK = '44444444-4444-4444-8444-444444444444';
 const GROUP = '66666666-6666-4666-8666-666666666666';
+const NODE = '77777777-7777-4777-8777-777777777777';
 
 function must(state: AppState, ...commands: Command[]): AppState {
   const result = applyAll(state, commands);
@@ -46,14 +47,43 @@ describe('inspectLayout', () => {
     expect(codes(inspectLayout(state.document))).not.toContain('overlapping-entities');
   });
 
-  it('reports a member drawn outside its container', () => {
+  it('reports a member drawn outside its container, with the fix', () => {
     const state = must(
       initialState(DOC),
       entity(A, 0),
       { type: 'group-elements', id: GROUP, title: 'G', memberIds: [A], position: { x: 0, y: 0 } },
       { type: 'move-element', id: A, position: { x: 3000, y: 3000 } },
     );
+    const issue = inspectLayout(state.document).issues.find(
+      (candidate) => candidate.code === 'member-outside-container',
+    );
+    expect(issue?.elementIds).toEqual([A, GROUP]);
+    expect(issue?.message).toContain('delete its layout entry');
+  });
+
+  it('reports a connection node drawn outside its container', () => {
+    const state = must(
+      initialState(DOC),
+      { type: 'create-connection-node', id: NODE, shape: 'circle', title: '?', position: { x: 0, y: 0 } },
+      { type: 'group-elements', id: GROUP, title: 'G', memberIds: [NODE], position: { x: 0, y: 0 } },
+      { type: 'move-element', id: NODE, position: { x: 3000, y: 3000 } },
+    );
     expect(codes(inspectLayout(state.document))).toContain('member-outside-container');
+  });
+
+  it('accepts a member inside the expanded box but outside the collapsed size', () => {
+    const state = must(
+      initialState(DOC),
+      entity(A, 0),
+      { type: 'group-elements', id: GROUP, title: 'G', memberIds: [A], position: { x: 0, y: 0 } },
+      { type: 'move-element', id: A, position: { x: 400, y: 200 } },
+    );
+    const layout = {
+      ...state.document.layout,
+      [GROUP]: { x: 0, y: 0, width: 180, height: 72, expanded: { width: 800, height: 400 } },
+    };
+    const report = inspectLayout({ ...state.document, layout });
+    expect(codes(report)).not.toContain('member-outside-container');
   });
 
   it('reports an entity stranded far from the rest', () => {

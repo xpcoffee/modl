@@ -127,7 +127,7 @@ npm run modl -- reflow domain.modl.json --expand-all  # re-space what collides
 npm run modl -- render domain.modl.json -o d.png  # draw it as the app would
 ```
 
-`check` reports overlapping elements, members outside their container, stranded elements, and missing positions, and exits non-zero when it finds any. `render` drives the real app, so the picture is what the whiteboard draws. See [docs/agents.md](docs/agents.md).
+`check` reports overlapping elements, members outside their container, stranded elements, and missing positions, and exits non-zero when it finds any. It also prints the loader's warnings, such as a document of 30 or more elements with no tags at all, without failing. `render` drives the real app, so the picture is what the whiteboard draws. See [docs/agents.md](docs/agents.md).
 
 ### Driving the running app
 

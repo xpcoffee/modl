@@ -98,9 +98,12 @@ export function inspectLayout(document: Document): LayoutReport {
     }
   }
 
-  // A member drawn outside the container that claims it.
+  // A member drawn outside the container that claims it, which is what a
+  // hand-edited groupId leaves behind. Judged against the container's
+  // expanded box regardless of how a session currently draws the group:
+  // member positions are absolute, and the expanded box decides membership.
   for (const element of Object.values(elements)) {
-    if (!isEntity(element) || element.groupId === null) continue;
+    if (isConnection(element) || element.groupId === null) continue;
     const child = byId.get(element.id);
     const parentLayout = document.layout[element.groupId];
     if (!child || !parentLayout || !('x' in parentLayout)) continue;
@@ -121,7 +124,7 @@ export function inspectLayout(document: Document): LayoutReport {
       issues.push({
         code: 'member-outside-container',
         elementIds: [element.id, element.groupId],
-        message: `${element.id} sits outside ${element.groupId}, which holds it`,
+        message: `${element.id} sits outside the box ${element.groupId} shows when expanded: move it inside, or delete its layout entry and re-run layout`,
       });
     }
   }
