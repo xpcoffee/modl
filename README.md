@@ -113,7 +113,7 @@ Use that path rather than `npx playwright install`, which fetches whatever versi
 - **Reflow** the board with the grid button in the control cluster: one press re-spaces elements so neighbours clear each other and line labels have room, keeping every element's place in the reading order. Labels keep off the boxes they are not attached to and off each other, expanded groups grow when their members need space, collapsed groups carry their members, and pinned comment cards get the same clearance as a box. The move glides unless motion is reduced, and one undo puts everything back. See [decision 018](docs/decisions/018-reflow.md)
 - **Delete** removes the selection, on either Delete or Backspace, or with the trash button
 - **Undo** with Ctrl+Z, redo with Ctrl+Y or Ctrl+Shift+Z, or the arrow buttons in the zoom control cluster. Every command is undoable, including loading a document; selection, filter, and camera changes are skipped. See [decision 008](docs/decisions/008-undo-redo.md)
-- **Save** and **Load** a `.modl.json` file, and **Export trace** for the session's command log
+- **Save** with Ctrl+S or the toolbar button, which writes back to the file you chose and keeps writing there; **Save as** (Ctrl+Shift+S) asks for a new place. **Load** remembers the opened file the same way, the toolbar and the tab title carry its name, and browsers without the File System Access API fall back to downloads. **Export trace** keeps the session's command log. See [decision 019](docs/decisions/019-save-in-place.md)
 
 ### Producing a document from another tool
 
@@ -155,7 +155,7 @@ node packages/app/e2e/screenshot.mjs /tmp/board.png "team=payments"
 
 ## Status
 
-Runnable: model, commands, trace and replay, undo and redo, all three paradigms, groups with collapse and expand, filtering, colours and styles, hiding, selection highlight, pan-to-relation, the canvas, the inspector, and save/load. 300 unit tests and 170 browser tests.
+Runnable: model, commands, trace and replay, undo and redo, all three paradigms, groups with collapse and expand, filtering, colours and styles, hiding, selection highlight, pan-to-relation, the canvas, the inspector, and save/load. 523 unit tests and 304 browser tests.
 
 See [the vision](docs/vision.md) for what remains.
 

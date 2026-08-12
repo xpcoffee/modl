@@ -2,6 +2,7 @@ import type { AppState, Command, CommandResult, Document, TraceEntry } from '@mo
 import { store, replayFromJson } from '../store/store.js';
 import { forgetStyle } from '../canvas/styleMemory.js';
 import { forgetClipboard } from '../canvas/duplication.js';
+import { forgetFile } from '../files/fileContext.js';
 
 export interface DomainMapperApi {
   dispatch(command: Command): CommandResult;
@@ -42,10 +43,12 @@ export function installRuntimeApi(): void {
     undo: () => store.dispatch({ type: 'undo' }),
     redo: () => store.dispatch({ type: 'redo' }),
     reset: () => {
-      // The remembered style and the clipboard are session state too; a fresh
-      // session starts plain, with nothing to paste.
+      // The remembered style, the clipboard, and the remembered file are
+      // session state too; a fresh session starts plain, with nothing to
+      // paste and nowhere to save.
       forgetStyle();
       forgetClipboard();
+      forgetFile();
       store.reset();
     },
     ready: false,

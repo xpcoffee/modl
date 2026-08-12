@@ -7,9 +7,13 @@ import {
   IDS,
   open,
   openSearch,
+  queueOpenFile,
   sampleDomain,
+  savedFile,
+  savePrompts,
   serialize,
   setFilter,
+  setNextSaveName,
 } from './support.js';
 
 test.beforeEach(async ({ page }) => {
@@ -988,16 +992,159 @@ test.describe('save and load', () => {
   test('saves the document the store holds', async ({ page }) => {
     await dispatch(page, sampleDomain());
 
-    const [download] = await Promise.all([
+    await page.getByTestId('save').click();
+    await expect(page.getByTestId('toolbar-message')).toContainText('Saved');
+
+    expect(await savedFile(page, 'Untitled domain.modl.json')).toBe(await serialize(page));
+  });
+
+  test('saving again writes to the same file with no second dialog', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.getByTestId('save').click();
+    await expect(page.getByTestId('toolbar-message')).toContainText('Saved');
+
+    await dispatch(page, [{ type: 'set-metadata', id: IDS.ui, title: 'Checkout web' }]);
+    await page.getByTestId('save').click();
+    await expect(page.getByTestId('toolbar-message')).toContainText('Saved');
+
+    expect(await savePrompts(page)).toBe(1);
+    expect(await savedFile(page, 'Untitled domain.modl.json')).toBe(await serialize(page));
+  });
+
+  test('save-as asks again and moves the remembered file', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await setNextSaveName(page, 'first.modl.json');
+    await page.getByTestId('save').click();
+    await expect(page.getByTestId('toolbar-message')).toContainText('Saved first.modl.json');
+
+    await setNextSaveName(page, 'second.modl.json');
+    await page.getByTestId('save-as').click();
+    await expect(page.getByTestId('toolbar-message')).toContainText('Saved second.modl.json');
+
+    await page.getByTestId('save').click();
+    expect(await savePrompts(page)).toBe(2);
+    expect(await savedFile(page, 'second.modl.json')).toBe(await serialize(page));
+  });
+
+  test('loading through the picker remembers the file for save', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    const saved = await serialize(page);
+    await queueOpenFile(page, 'payments.modl.json', saved);
+
+    await page.getByTestId('load').click();
+    await expect(page.getByTestId('toolbar-message')).toContainText('Loaded payments.modl.json');
+
+    await dispatch(page, [{ type: 'set-metadata', id: IDS.ui, title: 'Checkout web' }]);
+    await page.getByTestId('save').click();
+    await expect(page.getByTestId('toolbar-message')).toContainText('Saved payments.modl.json');
+
+    expect(await savePrompts(page)).toBe(0);
+    expect(await savedFile(page, 'payments.modl.json')).toBe(await serialize(page));
+  });
+
+  test('the toolbar and the tab carry the file name', async ({ page }) => {
+    await expect(page).toHaveTitle('modl');
+    await expect(page.getByTestId('file-name')).toHaveCount(0);
+
+    await dispatch(page, sampleDomain());
+    await setNextSaveName(page, 'payments.modl.json');
+    await page.getByTestId('save').click();
+
+    await expect(page.getByTestId('file-name')).toHaveText('payments');
+    await expect(page.getByTestId('file-name')).toHaveAttribute('title', 'payments.modl.json');
+    await expect(page).toHaveTitle('modl - payments');
+  });
+
+  test('ctrl+s saves and ctrl+shift+s asks for a new file', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await setNextSaveName(page, 'shortcut.modl.json');
+    await page.keyboard.press('Control+s');
+    await expect(page.getByTestId('toolbar-message')).toContainText('Saved shortcut.modl.json');
+
+    await setNextSaveName(page, 'renamed.modl.json');
+    await page.keyboard.press('Control+Shift+s');
+    await expect(page.getByTestId('toolbar-message')).toContainText('Saved renamed.modl.json');
+
+    expect(await savePrompts(page)).toBe(2);
+    expect(await savedFile(page, 'renamed.modl.json')).toBe(await serialize(page));
+  });
+
+  test('the save buttons show pending, then a checkmark, then rest', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    // Each phase holds 300ms, short enough to slip between assertion polls,
+    // so an observer records the sequence and the test reads it afterwards.
+    const recorded = () =>
+      page.evaluate(() => (window as unknown as { __phases?: string[] }).__phases ?? []);
+    await page.evaluate(() => {
+      const record: string[] = [];
+      (window as unknown as { __phases: string[] }).__phases = record;
+      const observer = new MutationObserver(() => {
+        const phase = document
+          .querySelector('[data-testid="save-feedback"]')
+          ?.getAttribute('data-phase');
+        if (phase && record[record.length - 1] !== phase) record.push(phase);
+      });
+      observer.observe(document.body, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['data-phase'],
+      });
+    });
+
+    await page.getByTestId('save').click();
+    await expect(page.getByTestId('save').getByTestId('save-feedback')).toHaveCount(1);
+    await expect(page.getByTestId('save-feedback')).toHaveCount(0);
+    expect(await recorded()).toEqual(['saving', 'saved']);
+
+    await page.evaluate(() => {
+      (window as unknown as { __phases: string[] }).__phases.length = 0;
+    });
+    await page.keyboard.press('Control+Shift+s');
+    await expect(page.getByTestId('save-as').getByTestId('save-feedback')).toHaveCount(1);
+    await expect(page.getByTestId('save-feedback')).toHaveCount(0);
+    expect(await recorded()).toEqual(['saving', 'saved']);
+  });
+
+  test('without the pickers, save falls back to a download and remembers the name', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await page.evaluate(() => {
+      delete window.showSaveFilePicker;
+      delete window.showOpenFilePicker;
+    });
+
+    const [first] = await Promise.all([
       page.waitForEvent('download'),
       page.getByTestId('save').click(),
     ]);
+    expect(first.suggestedFilename()).toBe('Untitled domain.modl.json');
+    await expect(page).toHaveTitle('modl - Untitled domain');
 
-    const stream = await download.createReadStream();
+    const stream = await first.createReadStream();
     const chunks: Buffer[] = [];
     for await (const chunk of stream) chunks.push(chunk as Buffer);
-
     expect(Buffer.concat(chunks).toString('utf8')).toBe(await serialize(page));
+
+    const [second] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByTestId('save').click(),
+    ]);
+    expect(second.suggestedFilename()).toBe('Untitled domain.modl.json');
+  });
+
+  test('a canceled save dialog leaves the remembered file alone', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await page.evaluate(() => {
+      window.showSaveFilePicker = async () => {
+        throw new DOMException('canceled', 'AbortError');
+      };
+    });
+    await page.getByTestId('save').click();
+
+    await expect(page.getByTestId('file-name')).toHaveCount(0);
+    await expect(page).toHaveTitle('modl');
   });
 
   test('loading a malformed file leaves the document alone', async ({ page }) => {
