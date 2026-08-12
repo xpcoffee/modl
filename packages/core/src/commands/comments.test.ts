@@ -5,6 +5,7 @@ import { allComments, commentsOn, commentedElementIds } from '../query/comments.
 import { formatTerm, parseFilter, selectIds } from '../query/filter.js';
 import { commentSuggestions, tagSuggestions } from '../query/search.js';
 import { boardEmphasis } from '../query/view.js';
+import { FORMAT_VERSION } from '../model/types.js';
 import { validateDocument } from '../model/validate.js';
 import { parseDocument, serializeDocument } from '../serialize/serialize.js';
 import type { AppState, Command } from './types.js';
@@ -389,7 +390,7 @@ describe('document format', () => {
     expect(parsed.document.comments[NOTE]?.targets).toEqual([A, B]);
   });
 
-  it('loads a version 6 document as version 7 with no comments', () => {
+  it('loads a version 6 document at the current version with no comments', () => {
     const state = must(initialState(DOC), entity(A, 'Solo'));
     const raw = JSON.parse(serializeDocument(state.document)) as Record<string, unknown>;
     delete raw['comments'];
@@ -397,7 +398,7 @@ describe('document format', () => {
     const parsed = parseDocument(JSON.stringify(raw));
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(parsed.document.formatVersion).toBe(7);
+    expect(parsed.document.formatVersion).toBe(FORMAT_VERSION);
     expect(parsed.document.comments).toEqual({});
   });
 

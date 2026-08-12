@@ -235,3 +235,41 @@ describe('5 -> 6', () => {
     expect(JSON.parse(serializeDocument(result.document)).formatVersion).toBe(FORMAT_VERSION);
   });
 });
+
+describe('7 -> 8', () => {
+  const V7 = {
+    formatVersion: 7,
+    id: 'doc',
+    title: 'Seven',
+    model: {
+      elements: {
+        a: { id:'a', kind:'entity', type:'component', title:'A',
+             description:'', tags:{}, sources:[], groupId:null },
+      },
+    },
+    comments: {},
+    layout: {},
+    view: { pan: { x: 3, y: 4 }, zoom: 2 },
+  };
+
+  it('loads a version 7 document unchanged apart from the version', () => {
+    const result = migrateDocument(V7);
+    expect(result).toMatchObject({ ok: true, from: 7, migrated: true });
+    if (!result.ok) return;
+    const document = result.document as typeof V7;
+    expect(document.formatVersion).toBe(FORMAT_VERSION);
+    expect(document.model.elements['a']).toEqual(V7.model.elements['a']);
+    // The migrated view carries no hint: missing means collapsed, exactly
+    // what a version 7 file said.
+    expect(document.view).toEqual(V7.view);
+  });
+
+  it('saves a version 7 file at the current version', () => {
+    const result = parseDocument(JSON.stringify(V7));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const saved = JSON.parse(serializeDocument(result.document));
+    expect(saved.formatVersion).toBe(FORMAT_VERSION);
+    expect(saved.view).toEqual(V7.view);
+  });
+});

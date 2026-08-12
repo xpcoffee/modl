@@ -103,7 +103,7 @@ The whiteboard remembers the last style the reader chose and applies it to the n
 
 ### Versions
 
-`formatVersion` is 7. Older documents still load, and saving writes the current version, so a file upgrades the first time it is written.
+`formatVersion` is 8. Older documents still load, and saving writes the current version, so a file upgrades the first time it is written.
 
 | Change | What the reader does |
 |---|---|
@@ -113,6 +113,7 @@ The whiteboard remembers the last style the reader chose and applies it to the n
 | 4 → 5 | Elements may carry `style`. Nothing is rewritten; the bump stops a version 4 build from stripping colours on save |
 | 5 → 6 | A connection node carries `labels`. Existing nodes gain an empty map; the bump stops a version 5 build from stripping the answers written against each branch |
 | 6 → 7 | The document carries `comments`. An older file gains an empty map; the bump stops a version 6 build from dropping the discussion on save |
+| 7 → 8 | The view may carry `defaultExpanded`, the author's first-open hint. Nothing is rewritten; the bump stops a version 7 build from stripping the hint on save |
 
 ## Paradigms
 
@@ -153,14 +154,14 @@ One JSON file. `.modl.json` by convention.
   "layout": {
     "3f2a…": { "x": 120, "y": 80, "width": 180, "height": 72 }
   },
-  "view": { "pan": { "x": 0, "y": 0 }, "zoom": 1 }
+  "view": { "pan": { "x": 0, "y": 0 }, "zoom": 1, "defaultExpanded": true }
 }
 ```
 
 - `model.elements` is the structure. A consumer needs nothing else.
 - `comments` is discussion about the structure, keyed by comment id (see [Comments](#comments)). Missing means an empty map.
 - `layout` is keyed by element id. Entities and forks carry `{x, y, width, height}`; an entity may also carry an optional `expanded: {width, height}`. The first is the size drawn when collapsed, the second the container box drawn when expanded, which also decides membership. They are independent, so opening a group to work inside it does not swell the node it shrinks back to. Connections carry `{waypoints: {x,y}[]}` for hand-placed bends, plus optional `sourceSide` and `targetSide` naming the points a reader dragged the line onto. Which side of a box a line touches says nothing about the domain, so a producer omits them and the renderer picks the nearest sides. An id missing from `layout` gets a computed default, so a generated document can omit `layout` entirely. The default walks entities in sorted id order and places them on a 4-column grid spaced 240 by 140, at 180 by 72 each. Connections get no default, and the renderer routes them between their endpoints.
-- `view` is the camera. Missing means origin at zoom 1.
+- `view` is the camera, plus the optional first-open hint `defaultExpanded`: `true` opens every group on load, an array of group ids opens exactly those, and missing means collapsed. The hint only seeds the session; see [Groups](#groups). Missing `view` means origin at zoom 1.
 - `formatVersion` increments on any breaking change. A loader reading a higher version than it knows refuses the file and says which version it expected.
 
 Ordering: the serializer writes `elements` keys sorted, and object keys in declaration order. Two documents with the same content produce byte-identical files, so `git diff` stays readable and golden-file tests work.
@@ -291,7 +292,7 @@ Two rules follow from this and both live in `packages/core/src/query/groups.ts`:
 - An element is drawn only when every group above it is expanded. A member of a collapsed group is not on the board at all.
 - A connection re-points at the outermost collapsed group hiding its endpoint. When both ends collapse into the same group, the connection is not drawn, because it says nothing at that zoom level.
 
-Expansion is session state rather than document state. Which groups a reader has open is their view of the domain, and two people reading the same file should not fight over it. The hidden set works the same way: which elements a reader has muted with `set-hidden` never reaches the file (see [decision 009](decisions/009-viewing-tools.md)).
+Expansion is session state rather than document state. Which groups a reader has open is their view of the domain, and two people reading the same file should not fight over it. The document decides only the first state: `view.defaultExpanded`, when present, seeds the expanded set as the file loads. `true` opens every group, a list opens the listed groups (ids that are no longer groups are dropped), and missing means collapsed. After the seed, every expand and collapse is the reader's own and never writes back; the whiteboard writes the hint through `set-default-expanded`, an edit the author makes deliberately. The hidden set works the same way as expansion: which elements a reader has muted with `set-hidden` never reaches the file (see [decision 009](decisions/009-viewing-tools.md)).
 
 `groupId` accepts nesting to any depth. A chain that closes a loop is a `group-cycle` error, and the reducer rejects the command that would create one, so a loop cannot be reached through the UI.
 
