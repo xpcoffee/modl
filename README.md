@@ -123,6 +123,7 @@ There is a command line for building documents without the board, meant for an a
 npm run build                                     # once, so render has an app to drive
 npm run modl -- check  domain.modl.json           # does the layout read?
 npm run modl -- layout domain.modl.json           # place anything with no position
+npm run modl -- reflow domain.modl.json --expand-all  # re-space what collides
 npm run modl -- render domain.modl.json -o d.png  # draw it as the app would
 ```
 
