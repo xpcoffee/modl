@@ -1,6 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
 import { IDS, dispatch, fit, getTrace, open, sampleDomain } from './support.js';
 
+// The box-select spec failed once inside the shared `dispatch` helper under a
+// full parallel run and passed 3/3 alone (#49). The helper is common to every
+// test here, so the retry covers the file.
+test.describe.configure({ retries: 1 });
+
 const ENTITY = '99999999-9999-4999-8999-999999999999';
 
 function createEntity() {
