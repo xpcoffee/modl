@@ -791,7 +791,8 @@ test.describe('filtering', () => {
 
     await setFilter(page, '');
 
-    // The mode stays on with nothing to do, ready for the next filter.
+    // The mode stays on and keeps the board compacted, ready for the next
+    // filter.
     await expect(page.getByTestId(`entity-${IDS.ui}`)).toBeVisible();
     await expect(page.getByTestId('focus-toggle')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('.react-flow__node')).toHaveCount(3);
@@ -846,6 +847,55 @@ test.describe('filtering', () => {
     await dispatch(page, [{ type: 'undo' }]);
     const document = await getDocument(page);
     expect(document.layout[IDS.ledger]).toMatchObject({ x: 560, y: 0 });
+  });
+
+  test('collapsing a group in focus mode closes the space, and expanding opens it again', async ({ page }) => {
+    const GROUP = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const ARCHIVE = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'create-entity', id: GROUP, entityType: 'component', title: 'Backoffice', position: { x: 900, y: 0 } },
+      { type: 'set-group', id: IDS.ledger, groupId: GROUP },
+      { type: 'set-expanded', id: GROUP, expanded: true },
+      { type: 'create-entity', id: ARCHIVE, entityType: 'component', title: 'Archive', position: { x: 2400, y: 0 } },
+    ]);
+    const saved = await serialize(page);
+
+    /** Where a node is drawn, read from its transform. */
+    const drawn = (id: string) =>
+      page.locator(`.react-flow__node[data-id="${id}"]`).evaluate((node) => {
+        const match = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(
+          (node as HTMLElement).style.transform,
+        );
+        return { x: Number(match?.[1]), y: Number(match?.[2]) };
+      });
+    const gap = async () => {
+      const group = await drawn(GROUP);
+      const archive = await drawn(ARCHIVE);
+      return Math.hypot(archive.x - group.x, archive.y - group.y);
+    };
+
+    await page.getByTestId('focus-toggle').click();
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-focus-overlaid', 'true');
+    const openGap = await gap();
+    const openArchive = await drawn(ARCHIVE);
+
+    await dispatch(page, [{ type: 'set-expanded', id: GROUP, expanded: false }]);
+
+    // The archive moves into the space the group's open footprint held.
+    await expect.poll(gap).toBeLessThan(openGap);
+    // A transient view: the saved geometry is untouched.
+    expect(await serialize(page)).toBe(saved);
+
+    await dispatch(page, [{ type: 'set-expanded', id: GROUP, expanded: true }]);
+
+    await expect.poll(() => drawn(ARCHIVE)).toEqual(openArchive);
+
+    await page.getByTestId('focus-toggle').click();
+
+    await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-focus-overlaid');
+    await expect.poll(() => drawn(ARCHIVE)).toEqual({ x: 2400, y: 0 });
+    expect(await serialize(page)).toBe(saved);
   });
 
   test('a filter opens the groups above a match, and clearing folds them back', async ({ page }) => {

@@ -249,10 +249,13 @@ function onDomainEvents(events: DomainEvent[], before: AppState, after: AppState
 
   // The focus overlay repositions the visible elements the way a reflow
   // does, so the same glide carries them: on the mode's toggle, and on a
-  // filter change while the mode runs.
+  // filter or expansion change while the mode runs.
   const focusMoved =
     events.some((event) => event.type === 'focus-mode-changed') ||
-    (after.focusMode && events.some((event) => event.type === 'filter-changed'));
+    (after.focusMode &&
+      events.some(
+        (event) => event.type === 'filter-changed' || event.type === 'expansion-changed',
+      ));
   if (events.some((event) => event.type === 'layout-reflowed') || focusMoved) {
     glidePending = true;
     glidesStarted += 1;

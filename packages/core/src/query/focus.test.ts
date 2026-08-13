@@ -56,17 +56,53 @@ describe('planFocusLayout', () => {
     expect(planFocusLayout(state)).toBeNull();
   });
 
-  it('plans nothing while no filter runs', () => {
-    const state = must(base, { type: 'set-focus-mode', enabled: true });
+  it('plans nothing when nothing would move', () => {
+    const state = must(
+      initialState(DOC),
+      entity(UI, 'Checkout UI', 0, 0),
+      { type: 'set-focus-mode', enabled: true },
+    );
     expect(planFocusLayout(state)).toBeNull();
   });
 
-  it('plans nothing when the filter matches everything', () => {
-    const state = must(
-      focused(base),
-      { type: 'set-tag', id: UI, key: 'team', values: ['payments'] },
+  it('compacts the whole board while no filter runs', () => {
+    const state = must(base, { type: 'set-focus-mode', enabled: true });
+    expect(planFocusLayout(state)).not.toBeNull();
+
+    const shown = focusLayoutState(state);
+    const ui = at(shown, UI);
+    const ledger = at(shown, LEDGER);
+    const spreadAfter = Math.hypot(ledger.x - ui.x, ledger.y - ui.y);
+    expect(spreadAfter).toBeLessThan(Math.hypot(2000, 600));
+  });
+
+  it('collapsing a group closes the space it held, and expanding opens it again', () => {
+    const AFTER = '88888888-8888-4888-8888-888888888888';
+    const grouped = must(
+      base,
+      entity(GROUP, 'Backoffice', 3000, 0),
+      entity(INNER, 'Reports', 4500, 0),
+      { type: 'set-group', id: LEDGER, groupId: GROUP },
+      { type: 'set-group', id: INNER, groupId: GROUP },
+      { type: 'set-expanded', id: GROUP, expanded: true },
+      { type: 'move-element', id: LEDGER, position: { x: 3020, y: 40 } },
+      { type: 'move-element', id: INNER, position: { x: 4500, y: 40 } },
+      entity(AFTER, 'Archive', 6000, 0),
+      { type: 'set-focus-mode', enabled: true },
     );
-    expect(planFocusLayout(state)).toBeNull();
+    const expandedShown = focusLayoutState(grouped);
+
+    const collapsed = must(grouped, { type: 'set-expanded', id: GROUP, expanded: false });
+    const collapsedShown = focusLayoutState(collapsed);
+    const gap = (state: AppState) => {
+      const group = at(state, GROUP);
+      const after = at(state, AFTER);
+      return Math.hypot(after.x - group.x, after.y - group.y);
+    };
+    expect(gap(collapsedShown)).toBeLessThan(gap(expandedShown));
+
+    const reopened = must(collapsed, { type: 'set-expanded', id: GROUP, expanded: true });
+    expect(focusLayoutState(reopened).document.layout).toEqual(expandedShown.document.layout);
   });
 
   it('moves the visible elements closer while the removed one holds still', () => {
@@ -126,8 +162,13 @@ describe('focusLayoutState', () => {
     expect(state.document).toEqual(before);
   });
 
-  it('clearing the filter drops the overlay entirely', () => {
+  it('clearing the filter keeps the board compacted while the mode runs', () => {
     const state = must(focused(base), { type: 'set-filter', expression: '' });
+    expect(focusLayoutState(state)).not.toBe(state);
+  });
+
+  it('turning the mode off drops the overlay entirely', () => {
+    const state = must(focused(base), { type: 'set-focus-mode', enabled: false });
     expect(focusLayoutState(state)).toBe(state);
     expect(at(state, LEDGER)).toEqual({ x: 2000, y: 600 });
   });

@@ -1,6 +1,6 @@
 # 027: Focus compaction is a derived layout, and geometry gestures pause under it
 
-**Status**: accepted · **Date**: 2026-08-13
+**Status**: accepted · **Date**: 2026-08-13 · Amended by [029](029-focus-compaction-on-collapse.md): the pack now runs whenever the mode is on, so a collapse reflows the view
 
 ## Context
 

@@ -34,5 +34,6 @@ A decision earns a file when reversing it later would be expensive: it shapes th
 | [026](026-zoom-floor-follows-board-extent.md) | The zoom floor follows the board's extent, and never moves the camera itself |
 | [027](027-filter-focus-compaction.md) | Focus compaction is a derived layout, and geometry gestures pause under it |
 | [028](028-filter-auto-expansion.md) | A committed filter opens the groups above its matches, and clearing restores the reader's set |
+| [029](029-focus-compaction-on-collapse.md) | Focus mode compacts whenever it is on, so collapse reflows the view |
 
 The build order these decisions were first applied in lives in [the bootstrap spec](../specs/001-bootstrap.md).
