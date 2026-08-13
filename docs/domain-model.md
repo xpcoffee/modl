@@ -323,9 +323,11 @@ Targets can be any element, connections included. A note with no targets describ
 
 A note carries tags in the same shape an element does, written with `set-note-tag` and `remove-note-tag`, and `rename-tag` renames a key on a note the same way it does on an element. A tag filter reaches an element through its notes: an element matches `context=refunds` when its own tags match or a note attached to it carries the tag.
 
-The filter key `note` is reserved, mirroring `comment`: `note` matches every element a note is attached to, `note=text` narrows to notes whose text contains `text` (case-insensitive substring), and a tag key literally named "note" stays reachable by quoting the key (`"note"=todo`). A committed filter also decides which notes stay on the board: a note stays visible when every tag term matches its tags and every text term appears in its text, while comment terms and note terms never hide a note.
+The filter key `note` is reserved, mirroring `comment`: `note` matches every element a note is attached to, `note=text` narrows to notes whose text contains `text` (case-insensitive substring), and a tag key literally named "note" stays reachable by quoting the key (`"note"=todo`).
 
 Note ids share the selection's id space with elements and comments, so selecting a note is the same gesture as selecting a box, and it highlights the elements the note describes. A note the reader has arranged on the board keeps a pin in `layout` under its own id, `{x, y, width, height}`, written by `move-note` and deleted with the note.
+
+A note's card is revealed rather than always drawn: it appears when the note or one of its targets is selected, or when a committed filter carries at least one non-negated tag term and the note's tags satisfy every tag term in it. Text terms, `comment` terms, and `note` terms reveal nothing, since they pick elements rather than name a context. The elements a note describes carry a badge either way, so a reader sees that context exists before asking for it. See [decision 029](decisions/029-domain-notes.md).
 
 ## Comments
 

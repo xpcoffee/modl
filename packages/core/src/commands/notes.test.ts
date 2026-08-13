@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { apply, applyAll } from './apply.js';
 import { initialState } from '../state.js';
 import { allNotes, notesOn, notedElementIds } from '../query/notes.js';
-import { formatTerm, matchingNoteIds, parseFilter, selectIds } from '../query/filter.js';
+import { formatTerm, parseFilter, selectIds } from '../query/filter.js';
 import { noteSuggestions, tagSuggestions } from '../query/search.js';
-import { boardEmphasis, hiddenNoteIds } from '../query/view.js';
+import { boardEmphasis, visibleNoteIds } from '../query/view.js';
 import { FORMAT_VERSION } from '../model/types.js';
 import { validateDocument } from '../model/validate.js';
 import { parseDocument, serializeDocument } from '../serialize/serialize.js';
@@ -416,49 +416,62 @@ describe('filtering by note', () => {
   });
 });
 
-describe('note visibility under a filter', () => {
-  it('a tag term keeps the notes carrying the tag', () => {
-    const state = must(
-      base,
-      note(NOTE, 'refund path', [A], { context: ['refunds'] }),
-      note(NOTE2, 'untagged', [B]),
+describe('which note cards the board draws', () => {
+  it('draws no card on a board with no selection and no filter', () => {
+    const state = must(base, note(NOTE, 'refund path', [A], { context: ['refunds'] }));
+    expect(visibleNoteIds(state)).toEqual(new Set());
+  });
+
+  it('draws the card of a selected note, and of a note on a selected element', () => {
+    const written = must(base, note(NOTE, 'refund path', [A]), note(NOTE2, 'settlement', [B]));
+
+    expect(visibleNoteIds(must(written, { type: 'set-selection', ids: [NOTE] }))).toEqual(
+      new Set([NOTE]),
     );
-    const parsed = parseFilter('context=refunds');
-    if (!parsed.ok) throw new Error('filter failed to parse');
-    expect(matchingNoteIds(state.document.model.notes, parsed.terms)).toEqual(new Set([NOTE]));
-  });
-
-  it('a text term keeps the notes containing the text', () => {
-    const state = must(
-      base,
-      note(NOTE, 'Refunds reverse the entry', [A]),
-      note(NOTE2, 'settles overnight', [B]),
+    expect(visibleNoteIds(must(written, { type: 'set-selection', ids: [A] }))).toEqual(
+      new Set([NOTE]),
     );
-    const parsed = parseFilter('"refunds"');
-    if (!parsed.ok) throw new Error('filter failed to parse');
-    expect(matchingNoteIds(state.document.model.notes, parsed.terms)).toEqual(new Set([NOTE]));
   });
 
-  it('comment terms and note terms hide no notes', () => {
-    const state = must(base, note(NOTE, 'plain', [A]));
-    const parsed = parseFilter('comment=retry note=other');
-    if (!parsed.ok) throw new Error('filter failed to parse');
-    expect(matchingNoteIds(state.document.model.notes, parsed.terms)).toEqual(new Set([NOTE]));
+  it('draws a document-level note only when it is itself selected', () => {
+    const written = must(base, note(NOTE, 'the whole board is the EU flow', []));
+
+    expect(visibleNoteIds(must(written, { type: 'set-selection', ids: [A] }))).toEqual(new Set());
+    expect(visibleNoteIds(must(written, { type: 'set-selection', ids: [NOTE] }))).toEqual(
+      new Set([NOTE]),
+    );
   });
 
-  it('a committed filter hides the non-matching notes', () => {
+  it('draws the cards of the notes a tag filter asks for', () => {
     const state = must(
       base,
       note(NOTE, 'refund path', [A], { context: ['refunds'] }),
       note(NOTE2, 'untagged', [B]),
       { type: 'set-filter', expression: 'context=refunds' },
     );
-    expect(hiddenNoteIds(state)).toEqual(new Set([NOTE2]));
+    expect(visibleNoteIds(state)).toEqual(new Set([NOTE]));
   });
 
-  it('no filter hides no notes', () => {
-    const state = must(base, note(NOTE, 'plain', [A]));
-    expect(hiddenNoteIds(state)).toEqual(new Set());
+  it('holds every tag term against the note, negations included', () => {
+    const state = must(
+      base,
+      note(NOTE, 'refund path', [A], { context: ['refunds'] }),
+      note(NOTE2, 'billing refunds', [B], { context: ['refunds'], area: ['billing'] }),
+      { type: 'set-filter', expression: 'context=refunds -area=billing' },
+    );
+    expect(visibleNoteIds(state)).toEqual(new Set([NOTE]));
+  });
+
+  it('draws nothing for a filter that asks for no tag', () => {
+    // A text term matching the note's own words, the two reserved keys, and a
+    // negation standing alone: each leaves the note off the board, because
+    // none of them names a context to draw a card for.
+    const written = must(base, note(NOTE, 'Refunds reverse the entry', [A]));
+
+    const expressions = ['"refunds"', 'note', 'note=refunds', 'comment=retry', '-area=billing'];
+    for (const expression of expressions) {
+      expect(visibleNoteIds(must(written, { type: 'set-filter', expression }))).toEqual(new Set());
+    }
   });
 });
 

@@ -5501,11 +5501,23 @@ test.describe('notes', () => {
     ];
   }
 
-  test('a note draws as a card on the board, tags as chips, badges on its targets', async ({ page }) => {
+  test('the card waits off the board while the badges mark its targets', async ({ page }) => {
     await dispatch(page, notedDomain());
     await fit(page);
 
-    // No selection and no mode: the card is simply there, being model content.
+    // No selection, no filter, no mode: nothing has asked for the note, so
+    // only the badges say it is there.
+    await expect(page.getByTestId(`note-card-${EU_NOTE}`)).toHaveCount(0);
+    await expect(page.getByTestId(`note-badge-${IDS.gateway}`)).toBeVisible();
+    await expect(page.getByTestId(`note-badge-${IDS.ledger}`)).toBeVisible();
+    await expect(page.getByTestId(`note-badge-${IDS.ui}`)).toHaveCount(0);
+  });
+
+  test('selecting a described element draws the card, tags as chips', async ({ page }) => {
+    await dispatch(page, notedDomain());
+    await fit(page);
+
+    await dispatch(page, [{ type: 'set-selection', ids: [IDS.gateway] }]);
     const card = page.getByTestId(`note-card-${EU_NOTE}`);
     await expect(card).toBeVisible();
     await expect(card.locator('.note-card__text')).toHaveText(
@@ -5514,13 +5526,22 @@ test.describe('notes', () => {
     await expect(card.locator('.note-card__meta')).toHaveText('one note across 2 elements');
     await expect(page.getByTestId(`note-tag-${EU_NOTE}-region`)).toHaveText('region=eu');
 
-    await expect(page.getByTestId(`note-badge-${IDS.gateway}`)).toBeVisible();
-    await expect(page.getByTestId(`note-badge-${IDS.ledger}`)).toBeVisible();
-    await expect(page.getByTestId(`note-badge-${IDS.ui}`)).toHaveCount(0);
+    // Selecting something the note says nothing about takes it away again.
+    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ui] }]);
+    await expect(card).toHaveCount(0);
   });
 
-  test('a committed filter hides the note cards it does not match', async ({ page }) => {
-    await dispatch(page, [
+  test('selecting the note itself draws its card', async ({ page }) => {
+    await dispatch(page, notedDomain());
+    await fit(page);
+
+    await dispatch(page, [{ type: 'set-selection', ids: [EU_NOTE] }]);
+    await expect(page.getByTestId(`note-card-${EU_NOTE}`)).toBeVisible();
+  });
+
+  /** The EU note plus a US one, so a tag filter has something to choose between. */
+  function twoRegions() {
+    return [
       ...notedDomain(),
       {
         type: 'create-note' as const,
@@ -5529,15 +5550,47 @@ test.describe('notes', () => {
         targets: [IDS.ledger],
         tags: { region: ['us'] },
       },
-    ]);
+    ];
+  }
+
+  test('a committed tag filter draws the cards of the notes carrying the tag', async ({ page }) => {
+    await dispatch(page, twoRegions());
     await fit(page);
 
     await setFilter(page, 'region=eu');
     await expect(page.getByTestId(`note-card-${EU_NOTE}`)).toBeVisible();
     await expect(page.getByTestId(`note-card-${US_NOTE}`)).toHaveCount(0);
 
-    // Clearing the filter puts every card back.
+    // Clearing the filter takes the card back off the board: nothing is
+    // asking for it any more.
     await setFilter(page, '');
+    await expect(page.getByTestId(`note-card-${EU_NOTE}`)).toHaveCount(0);
+  });
+
+  test('a text filter and a note filter draw no cards', async ({ page }) => {
+    await dispatch(page, twoRegions());
+    await fit(page);
+
+    // Both expressions find the note; neither names a context, so neither
+    // puts a card on the board.
+    await setFilter(page, 'note=settlement');
+    await expect(page.getByTestId(`note-card-${EU_NOTE}`)).toHaveCount(0);
+    await expect(page.getByTestId(`note-card-${US_NOTE}`)).toHaveCount(0);
+
+    await setFilter(page, '"settlement"');
+    await expect(page.getByTestId(`note-card-${EU_NOTE}`)).toHaveCount(0);
+  });
+
+  test('notes mode draws every card, asked for or not', async ({ page }) => {
+    await dispatch(page, twoRegions());
+    await fit(page);
+
+    await page.getByTestId('overlay-notes').click();
+    await expect(page.getByTestId(`note-card-${EU_NOTE}`)).toBeVisible();
+    await expect(page.getByTestId(`note-card-${US_NOTE}`)).toBeVisible();
+
+    // A filter narrows what the mode can touch, never what it shows.
+    await setFilter(page, 'region=eu');
     await expect(page.getByTestId(`note-card-${US_NOTE}`)).toBeVisible();
   });
 
@@ -5733,12 +5786,13 @@ test.describe('notes mode', () => {
     expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(5);
   });
 
-  test('dragging a card pins it with one move-note, in any mode', async ({ page }) => {
+  test('dragging a revealed card pins it with one move-note, in any mode', async ({ page }) => {
     await dispatch(page, notedDomain());
     await fit(page);
 
-    // Model mode: the card is on the board and drags without entering
-    // notes mode, the way a comment card moves without its overlay.
+    // Model mode: a selected note's card drags without entering notes mode,
+    // the way a comment card moves without its overlay.
+    await dispatch(page, [{ type: 'set-selection', ids: [NOTE] }]);
     const card = page.getByTestId(`note-card-${NOTE}`);
     const box = await card.boundingBox();
     expect(box).not.toBeNull();

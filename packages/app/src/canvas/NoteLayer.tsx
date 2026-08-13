@@ -3,9 +3,9 @@ import { ViewportPortal, useNodes, useReactFlow } from '@xyflow/react';
 import {
   NOTE_CARD_SIZE,
   allNotes,
-  hiddenNoteIds,
   isEntityLayout,
   notesOn,
+  visibleNoteIds,
   type AppState,
   type Id,
   type Note,
@@ -26,14 +26,15 @@ import {
 import { NoteTextBox } from './NoteTextBox.js';
 
 /**
- * Notes drawn as movable cards, always on the board (issue #83, decision
- * 029). A note is model content, so unlike a comment its card never waits
- * for a selection or an overlay; a committed filter is the one thing that
- * takes a card away. Notes mode carries the discussion overlay's grammar
- * for writing them: one press on an element opens or creates its note,
- * ctrl+click and shift+box grow or shrink what it describes, double-click
- * on empty board writes a document-level note, and the two modes exclude
- * each other.
+ * Notes drawn as movable cards (issue #83, decision 029). Outside notes mode
+ * a card waits to be revealed, by the selection or by a tag filter
+ * (`visibleNoteIds`), so notes written for one situation stay out of the way
+ * of a reader working in another; the badge on each target still says a note
+ * is there. Notes mode draws every card and carries the discussion overlay's
+ * grammar for writing them: one press on an element opens or creates its
+ * note, ctrl+click and shift+box grow or shrink what it describes,
+ * double-click on empty board writes a document-level note, and the two
+ * modes exclude each other.
  */
 
 /** Where an unpinned card sits: above its targets, where comments sit below,
@@ -203,17 +204,18 @@ export function NoteLayer() {
     return centres;
   }, [flowNodes]);
 
-  // The committed filter hides non-matching cards while reading. Writing
-  // outranks it: a note born under a tag filter has no tags yet, and hiding
-  // it would close the text box the press just opened.
-  const hidden = useMemo(() => (mode ? new Set<Id>() : hiddenNoteIds(state)), [mode, state]);
+  // Notes mode is the writing layer, so every card shows there; elsewhere a
+  // card waits for the selection or a tag filter to reveal it.
+  const visible = useMemo(() => (mode ? null : visibleNoteIds(state)), [mode, state]);
   const cards = useMemo(() => {
-    const placed = placeCards(state, liveCentres).filter((card) => !hidden.has(card.note.id));
+    const placed = placeCards(state, liveCentres).filter(
+      (card) => visible === null || visible.has(card.note.id),
+    );
     if (liveDrag === null) return placed;
     return placed.map((card) =>
       card.note.id === liveDrag.id ? { ...card, at: liveDrag.at } : card,
     );
-  }, [state, hidden, liveDrag, liveCentres]);
+  }, [state, visible, liveDrag, liveCentres]);
   const selectedNote = soleSelectedNote(state);
 
   /** One keyboard for the feature, mirroring the discussion overlay's. */

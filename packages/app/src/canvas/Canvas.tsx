@@ -795,8 +795,8 @@ export function Canvas() {
 
       // Nor is one inside an overlay: double-clicking a word in the search
       // box would otherwise drop a component behind the box. A card's own
-      // double-click already opens its text box, and a note card is on the
-      // board in every mode.
+      // double-click already opens its text box, and a note card sits on the
+      // board outside notes mode too, whenever something reveals it.
       if (hit?.closest('.search-menu, .hidden-strip, .note-card, .comment-card')) return;
 
       const node = hit?.closest<HTMLElement>('.react-flow__node');

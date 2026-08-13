@@ -315,23 +315,21 @@ export function selectIds(
 }
 
 /**
- * Ids of the notes a filter keeps visible. A note matches when every tag
- * term matches its tags and every text term is a case-insensitive substring
- * of its text; comment terms and note terms never hide a note, since they
- * pick elements rather than describe notes.
+ * Ids of the notes whose own tags satisfy every tag term in the filter. Text,
+ * comment, and note terms are ignored: they pick elements rather than
+ * describe notes. An expression with no tag term in it satisfies every note,
+ * so a caller that needs a tag to have been asked for checks that itself; see
+ * `visibleNoteIds`.
  */
-export function matchingNoteIds(
+export function notesMatchingTagTerms(
   notes: Record<Id, Note>,
   terms: readonly FilterTerm[],
 ): Set<Id> {
   const matching = new Set<Id>();
   for (const [id, note] of Object.entries(notes)) {
     const matches = terms.every((term) => {
-      if (term.kind === 'comment' || term.kind === 'note') return true;
-      const present =
-        term.kind === 'text'
-          ? note.text.toLowerCase().includes(term.text.toLowerCase())
-          : tagsMatch(note.tags, term);
+      if (term.kind !== 'tag') return true;
+      const present = tagsMatch(note.tags, term);
       return term.negated ? !present : present;
     });
     if (matches) matching.add(id);

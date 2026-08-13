@@ -1,6 +1,6 @@
 import { isConnection, type Comment, type Element, type Id, type Note } from '../model/types.js';
 import type { AppState } from '../commands/types.js';
-import { matchingNoteIds, parseFilter, selectIds } from './filter.js';
+import { notesMatchingTagTerms, parseFilter, selectIds } from './filter.js';
 import { ancestorsOf, descendantsOf, visibleAnchor } from './groups.js';
 
 /**
@@ -228,21 +228,36 @@ export function focusHiddenIds(state: AppState): Set<Id> {
 }
 
 /**
- * Notes a committed filter takes off the board: everything `matchingNoteIds`
- * does not keep. Empty while no filter is active, so an unfiltered board
- * shows every note.
+ * Notes whose cards belong on the board. A card is revealed rather than
+ * always drawn, so the notes written against one situation stay out of the
+ * way of a reader working in another; the badge on each target is what says
+ * a note exists while its card is away (issue #83 review, decision 029).
+ *
+ * Two things reveal a card. The reader points at it, meaning the note or one
+ * of the elements it describes is selected; a document-level note has no
+ * targets, so only its own selection does that. Or a committed filter names
+ * a context the note carries: the expression parses, holds at least one
+ * non-negated tag term, and every tag term in it holds against the note's
+ * tags, so `context=refunds -area=billing` reveals a refunds note that is not
+ * tagged area=billing. Only tags reveal, because a text term, a bare `note`,
+ * and `note=text` all pick elements rather than name a context.
+ *
+ * Notes mode is absent here: it is app state, and that layer draws every
+ * card because it is where notes are written.
  */
-export function hiddenNoteIds(state: AppState): Set<Id> {
-  const hidden = new Set<Id>();
-  const parsed = parseFilter(state.filter);
-  if (!parsed.ok || parsed.terms.length === 0) return hidden;
-
+export function visibleNoteIds(state: AppState): Set<Id> {
   const notes = state.document.model.notes;
-  const matching = matchingNoteIds(notes, parsed.terms);
-  for (const id of Object.keys(notes)) {
-    if (!matching.has(id)) hidden.add(id);
+  const selected = new Set(state.selection);
+  const visible = new Set<Id>();
+  for (const [id, note] of Object.entries(notes)) {
+    if (selected.has(id) || note.targets.some((target) => selected.has(target))) visible.add(id);
   }
-  return hidden;
+
+  const parsed = parseFilter(state.filter);
+  if (!parsed.ok) return visible;
+  if (!parsed.terms.some((term) => term.kind === 'tag' && !term.negated)) return visible;
+  for (const id of notesMatchingTagTerms(notes, parsed.terms)) visible.add(id);
+  return visible;
 }
 
 export interface Relation {
