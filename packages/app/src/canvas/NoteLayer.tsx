@@ -204,6 +204,24 @@ export function NoteLayer() {
     return centres;
   }, [flowNodes]);
 
+  // Each card's rendered height, so an arc can end at the middle of the card
+  // and the card itself covers the rest of the line. The height is content
+  // driven (text, chips, the open text box), so `NOTE_CARD_SIZE.height` is
+  // only the nominal size a card holds before it is measured.
+  const [cardHeights, setCardHeights] = useState<ReadonlyMap<Id, number>>(new Map());
+  const measureCard = useCallback((noteId: Id, height: number | null) => {
+    setCardHeights((current) => {
+      if (height === null) {
+        if (!current.has(noteId)) return current;
+        const next = new Map(current);
+        next.delete(noteId);
+        return next;
+      }
+      if (current.get(noteId) === height) return current;
+      return new Map(current).set(noteId, height);
+    });
+  }, []);
+
   // Notes mode is the writing layer, so every card shows there; elsewhere a
   // card waits for the selection or a tag filter to reveal it.
   const visible = useMemo(() => (mode ? null : visibleNoteIds(state)), [mode, state]);
@@ -295,8 +313,10 @@ export function NoteLayer() {
 
   return (
     <ViewportPortal>
-      {/* Arcs under the cards: one card, one line to each thing it describes.
-          Solid where the discussion's arcs dash: attachment is a fact here. */}
+      {/* Arcs under the cards: one card, one line to each thing it describes,
+          ending at the middle of the card so the line points at it from
+          whichever side the target sits on. Solid where the discussion's arcs
+          dash: attachment is a fact here. */}
       <svg className="note-layer__arcs" width="1" height="1">
         {cards.map((card) =>
           card.anchors.map((anchor, index) => (
@@ -304,7 +324,7 @@ export function NoteLayer() {
               key={`${card.note.id}-${index}`}
               data-testid={`note-arc-${card.note.id}-${index}`}
               x1={card.at.x + NOTE_CARD_SIZE.width / 2}
-              y1={card.at.y + NOTE_CARD_SIZE.height - 12}
+              y1={card.at.y + (cardHeights.get(card.note.id) ?? NOTE_CARD_SIZE.height) / 2}
               x2={anchor.x}
               y2={anchor.y}
               className={`note-layer__arc${selectedNote === card.note.id ? ' is-selected' : ''}`}
@@ -322,6 +342,7 @@ export function NoteLayer() {
           editing={edit?.noteId === card.note.id}
           justDragged={justDragged}
           onDragStart={dragCard(card.note.id, card.at)}
+          onMeasure={measureCard}
         />
       ))}
     </ViewportPortal>
@@ -335,6 +356,7 @@ function NoteCard({
   editing,
   justDragged,
   onDragStart,
+  onMeasure,
 }: {
   card: CardPlace;
   /** True in notes mode, which is when the tag chips take edits. */
@@ -344,14 +366,31 @@ function NoteCard({
   /** Set by a drag ending; the click that follows it must not select. */
   justDragged: React.MutableRefObject<boolean>;
   onDragStart?: (event: React.PointerEvent) => void;
+  /** Reports the rendered height for the arcs, and `null` as the card goes. */
+  onMeasure: (noteId: Id, height: number | null) => void;
 }) {
   const { note } = card;
+  const element = useRef<HTMLDivElement>(null);
   const classes = ['note-card', 'nodrag', 'nopan', selected ? 'is-selected' : '']
     .filter(Boolean)
     .join(' ');
 
+  useEffect(() => {
+    const node = element.current;
+    if (node === null) return;
+    // `offsetHeight` is the layout height, so the board's zoom does not
+    // scale it; the observer covers text, chips, and the text box opening.
+    const observer = new ResizeObserver(() => onMeasure(note.id, node.offsetHeight));
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+      onMeasure(note.id, null);
+    };
+  }, [note.id, onMeasure]);
+
   return (
     <div
+      ref={element}
       className={classes}
       data-testid={`note-card-${note.id}`}
       style={{ transform: `translate(${card.at.x}px, ${card.at.y}px)`, width: NOTE_CARD_SIZE.width }}

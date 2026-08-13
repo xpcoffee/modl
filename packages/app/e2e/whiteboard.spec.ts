@@ -5539,6 +5539,66 @@ test.describe('notes', () => {
     await expect(page.getByTestId(`note-card-${EU_NOTE}`)).toBeVisible();
   });
 
+  /**
+   * The first arc of a note, measured against the card it comes from: how far
+   * its card end sits from the middle of the card, and which way it runs.
+   * Board coordinates throughout, so the camera's zoom does not enter into it.
+   */
+  async function arcAgainstCard(page: import('@playwright/test').Page, noteId: string) {
+    return page.evaluate((id) => {
+      const card = document.querySelector<HTMLElement>(`[data-testid="note-card-${id}"]`);
+      const arc = document.querySelector<SVGLineElement>(`[data-testid="note-arc-${id}-0"]`);
+      if (card === null || arc === null) throw new Error(`no card or arc for note ${id}`);
+      const at = new DOMMatrixReadOnly(getComputedStyle(card).transform);
+      const centre = { x: at.m41 + card.offsetWidth / 2, y: at.m42 + card.offsetHeight / 2 };
+      const end = { x: Number(arc.getAttribute('x1')), y: Number(arc.getAttribute('y1')) };
+      return {
+        offCentre: Math.round(Math.hypot(end.x - centre.x, end.y - centre.y)),
+        targetAbove: Number(arc.getAttribute('y2')) < end.y,
+        cardHeight: card.offsetHeight,
+      };
+    }, noteId);
+  }
+
+  test('an arc ends at the centre of its card, from either side', async ({ page }) => {
+    const ONE_TARGET = 'gateway-note';
+    await dispatch(page, [
+      ...sampleDomain(),
+      {
+        type: 'create-note',
+        id: ONE_TARGET,
+        text: 'hello',
+        targets: [IDS.gateway],
+        tags: { region: ['eu'] },
+      },
+    ]);
+    await fit(page);
+    await dispatch(page, [{ type: 'set-selection', ids: [ONE_TARGET] }]);
+    await expect(page.getByTestId(`note-card-${ONE_TARGET}`)).toBeVisible();
+
+    // A short card: one line of text and one chip renders well under the
+    // nominal 88px height the old bottom-edge anchor assumed.
+    expect((await arcAgainstCard(page, ONE_TARGET)).cardHeight).toBeLessThan(88);
+
+    // Unpinned, the card sits above the gateway and the arc runs down into it.
+    await expect
+      .poll(async () => {
+        const arc = await arcAgainstCard(page, ONE_TARGET);
+        return { targetAbove: arc.targetAbove, atCentre: arc.offCentre < 2 };
+      })
+      .toEqual({ targetAbove: false, atCentre: true });
+
+    // Pinned below the gateway the arc comes in from above, the case in the
+    // report: it must still end at the middle of the card, not past its edge.
+    await dispatch(page, [{ type: 'move-note', id: ONE_TARGET, position: { x: 280, y: 320 } }]);
+    await expect
+      .poll(async () => {
+        const arc = await arcAgainstCard(page, ONE_TARGET);
+        return { targetAbove: arc.targetAbove, atCentre: arc.offCentre < 2 };
+      })
+      .toEqual({ targetAbove: true, atCentre: true });
+  });
+
   /** The EU note plus a US one, so a tag filter has something to choose between. */
   function twoRegions() {
     return [
