@@ -1023,6 +1023,28 @@ select {
   background: rgb(91 141 239 / 8%);
 }
 
+/* Keyboard focus (decision 025). The ring's stop wears the accent ring, and
+   a soft-focused element wears a dashed outline: visibly not the selection's
+   solid border and glow, because soft focus selects nothing. */
+
+.roller-menu__entrance:focus-visible,
+.element-editor:focus-visible,
+.selection-actions:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.react-flow__node:focus-visible {
+  outline: none;
+}
+
+.react-flow__node:focus-visible .entity-node,
+.react-flow__node:focus-visible .group-node,
+.react-flow__node:focus-visible .connection-node__face {
+  outline: 2px dashed var(--accent);
+  outline-offset: 3px;
+}
+
 /* The label editor, which takes the roller's place when a branch is chosen. */
 
 .connection-label-editor {

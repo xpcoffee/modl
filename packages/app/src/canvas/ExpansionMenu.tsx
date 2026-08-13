@@ -166,6 +166,7 @@ export function ExpansionMenu({ nodes }: { nodes: Node<BoardNodeData>[] }) {
           entranceAriaLabel="Expand or collapse the selection"
           options={options}
           onSelect={roll}
+          focusSlot="expansion"
           testId="expansion-menu"
         />
       </div>
