@@ -390,6 +390,37 @@ describe('relationsOf', () => {
     const state = must(base, entity(GROUP, 'Loose end'));
     expect(relationsOf(state, GROUP)).toEqual([]);
   });
+
+  describe('in focus mode', () => {
+    const focused = (state: AppState): AppState =>
+      must(state, { type: 'set-focus-mode', enabled: true }, { type: 'set-filter', expression: 'team=payments' });
+
+    it('leaves out relations to peers the filter removed', () => {
+      expect(relationsOf(focused(base), GATEWAY)).toEqual([{ connectionId: POST, peerId: LEDGER }]);
+    });
+
+    it('lists everything again once focus mode turns off', () => {
+      const state = must(focused(base), { type: 'set-focus-mode', enabled: false });
+      expect(relationsOf(state, GATEWAY)).toEqual([
+        { connectionId: AUTHORISE, peerId: UI },
+        { connectionId: POST, peerId: LEDGER },
+      ]);
+    });
+
+    it('returns nothing for an element focus mode removed', () => {
+      expect(relationsOf(focused(base), UI)).toEqual([]);
+    });
+
+    it('keeps a peer whose collapsed group survives through a matching member', () => {
+      // Committing the filter opens the group above the match (#79), so
+      // collapse it again to exercise the group-as-anchor case.
+      const state = must(
+        focused(must(base, entity(GROUP, 'Backoffice'), { type: 'set-group', id: LEDGER, groupId: GROUP })),
+        { type: 'set-expanded', id: GROUP, expanded: false },
+      );
+      expect(relationsOf(state, GATEWAY)).toEqual([{ connectionId: POST, peerId: GROUP }]);
+    });
+  });
 });
 
 describe('focusHiddenIds', () => {

@@ -11,7 +11,7 @@ const filter = process.argv[3] ?? '';
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 780 } });
 
-await page.goto('http://localhost:5173/');
+await page.goto(`http://localhost:${process.env.MODL_PORT ?? 5173}/`);
 await page.waitForFunction(() => window.__modl?.ready === true);
 
 const ui = '11111111-1111-4111-8111-111111111111';
@@ -26,10 +26,10 @@ await page.evaluate(
       { type: 'create-entity', id: c, entityType: 'component', title: 'Ledger', position: { x: 600, y: 120 } },
       { type: 'create-connection', id: '44444444-4444-4444-8444-444444444444', connectionType: 'interaction', from: [a], to: [b], title: 'authorise' },
       { type: 'create-connection', id: '55555555-5555-4555-8555-555555555555', connectionType: 'interaction', from: [b], to: [c], title: 'post entry' },
-      { type: 'set-tag', id: a, key: 'team', value: 'web' },
-      { type: 'set-tag', id: b, key: 'team', value: 'payments' },
-      { type: 'set-tag', id: b, key: 'tier', value: '1' },
-      { type: 'set-tag', id: c, key: 'team', value: 'payments' },
+      { type: 'set-tag', id: a, key: 'team', values: ['web'] },
+      { type: 'set-tag', id: b, key: 'team', values: ['payments'] },
+      { type: 'set-tag', id: b, key: 'tier', values: ['1'] },
+      { type: 'set-tag', id: c, key: 'team', values: ['payments'] },
       { type: 'set-selection', ids: [b] },
     ]),
   [ui, gateway, ledger],

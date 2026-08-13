@@ -57,7 +57,8 @@ function takeWalkArrival(id: Id): boolean {
 
 /**
  * The relations menu: a roller beside the selected element listing everything
- * it connects to. Turning the roller emphasises each connection on the board.
+ * it connects to on the board the reader sees, so a peer focus mode removed
+ * is not offered. Turning the roller emphasises each connection on the board.
  *
  * Choosing a relation pans to its peer, unless the element is a junction, in
  * which case the roller branches: go to the peer, or write the answer this
