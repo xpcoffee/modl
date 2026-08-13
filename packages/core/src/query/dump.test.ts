@@ -63,7 +63,10 @@ function doc(elements: Element[], comments: Comment[] = []): Document {
     formatVersion: FORMAT_VERSION,
     id: 'doc',
     title: 'Checkout domain',
-    model: { elements: Object.fromEntries(elements.map((element) => [element.id, element])) },
+    model: {
+      elements: Object.fromEntries(elements.map((element) => [element.id, element])),
+      notes: {},
+    },
     comments: Object.fromEntries(comments.map((comment) => [comment.id, comment])),
     layout: {},
     view: DEFAULT_VIEW,
@@ -87,7 +90,7 @@ describe('dumpDocument', () => {
     expect(dumpDocument(document)).toBe(
       [
         'Checkout domain',
-        '3 entities, 1 connection node, 2 connections, 1 comment',
+        '3 entities, 1 connection node, 2 connections, 0 notes, 1 comment',
         '',
         'elements',
         '  decision  connection-node  diamond    Card ok?',
@@ -111,7 +114,7 @@ describe('dumpDocument', () => {
     expect(dumpDocument(document)).toBe(
       [
         'Checkout domain',
-        '1 entity, 0 connection nodes, 0 connections, 0 comments',
+        '1 entity, 0 connection nodes, 0 connections, 0 notes, 0 comments',
         '',
         'elements',
         '  ui  entity  component  Checkout UI',

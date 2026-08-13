@@ -16,6 +16,7 @@ import { motionReduced } from '../preferences/motion.js';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 import { getCommentEdit, startCommentEdit, stopCommentEdit, useCommentEdit } from './commentEditing.js';
+import { enterNotesMode, leaveNotesMode, useNotesMode } from './noteEditing.js';
 import { CommentTextBox } from './CommentTextBox.js';
 
 /**
@@ -46,10 +47,11 @@ interface CardPlace {
 /**
  * Centres React Flow is drawing right now, so an arc follows an element as
  * it is dragged rather than jumping when the move lands in the document.
+ * Shared with the note cards (NoteLayer), which anchor the same way.
  */
-type LiveCentres = ReadonlyMap<Id, Point>;
+export type LiveCentres = ReadonlyMap<Id, Point>;
 
-function rectCentre(state: AppState, id: Id, live?: LiveCentres): Point | null {
+export function rectCentre(state: AppState, id: Id, live?: LiveCentres): Point | null {
   const drawn = live?.get(id);
   if (drawn) return drawn;
   const entry = state.document.layout[id];
@@ -644,24 +646,38 @@ function Timeline({
   );
 }
 
-/** The mode switch: the other way in and out of the overlay besides c/Escape. */
+/** The mode switch: the other way in and out of the modes besides n/c/Escape. */
 export function OverlayToggle() {
   const state = useAppState();
+  const notesMode = useNotesMode();
   return (
     <div className="overlay-toggle" data-testid="overlay-toggle">
       <button
         type="button"
         data-testid="overlay-model"
-        className={state.commentOverlay ? '' : 'is-active'}
-        onClick={() => store.dispatch({ type: 'set-comment-overlay', open: false })}
+        className={state.commentOverlay || notesMode ? '' : 'is-active'}
+        onClick={() => {
+          leaveNotesMode();
+          store.dispatch({ type: 'set-comment-overlay', open: false });
+        }}
       >
         model
+      </button>
+      <button
+        type="button"
+        data-testid="overlay-notes"
+        className={notesMode ? 'is-active is-notes' : ''}
+        title="Notes mode (n)"
+        onClick={() => enterNotesMode()}
+      >
+        notes
       </button>
       <button
         type="button"
         data-testid="overlay-discussion"
         className={state.commentOverlay ? 'is-active' : ''}
         title="Discussion overlay (c)"
+        // Opening drops notes mode too: NoteLayer watches the overlay state.
         onClick={() => store.dispatch({ type: 'set-comment-overlay', open: true })}
       >
         discussion

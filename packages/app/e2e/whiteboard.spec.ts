@@ -5483,6 +5483,458 @@ test.describe('discussion overlay', () => {
   });
 });
 
+test.describe('notes', () => {
+  const EU_NOTE = 'eu-settlement-note';
+  const US_NOTE = 'us-settlement-note';
+
+  /** The sample domain with one tagged note describing gateway and ledger. */
+  function notedDomain() {
+    return [
+      ...sampleDomain(),
+      {
+        type: 'create-note' as const,
+        id: EU_NOTE,
+        text: 'Settlement is deferred in the EU flow',
+        targets: [IDS.gateway, IDS.ledger],
+        tags: { region: ['eu'] },
+      },
+    ];
+  }
+
+  test('the card waits off the board while the badges mark its targets', async ({ page }) => {
+    await dispatch(page, notedDomain());
+    await fit(page);
+
+    // No selection, no filter, no mode: nothing has asked for the note, so
+    // only the badges say it is there.
+    await expect(page.getByTestId(`note-card-${EU_NOTE}`)).toHaveCount(0);
+    await expect(page.getByTestId(`note-badge-${IDS.gateway}`)).toBeVisible();
+    await expect(page.getByTestId(`note-badge-${IDS.ledger}`)).toBeVisible();
+    await expect(page.getByTestId(`note-badge-${IDS.ui}`)).toHaveCount(0);
+  });
+
+  test('selecting a described element draws the card, tags as chips', async ({ page }) => {
+    await dispatch(page, notedDomain());
+    await fit(page);
+
+    await dispatch(page, [{ type: 'set-selection', ids: [IDS.gateway] }]);
+    const card = page.getByTestId(`note-card-${EU_NOTE}`);
+    await expect(card).toBeVisible();
+    await expect(card.locator('.note-card__text')).toHaveText(
+      'Settlement is deferred in the EU flow',
+    );
+    await expect(card.locator('.note-card__meta')).toHaveText('one note across 2 elements');
+    await expect(page.getByTestId(`note-tag-${EU_NOTE}-region`)).toHaveText('region=eu');
+
+    // Selecting something the note says nothing about takes it away again.
+    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ui] }]);
+    await expect(card).toHaveCount(0);
+  });
+
+  test('selecting the note itself draws its card', async ({ page }) => {
+    await dispatch(page, notedDomain());
+    await fit(page);
+
+    await dispatch(page, [{ type: 'set-selection', ids: [EU_NOTE] }]);
+    await expect(page.getByTestId(`note-card-${EU_NOTE}`)).toBeVisible();
+  });
+
+  /**
+   * The first arc of a note, measured against the card it comes from: how far
+   * its card end sits from the middle of the card, and which way it runs.
+   * Board coordinates throughout, so the camera's zoom does not enter into it.
+   */
+  async function arcAgainstCard(page: import('@playwright/test').Page, noteId: string) {
+    return page.evaluate((id) => {
+      const card = document.querySelector<HTMLElement>(`[data-testid="note-card-${id}"]`);
+      const arc = document.querySelector<SVGLineElement>(`[data-testid="note-arc-${id}-0"]`);
+      if (card === null || arc === null) throw new Error(`no card or arc for note ${id}`);
+      const at = new DOMMatrixReadOnly(getComputedStyle(card).transform);
+      const centre = { x: at.m41 + card.offsetWidth / 2, y: at.m42 + card.offsetHeight / 2 };
+      const end = { x: Number(arc.getAttribute('x1')), y: Number(arc.getAttribute('y1')) };
+      return {
+        offCentre: Math.round(Math.hypot(end.x - centre.x, end.y - centre.y)),
+        targetAbove: Number(arc.getAttribute('y2')) < end.y,
+        cardHeight: card.offsetHeight,
+      };
+    }, noteId);
+  }
+
+  test('an arc ends at the centre of its card, from either side', async ({ page }) => {
+    const ONE_TARGET = 'gateway-note';
+    await dispatch(page, [
+      ...sampleDomain(),
+      {
+        type: 'create-note',
+        id: ONE_TARGET,
+        text: 'hello',
+        targets: [IDS.gateway],
+        tags: { region: ['eu'] },
+      },
+    ]);
+    await fit(page);
+    await dispatch(page, [{ type: 'set-selection', ids: [ONE_TARGET] }]);
+    await expect(page.getByTestId(`note-card-${ONE_TARGET}`)).toBeVisible();
+
+    // A short card: one line of text and one chip renders well under the
+    // nominal 88px height the old bottom-edge anchor assumed.
+    expect((await arcAgainstCard(page, ONE_TARGET)).cardHeight).toBeLessThan(88);
+
+    // Unpinned, the card sits above the gateway and the arc runs down into it.
+    await expect
+      .poll(async () => {
+        const arc = await arcAgainstCard(page, ONE_TARGET);
+        return { targetAbove: arc.targetAbove, atCentre: arc.offCentre < 2 };
+      })
+      .toEqual({ targetAbove: false, atCentre: true });
+
+    // Pinned below the gateway the arc comes in from above, the case in the
+    // report: it must still end at the middle of the card, not past its edge.
+    await dispatch(page, [{ type: 'move-note', id: ONE_TARGET, position: { x: 280, y: 320 } }]);
+    await expect
+      .poll(async () => {
+        const arc = await arcAgainstCard(page, ONE_TARGET);
+        return { targetAbove: arc.targetAbove, atCentre: arc.offCentre < 2 };
+      })
+      .toEqual({ targetAbove: true, atCentre: true });
+  });
+
+  /** The EU note plus a US one, so a tag filter has something to choose between. */
+  function twoRegions() {
+    return [
+      ...notedDomain(),
+      {
+        type: 'create-note' as const,
+        id: US_NOTE,
+        text: 'US settlement posts same-day',
+        targets: [IDS.ledger],
+        tags: { region: ['us'] },
+      },
+    ];
+  }
+
+  test('a committed tag filter draws the cards of the notes carrying the tag', async ({ page }) => {
+    await dispatch(page, twoRegions());
+    await fit(page);
+
+    await setFilter(page, 'region=eu');
+    await expect(page.getByTestId(`note-card-${EU_NOTE}`)).toBeVisible();
+    await expect(page.getByTestId(`note-card-${US_NOTE}`)).toHaveCount(0);
+
+    // Clearing the filter takes the card back off the board: nothing is
+    // asking for it any more.
+    await setFilter(page, '');
+    await expect(page.getByTestId(`note-card-${EU_NOTE}`)).toHaveCount(0);
+  });
+
+  test('a text filter and a note filter draw no cards', async ({ page }) => {
+    await dispatch(page, twoRegions());
+    await fit(page);
+
+    // Both expressions find the note; neither names a context, so neither
+    // puts a card on the board.
+    await setFilter(page, 'note=settlement');
+    await expect(page.getByTestId(`note-card-${EU_NOTE}`)).toHaveCount(0);
+    await expect(page.getByTestId(`note-card-${US_NOTE}`)).toHaveCount(0);
+
+    await setFilter(page, '"settlement"');
+    await expect(page.getByTestId(`note-card-${EU_NOTE}`)).toHaveCount(0);
+  });
+
+  test('notes mode draws every card, asked for or not', async ({ page }) => {
+    await dispatch(page, twoRegions());
+    await fit(page);
+
+    await page.getByTestId('overlay-notes').click();
+    await expect(page.getByTestId(`note-card-${EU_NOTE}`)).toBeVisible();
+    await expect(page.getByTestId(`note-card-${US_NOTE}`)).toBeVisible();
+
+    // A filter narrows what the mode can touch, never what it shows.
+    await setFilter(page, 'region=eu');
+    await expect(page.getByTestId(`note-card-${US_NOTE}`)).toBeVisible();
+  });
+
+  test('an element matches a tag filter through its note', async ({ page }) => {
+    await dispatch(page, notedDomain());
+    await fit(page);
+
+    // No element carries region=eu itself; the note lends it to its targets.
+    await setFilter(page, 'region=eu');
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveClass(/is-dimmed/);
+  });
+
+  test('the note filter narrows the board to what is described', async ({ page }) => {
+    await dispatch(page, notedDomain());
+    await fit(page);
+
+    await setFilter(page, 'note');
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).not.toHaveClass(/is-dimmed/);
+
+    await setFilter(page, 'note=settlement');
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveClass(/is-dimmed/);
+  });
+
+  test('the search menu offers the note filter from its words, marked apart', async ({ page }) => {
+    await dispatch(page, notedDomain());
+    await fit(page);
+
+    await openSearch(page);
+    await page.getByTestId('search-input').fill('deferred');
+    await expect(
+      page.getByTestId('search-note-note-deferred').locator('.search-menu__option-kind'),
+    ).toHaveText('filter by note');
+    await page.getByTestId('search-note-note-deferred').click();
+
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveClass(/is-dimmed/);
+  });
+
+  test('selecting a note highlights its targets like pointing at them', async ({ page }) => {
+    // The highlight keeps everything one connection away readable, so the
+    // element that must dim is one nothing in the selection touches.
+    const APART = 'floating-annex';
+    await dispatch(page, [
+      ...notedDomain(),
+      { type: 'create-entity', id: APART, entityType: 'component', title: 'Apart', position: { x: 0, y: 300 } },
+    ]);
+    await fit(page);
+
+    await dispatch(page, [{ type: 'set-selection', ids: [EU_NOTE] }]);
+    await expect(page.getByTestId(`note-card-${EU_NOTE}`)).toHaveClass(/is-selected/);
+    await expect(page.getByTestId(`entity-${APART}`)).toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).not.toHaveClass(/is-dimmed/);
+  });
+
+  test('a note survives a save and a load', async ({ page }) => {
+    await dispatch(page, notedDomain());
+
+    const saved = await serialize(page);
+    expect(JSON.parse(saved).model.notes[EU_NOTE].tags).toEqual({ region: ['eu'] });
+
+    await page.evaluate((text) => {
+      const document = JSON.parse(text);
+      window.__modl.dispatch({ type: 'load-document', document });
+    }, saved);
+
+    expect((await getDocument(page)).model.notes[EU_NOTE]).toMatchObject({
+      text: 'Settlement is deferred in the EU flow',
+    });
+  });
+});
+
+test.describe('notes mode', () => {
+  const NOTE = 'gateway-context';
+
+  /** The sample domain with one note describing the gateway. */
+  function notedDomain() {
+    return [
+      ...sampleDomain(),
+      {
+        type: 'create-note' as const,
+        id: NOTE,
+        text: 'The gateway holds funds for 48 hours',
+        targets: [IDS.gateway],
+      },
+    ];
+  }
+
+  async function state(page: import('@playwright/test').Page) {
+    return page.evaluate(() => window.__modl.getState());
+  }
+
+  test('the toggle enters notes mode, and one press writes an element note', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await fit(page);
+
+    await page.getByTestId('overlay-notes').click();
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-notes-mode', 'true');
+
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+    const editor = page.locator('[data-testid^="note-text-box-"]');
+    await editor.fill('the UI owns the retry policy');
+    await page.getByTestId('canvas').click({ position: { x: 60, y: 500 } });
+
+    const written = Object.values((await getDocument(page)).model.notes)[0];
+    expect(written).toMatchObject({
+      text: 'the UI owns the retry policy',
+      targets: [IDS.ui],
+    });
+    // The element selection UI never showed for any of it.
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-selected/);
+  });
+
+  test('n opens notes mode and a note on whatever was selected', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await fit(page);
+
+    await dispatch(page, [{ type: 'set-selection', ids: [IDS.ui, IDS.gateway] }]);
+    await page.keyboard.press('n');
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-notes-mode', 'true');
+
+    const editor = page.locator('[data-testid^="note-text-box-"]');
+    await editor.fill('this pair settles together');
+    await page.getByTestId('canvas').click({ position: { x: 40, y: 400 } });
+
+    const written = Object.values((await getDocument(page)).model.notes)[0];
+    expect(written).toMatchObject({
+      text: 'this pair settles together',
+      targets: [IDS.ui, IDS.gateway],
+    });
+  });
+
+  test('pressing a described element opens its note; an empty note dies on blur', async ({ page }) => {
+    await dispatch(page, notedDomain());
+    await fit(page);
+    await page.getByTestId('overlay-notes').click();
+
+    // An element already described opens its note for editing.
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+    await expect(page.getByTestId(`note-text-box-${NOTE}`)).toBeVisible();
+    // Clicking off keeps a note that has words.
+    await page.getByTestId('canvas').click({ position: { x: 60, y: 500 } });
+    expect((await getDocument(page)).model.notes[NOTE]).toBeDefined();
+
+    // An element with no note gets a fresh card; abandoning it empty deletes it.
+    await page.getByTestId(`entity-${IDS.ledger}`).click();
+    const editor = page.locator('[data-testid^="note-text-box-"]');
+    await expect(editor).toBeVisible();
+    await page.getByTestId('canvas').click({ position: { x: 60, y: 500 } });
+    await expect(editor).toHaveCount(0);
+    expect(Object.keys((await getDocument(page)).model.notes)).toHaveLength(1);
+  });
+
+  test('ctrl+click while a card is open toggles what it describes', async ({ page }) => {
+    await dispatch(page, notedDomain());
+    await fit(page);
+    await page.getByTestId('overlay-notes').click();
+
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+    await expect(page.getByTestId(`note-text-box-${NOTE}`)).toBeVisible();
+
+    const card = page.getByTestId(`note-card-${NOTE}`);
+    await page.getByTestId(`entity-${IDS.ui}`).click({ modifiers: ['Control'] });
+    await expect(card.locator('.note-card__meta')).toHaveText('one note across 2 elements');
+
+    await page.getByTestId(`entity-${IDS.ui}`).click({ modifiers: ['Control'] });
+    await expect(card.locator('.note-card__meta')).toBeHidden();
+
+    await page.getByTestId('canvas').click({ position: { x: 60, y: 500 } });
+    expect((await getDocument(page)).model.notes[NOTE]?.targets).toEqual([IDS.gateway]);
+  });
+
+  test('double-clicking empty board writes a document-level note, pinned there', async ({ page }) => {
+    await dispatch(page, notedDomain());
+    await fit(page);
+    await page.getByTestId('overlay-notes').click();
+
+    await page.getByTestId('canvas').dblclick({ position: { x: 60, y: 500 } });
+    const editor = page.locator('[data-testid^="note-text-box-"]');
+    await editor.fill('this whole board is the EU flow');
+    await page.getByTestId('canvas').click({ position: { x: 60, y: 560 } });
+
+    const written = Object.values((await getDocument(page)).model.notes).find(
+      (note) => note.text === 'this whole board is the EU flow',
+    );
+    expect(written?.targets).toEqual([]);
+    // The note landed where it was written, pinned at the double-click.
+    expect((await getDocument(page)).layout[written!.id]).toBeDefined();
+    // No element was created by the double-click.
+    expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(5);
+  });
+
+  test('dragging a revealed card pins it with one move-note, in any mode', async ({ page }) => {
+    await dispatch(page, notedDomain());
+    await fit(page);
+
+    // Model mode: a selected note's card drags without entering notes mode,
+    // the way a comment card moves without its overlay.
+    await dispatch(page, [{ type: 'set-selection', ids: [NOTE] }]);
+    const card = page.getByTestId(`note-card-${NOTE}`);
+    const box = await card.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + 8);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + box!.width / 2 + 90, box!.y + 70, { steps: 4 });
+    await page.mouse.up();
+
+    const layout = (await getDocument(page)).layout[NOTE];
+    expect(layout).toBeDefined();
+    expect('x' in layout!).toBe(true);
+    const moves = (await getTrace(page)).filter((entry) => entry.command.type === 'move-note');
+    expect(moves).toHaveLength(1);
+  });
+
+  test('tag chips on the card write to the document', async ({ page }) => {
+    await dispatch(page, notedDomain());
+    await fit(page);
+    await page.getByTestId('overlay-notes').click();
+
+    await page.getByTestId(`note-add-tag-${NOTE}`).click();
+    await page.getByTestId(`note-new-tag-key-${NOTE}`).fill('region');
+    await page.getByTestId(`note-new-tag-value-${NOTE}`).fill('eu');
+    await page.keyboard.press('Enter');
+    expect((await getDocument(page)).model.notes[NOTE]?.tags).toEqual({ region: ['eu'] });
+
+    await page.getByTestId(`note-remove-tag-${NOTE}-region`).click();
+    expect((await getDocument(page)).model.notes[NOTE]?.tags).toEqual({});
+  });
+
+  test('notes mode and the discussion overlay exclude each other', async ({ page }) => {
+    await dispatch(page, notedDomain());
+    await fit(page);
+
+    await page.getByTestId('overlay-notes').click();
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-notes-mode', 'true');
+
+    // Entering the discussion (by key or toggle) leaves notes mode.
+    await page.keyboard.press('c');
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-comment-overlay', 'true');
+    await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-notes-mode', 'true');
+
+    // And entering notes mode closes the discussion.
+    await page.getByTestId('overlay-notes').click();
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-notes-mode', 'true');
+    await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-comment-overlay', 'true');
+
+    // The model button is the way out of both.
+    await page.getByTestId('overlay-model').click();
+    await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-notes-mode', 'true');
+  });
+
+  test('escape deselects before it leaves notes mode', async ({ page }) => {
+    await dispatch(page, notedDomain());
+    await fit(page);
+    await page.getByTestId('overlay-notes').click();
+
+    await dispatch(page, [{ type: 'set-selection', ids: [NOTE] }]);
+    await page.keyboard.press('Escape');
+    expect((await state(page)).selection).toEqual([]);
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-notes-mode', 'true');
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-notes-mode', 'true');
+  });
+
+  test('the filter gates what notes mode can touch', async ({ page }) => {
+    await dispatch(page, notedDomain());
+    await fit(page);
+    await setFilter(page, 'team=web');
+    await page.getByTestId('overlay-notes').click();
+
+    // The gateway does not match team=web, so clicking it opens nothing.
+    await page.getByTestId(`entity-${IDS.gateway}`).click({ force: true });
+    await expect(page.locator('[data-testid^="note-text-box-"]')).toHaveCount(0);
+
+    // The UI matches, so pressing it writes its note.
+    await page.getByTestId(`entity-${IDS.ui}`).click();
+    await expect(page.locator('[data-testid^="note-text-box-"]')).toBeVisible();
+  });
+});
+
 test.describe('first-open expansion (issue #50)', () => {
   /** One group holding one member, with the given first-open hint. */
   function groupedDocument(defaultExpanded?: true | string[]) {

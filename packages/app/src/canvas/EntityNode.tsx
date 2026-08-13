@@ -1,7 +1,7 @@
 import { Handle, NodeResizer, Position, type Node, type NodeProps } from '@xyflow/react';
 import { store } from '../store/store.js';
 import type { EntityNodeData } from './derive.js';
-import { CommentBadge } from './CommentMarker.js';
+import { CommentBadge, NoteBadge } from './CommentMarker.js';
 import { ElementEditor } from './ElementEditor.js';
 import { ElementHover } from './ElementHover.js';
 import { ElementIcon } from './ElementIcon.js';
@@ -71,6 +71,7 @@ export function EntityNode({ data, selected }: NodeProps<Node<EntityNodeData>>) 
               {data.matchCount}
             </span>
           )}
+          <NoteBadge id={data.id} count={data.noteCount} />
           <CommentBadge id={data.id} count={data.commentCount} />
           <ElementIcon elementType={data.elementType} className="entity-node__icon" />
         </div>

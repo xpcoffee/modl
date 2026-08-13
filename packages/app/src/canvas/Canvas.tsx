@@ -20,6 +20,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import {
   COMMENT_CARD_SIZE,
+  NOTE_CARD_SIZE,
   DEFAULT_ENTITY_SIZE,
   connectionTypeFor,
   descendantsOf,
@@ -96,6 +97,14 @@ import {
   toggleCommentTarget,
 } from './CommentOverlay.js';
 import { getCommentEdit } from './commentEditing.js';
+import {
+  addNoteTargets,
+  NoteLayer,
+  openElementNote,
+  quickAddNote,
+  toggleNoteTarget,
+} from './NoteLayer.js';
+import { getNoteEdit, getNotesMode, leaveNotesMode, useNotesMode } from './noteEditing.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
 import { installFocusCycle } from './focusRing.js';
 import { useHighlightId } from './highlight.js';
@@ -237,6 +246,8 @@ interface BoxGesture {
   /** The comment whose card was open when the box started: the boxed
       elements join its targets instead of the selection. */
   forComment: Id | null;
+  /** The note whose card was open, for the same gesture in notes mode. */
+  forNote: Id | null;
 }
 
 /**
@@ -341,6 +352,7 @@ export function Canvas() {
    */
   const preview = useSearchPreview();
   const overlay = state.commentOverlay;
+  const notesMode = useNotesMode();
   // The discussion overlay suspends the selection highlight too: muting
   // there follows the filter alone, which is also what gates interaction.
   const shown = useMemo(() => {
@@ -360,11 +372,17 @@ export function Canvas() {
   const focused = useMemo(() => focusLayoutState(shown), [shown]);
   const focusOverlaid = focused !== shown;
 
-  /** What the filter lets the overlay touch. Everything, with no filter. */
+  /** What the filter lets the overlay and notes mode touch. Everything, with
+      no filter. */
   const interactable = useMemo(
     () =>
-      selectIds(state.document.model.elements, state.filter, state.document.comments),
-    [state.document.model.elements, state.filter, state.document.comments],
+      selectIds(
+        state.document.model.elements,
+        state.filter,
+        state.document.comments,
+        state.document.model.notes,
+      ),
+    [state.document.model.elements, state.filter, state.document.comments, state.document.model.notes],
   );
 
   const derived = useMemo(
@@ -741,12 +759,27 @@ export function Canvas() {
         const hit = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
         const emptyBoard =
           hit?.closest(
-            '.react-flow__node, .edge-label, .comment-card, .comment-timeline, .overlay-toggle, .search-menu, .react-flow__controls, .react-flow__minimap',
+            '.react-flow__node, .edge-label, .comment-card, .note-card, .comment-timeline, .overlay-toggle, .search-menu, .react-flow__controls, .react-flow__minimap',
           ) === null;
         // The remark lands where it was written, pinned in place.
         if (emptyBoard) {
           setCardGhost(null);
           quickAddComment([], screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+        }
+        return;
+      }
+      // In notes mode a double-click on empty board writes a document-level
+      // note; it never edits the model underneath.
+      if (getNotesMode()) {
+        const hit = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+        const emptyBoard =
+          hit?.closest(
+            '.react-flow__node, .edge-label, .comment-card, .note-card, .overlay-toggle, .search-menu, .react-flow__controls, .react-flow__minimap',
+          ) === null;
+        // The note lands where it was written, pinned in place.
+        if (emptyBoard) {
+          setCardGhost(null);
+          quickAddNote([], screenToFlowPosition({ x: event.clientX, y: event.clientY }));
         }
         return;
       }
@@ -761,8 +794,10 @@ export function Canvas() {
       if (hit?.closest('.react-flow__minimap')) return;
 
       // Nor is one inside an overlay: double-clicking a word in the search
-      // box would otherwise drop a component behind the box.
-      if (hit?.closest('.search-menu, .hidden-strip')) return;
+      // box would otherwise drop a component behind the box. A card's own
+      // double-click already opens its text box, and a note card sits on the
+      // board outside notes mode too, whenever something reveals it.
+      if (hit?.closest('.search-menu, .hidden-strip, .note-card, .comment-card')) return;
 
       const node = hit?.closest<HTMLElement>('.react-flow__node');
       if (node?.dataset['id']) {
@@ -866,24 +901,33 @@ export function Canvas() {
   );
 
   /**
-   * A ghost card pulsing where the pane was clicked in the overlay. It says
-   * what a second click writes there, in the overlay's own language rather
-   * than the model's gravity wave.
+   * A ghost card pulsing where the pane was clicked in the overlay or in
+   * notes mode. It says what a second click writes there, in the mode's own
+   * language rather than the model's gravity wave.
    */
-  const [cardGhost, setCardGhost] = useState<{ at: Point; key: number } | null>(null);
+  const [cardGhost, setCardGhost] = useState<{
+    at: Point;
+    kind: 'comment' | 'note';
+    key: number;
+  } | null>(null);
   const ghostTimer = useRef<number | undefined>(undefined);
 
   /**
    * A lone click on empty canvas answers with a small wave: the spot is live,
-   * and a second click here creates an element. In the overlay the answer is
-   * the outline of the comment a second click would write instead.
+   * and a second click here creates an element. In the overlay or in notes
+   * mode the answer is the outline of the card a second click would write.
    */
   const onPaneClick = useCallback(
     (event: React.MouseEvent) => {
       stopEditing();
       const at = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-      if (store.getState().commentOverlay) {
-        setCardGhost((previous) => ({ at, key: (previous?.key ?? 0) + 1 }));
+      const kind = store.getState().commentOverlay
+        ? ('comment' as const)
+        : getNotesMode()
+          ? ('note' as const)
+          : null;
+      if (kind !== null) {
+        setCardGhost((previous) => ({ at, kind, key: (previous?.key ?? 0) + 1 }));
         window.clearTimeout(ghostTimer.current);
         ghostTimer.current = window.setTimeout(() => setCardGhost(null), 650);
         return;
@@ -920,6 +964,7 @@ export function Canvas() {
       prior: ReadonlySet<Id>,
       combine: BoxCombine,
       forComment: Id | null,
+      forNote: Id | null,
     ) => {
       const boxedNodes = new Set<Id>();
       for (const node of nodes) {
@@ -952,6 +997,13 @@ export function Canvas() {
       if (forComment !== null) {
         addCommentTargets(
           forComment,
+          [...boxed].filter((id) => interactable.has(id)),
+        );
+        return;
+      }
+      if (forNote !== null) {
+        addNoteTargets(
+          forNote,
           [...boxed].filter((id) => interactable.has(id)),
         );
         return;
@@ -992,7 +1044,13 @@ export function Canvas() {
       boxGesture.current = null;
 
       const end = screenToFlowPosition({ x: event.clientX, y: event.clientY });
-      settleBox(rectFrom(gesture.start, end), gesture.prior, gesture.combine, gesture.forComment);
+      settleBox(
+        rectFrom(gesture.start, end),
+        gesture.prior,
+        gesture.combine,
+        gesture.forComment,
+        gesture.forNote,
+      );
     },
     [screenToFlowPosition, settleBox],
   );
@@ -1082,7 +1140,7 @@ export function Canvas() {
   /** Settles the box run in flight, wherever its rectangle reaches. */
   const settleBoxRun = useCallback(() => {
     if (!boxRun) return;
-    settleBox(rectFrom(boxRun.start, boxRun.to), boxRun.prior, boxRun.combine, null);
+    settleBox(rectFrom(boxRun.start, boxRun.to), boxRun.prior, boxRun.combine, null, null);
     setBoxRun(null);
   }, [boxRun, settleBox]);
 
@@ -1153,9 +1211,10 @@ export function Canvas() {
 
       if (matchesKey('cancel', event)) {
         // Nearest claim first: a run in flight, an armed placement, the
-        // selection, then the comment overlay — repeated presses back out
-        // of anything. Menus, editors, and the dialog keep their own Escape
-        // (the guard above, their own handlers, and the dialog check here).
+        // selection, then notes mode or the comment overlay — repeated
+        // presses back out of anything. Menus, editors, and the dialog keep
+        // their own Escape (the guard above, their own handlers, and the
+        // dialog check here).
         if (boxRun || copyDrag?.untilEnd) {
           event.preventDefault();
           setBoxRun(null);
@@ -1172,6 +1231,11 @@ export function Canvas() {
         if (current.selection.length > 0) {
           event.preventDefault();
           store.dispatch({ type: 'set-selection', ids: [] });
+          return;
+        }
+        if (getNotesMode()) {
+          event.preventDefault();
+          leaveNotesMode();
           return;
         }
         if (current.commentOverlay) {
@@ -1261,10 +1325,11 @@ export function Canvas() {
   return (
     <div
       ref={canvasRef}
-      className={`canvas${pending ? ' is-placing' : ''}${overlay ? ' is-comment-overlay' : ''}${focusOverlaid ? ' is-focus-overlaid' : ''}`}
+      className={`canvas${pending ? ' is-placing' : ''}${overlay ? ' is-comment-overlay' : ''}${notesMode ? ' is-notes-mode' : ''}${focusOverlaid ? ' is-focus-overlaid' : ''}`}
       data-testid="canvas"
       data-placing={pending ?? undefined}
       data-comment-overlay={overlay ? 'true' : undefined}
+      data-notes-mode={notesMode ? 'true' : undefined}
       data-focus-overlaid={focusOverlaid ? 'true' : undefined}
       data-glides={glidesStarted}
       // The board owns the right button, so it can be bound to an action
@@ -1317,10 +1382,30 @@ export function Canvas() {
           return;
         }
 
+        // In notes mode an element press speaks notes the same way: one
+        // click opens the element's note (or a fresh card), ctrl+click
+        // toggles the element in and out of the open note's targets.
+        if (notesMode && pressedId !== null) {
+          swallowClick.current = true;
+          event.preventDefault();
+          event.stopPropagation();
+          if (event.button !== 0 || !interactable.has(pressedId)) return;
+          const edit = getNoteEdit();
+          if ((event.ctrlKey || event.metaKey) && edit !== null) {
+            toggleNoteTarget(edit.noteId, pressedId);
+          } else {
+            openElementNote(pressedId);
+          }
+          return;
+        }
+
         // The box-select binding opens a box over the pane; while a card is
         // open the box gathers targets for it, and keeping focus keeps the
         // card open.
-        if (overlay && boxSelectGesture(event) !== null && getCommentEdit() !== null) {
+        if (
+          (overlay && boxSelectGesture(event) !== null && getCommentEdit() !== null) ||
+          (notesMode && boxSelectGesture(event) !== null && getNoteEdit() !== null)
+        ) {
           event.preventDefault();
         }
 
@@ -1387,6 +1472,7 @@ export function Canvas() {
               combine: gesture.combine,
               start: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
               forComment: overlay ? (getCommentEdit()?.commentId ?? null) : null,
+              forNote: notesMode ? (getNoteEdit()?.noteId ?? null) : null,
             };
           }
           return;
@@ -1458,10 +1544,11 @@ export function Canvas() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onReconnect={onReconnect}
-        // The overlay reads and discusses; the model underneath holds still.
-        // A focus-compacted board holds still too: see `focusOverlaid`.
-        nodesDraggable={!overlay && !focusOverlaid}
-        nodesConnectable={!overlay}
+        // The overlay reads and discusses, and notes mode writes notes; the
+        // model underneath holds still in both. A focus-compacted board
+        // holds still too: see `focusOverlaid`.
+        nodesDraggable={!overlay && !notesMode && !focusOverlaid}
+        nodesConnectable={!overlay && !notesMode}
         reconnectRadius={16}
         // A junction's contact points are small dots on its vertices, so a
         // line dropped near one still lands on it rather than nowhere.
@@ -1479,10 +1566,10 @@ export function Canvas() {
         // Double-click creates an element, so it must not also zoom.
         zoomOnDoubleClick={false}
         // The delete binding, spelled in React Flow's combo strings (Delete
-        // and Backspace out of the box). In the overlay the keys delete the
-        // selected comment instead (CommentOverlay handles that), never the
-        // model.
-        deleteKeyCode={overlay ? null : deleteKeyCodes()}
+        // and Backspace out of the box). In the overlay or notes mode the
+        // keys delete the selected comment or note instead (CommentOverlay
+        // and NoteLayer handle that), never the model.
+        deleteKeyCode={overlay || notesMode ? null : deleteKeyCodes()}
         // React Flow matches key combinations exactly, so the box-select
         // binding expands to its shift, ctrl, and meta variants: plain
         // 'Shift' stops matching the moment ctrl joins it and the drag would
@@ -1542,16 +1629,17 @@ export function Canvas() {
         <ExpansionMenu nodes={nodes} />
         <DockedEditor nodes={nodes} boxSelecting={boxSelecting} />
         <CommentOverlay />
+        <NoteLayer />
         {cardGhost && (
           <ViewportPortal>
             <div
               key={cardGhost.key}
-              className="comment-card-ghost"
-              data-testid="comment-ghost"
+              className={cardGhost.kind === 'note' ? 'note-card-ghost' : 'comment-card-ghost'}
+              data-testid={cardGhost.kind === 'note' ? 'note-ghost' : 'comment-ghost'}
               style={{
-                transform: `translate(${cardGhost.at.x - COMMENT_CARD_SIZE.width / 2}px, ${cardGhost.at.y - 12}px)`,
-                width: COMMENT_CARD_SIZE.width,
-                height: COMMENT_CARD_SIZE.height,
+                transform: `translate(${cardGhost.at.x - (cardGhost.kind === 'note' ? NOTE_CARD_SIZE : COMMENT_CARD_SIZE).width / 2}px, ${cardGhost.at.y - 12}px)`,
+                width: (cardGhost.kind === 'note' ? NOTE_CARD_SIZE : COMMENT_CARD_SIZE).width,
+                height: (cardGhost.kind === 'note' ? NOTE_CARD_SIZE : COMMENT_CARD_SIZE).height,
               }}
             />
           </ViewportPortal>

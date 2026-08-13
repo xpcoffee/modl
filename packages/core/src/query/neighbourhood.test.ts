@@ -50,7 +50,10 @@ function doc(elements: Element[], comments: Comment[] = []): Document {
     formatVersion: FORMAT_VERSION,
     id: 'doc',
     title: 'Checkout domain',
-    model: { elements: Object.fromEntries(elements.map((element) => [element.id, element])) },
+    model: {
+      elements: Object.fromEntries(elements.map((element) => [element.id, element])),
+      notes: {},
+    },
     comments: Object.fromEntries(comments.map((comment) => [comment.id, comment])),
     layout: {},
     view: DEFAULT_VIEW,

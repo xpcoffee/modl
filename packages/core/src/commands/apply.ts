@@ -3,6 +3,7 @@ import {
   COMMENT_CARD_SIZE,
   DEFAULT_ENTITY_SIZE,
   CONNECTION_NODE_SIZE,
+  NOTE_CARD_SIZE,
   STROKE_STYLES,
   isConnection,
   isEntity,
@@ -17,6 +18,7 @@ import {
   type ElementLayout,
   type ElementStyle,
   type Id,
+  type Note,
   type Point,
   type View,
 } from '../model/types.js';
@@ -130,6 +132,7 @@ function moveCursor(state: AppState, cursor: number, commandType: 'undo' | 'redo
   // first-open hint is an edit rather than a way of looking, so it refolds
   // with the document.
   const comments = refolded.document.comments;
+  const notes = refolded.document.model.notes;
   return ok(
     {
       ...refolded,
@@ -145,7 +148,8 @@ function moveCursor(state: AppState, cursor: number, commandType: 'undo' | 'redo
       },
       filter: state.filter,
       selection: state.selection.filter(
-        (id) => elements[id] !== undefined || comments[id] !== undefined,
+        (id) =>
+          elements[id] !== undefined || comments[id] !== undefined || notes[id] !== undefined,
       ),
       expanded: state.expanded.filter((id) => elements[id] !== undefined),
       expandedBeforeFilter:
@@ -343,7 +347,7 @@ function reduce(state: AppState, command: Command): CommandResult {
       return ok(
         {
           ...state,
-          document: { ...state.document, model: { elements }, layout },
+          document: { ...state.document, model: { ...state.document.model, elements }, layout },
           expanded: [...expanded].sort(),
           selection: copies,
         },
@@ -389,7 +393,9 @@ function reduce(state: AppState, command: Command): CommandResult {
       // naming one stale id leaves the whole layout untouched.
       for (const id of positionIds) {
         const element = state.document.model.elements[id];
-        if (!element && !state.document.comments[id]) return unknown(command.type, id);
+        if (!element && !state.document.comments[id] && !state.document.model.notes[id]) {
+          return unknown(command.type, id);
+        }
         if (element && isConnection(element)) {
           return fail(command.type, 'wrong-kind', `element ${id} is a connection`);
         }
@@ -435,15 +441,19 @@ function reduce(state: AppState, command: Command): CommandResult {
         const previous = layout[id];
         const fallbackSize = state.document.comments[id]
           ? COMMENT_CARD_SIZE
-          : isConnectionNode(state.document.model.elements[id]!)
-            ? CONNECTION_NODE_SIZE
-            : DEFAULT_ENTITY_SIZE;
+          : state.document.model.notes[id]
+            ? NOTE_CARD_SIZE
+            : isConnectionNode(state.document.model.elements[id]!)
+              ? CONNECTION_NODE_SIZE
+              : DEFAULT_ENTITY_SIZE;
         const existing = previous && 'width' in previous ? previous : { ...fallbackSize };
         layout[id] = { ...existing, x: position.x, y: position.y };
         events.push(
           state.document.comments[id]
             ? { type: 'comment-updated', id }
-            : { type: 'element-moved', id, position: { x: position.x, y: position.y } },
+            : state.document.model.notes[id]
+              ? { type: 'note-updated', id }
+              : { type: 'element-moved', id, position: { x: position.x, y: position.y } },
         );
       }
       for (const id of waypointIds) {
@@ -584,14 +594,17 @@ function reduce(state: AppState, command: Command): CommandResult {
 
     case 'rename-tag': {
       const element = state.document.model.elements[command.id];
-      if (!element) return unknown(command.type, command.id);
-      if (!(command.from in element.tags)) {
+      const note = element ? undefined : state.document.model.notes[command.id];
+      if (!element && !note) return unknown(command.type, command.id);
+      const current = element ? element.tags : note!.tags;
+
+      if (!(command.from in current)) {
         return fail(command.type, 'unknown-element', `element ${command.id} has no tag "${command.from}"`);
       }
       if (command.to.trim() === '') {
         return fail(command.type, 'schema-invalid', 'tag key must not be empty');
       }
-      if (command.to !== command.from && command.to in element.tags) {
+      if (command.to !== command.from && command.to in current) {
         return fail(
           command.type,
           'duplicate-id',
@@ -601,11 +614,16 @@ function reduce(state: AppState, command: Command): CommandResult {
 
       // Rebuilt in order so a rename keeps the tag where the reader left it.
       const tags: Record<string, string[]> = {};
-      for (const [key, value] of Object.entries(element.tags)) {
+      for (const [key, value] of Object.entries(current)) {
         if (key === command.from) tags[command.to] = value;
         else tags[key] = value;
       }
-      return ok(withElement(state, { ...element, tags }, state.document.layout), [
+      if (note) {
+        return ok(withNote(state, { ...note, tags }), [
+          { type: 'note-updated', id: command.id },
+        ]);
+      }
+      return ok(withElement(state, { ...element!, tags }, state.document.layout), [
         { type: 'element-updated', id: command.id },
       ]);
     }
@@ -774,7 +792,7 @@ function reduce(state: AppState, command: Command): CommandResult {
       }
 
       return ok(
-        { ...moved, document: { ...moved.document, model: { elements } } },
+        { ...moved, document: { ...moved.document, model: { ...moved.document.model, elements } } },
         events,
       );
     }
@@ -849,10 +867,27 @@ function reduce(state: AppState, command: Command): CommandResult {
         }
       }
 
+      // A note follows the elements it describes by the same rule a comment
+      // follows what it discusses.
+      const notes = { ...state.document.model.notes };
+      for (const note of Object.values(state.document.model.notes)) {
+        const targets = note.targets.filter((ref) => !removed.has(ref));
+        if (targets.length === note.targets.length) continue;
+        if (targets.length === 0) {
+          delete notes[note.id];
+          delete layout[note.id];
+          removed.add(note.id);
+          events.push({ type: 'note-deleted', id: note.id });
+        } else {
+          notes[note.id] = { ...note, targets };
+          events.push({ type: 'note-updated', id: note.id });
+        }
+      }
+
       return ok(
         {
           ...state,
-          document: { ...state.document, model: { elements }, comments, layout },
+          document: { ...state.document, model: { elements, notes }, comments, layout },
           selection: state.selection.filter((id) => !removed.has(id)),
           expanded: state.expanded.filter((id) => !removed.has(id)),
           hidden: state.hidden.filter((id) => !removed.has(id)),
@@ -925,7 +960,7 @@ function reduce(state: AppState, command: Command): CommandResult {
           ...state,
           document: {
             ...state.document,
-            model: { elements },
+            model: { ...state.document.model, elements },
             layout: {
               ...state.document.layout,
               [command.id]: containerBox(state, command.memberIds, command.position),
@@ -957,7 +992,7 @@ function reduce(state: AppState, command: Command): CommandResult {
       return ok(
         {
           ...state,
-          document: { ...state.document, model: { elements } },
+          document: { ...state.document, model: { ...state.document.model, elements } },
           expanded: state.expanded.filter((id) => id !== command.id),
         },
         events,
@@ -1031,7 +1066,11 @@ function reduce(state: AppState, command: Command): CommandResult {
 
     case 'set-selection': {
       for (const id of command.ids) {
-        if (!state.document.model.elements[id] && !state.document.comments[id]) {
+        if (
+          !state.document.model.elements[id] &&
+          !state.document.comments[id] &&
+          !state.document.model.notes[id]
+        ) {
           return unknown(command.type, id);
         }
       }
@@ -1073,7 +1112,12 @@ function reduce(state: AppState, command: Command): CommandResult {
       const baseline = state.expandedBeforeFilter ?? state.expanded;
       const expanded = new Set(baseline.filter((id) => elements[id] !== undefined));
       const hidden = hiddenElementIds(elements, state.hidden);
-      for (const id of selectIds(elements, command.expression, state.document.comments)) {
+      for (const id of selectIds(
+        elements,
+        command.expression,
+        state.document.comments,
+        state.document.model.notes,
+      )) {
         if (hidden.has(id)) continue;
         for (const group of ancestorsOf(elements, id)) expanded.add(group);
       }
@@ -1175,6 +1219,7 @@ function reduce(state: AppState, command: Command): CommandResult {
       // the rest of the document alone. With stable ids the trace then shows
       // exactly what that round changed.
       const elements = { ...state.document.model.elements };
+      const notes = { ...state.document.model.notes };
       const comments = { ...state.document.comments };
       const layout = { ...state.document.layout };
       const events: DomainEvent[] = [];
@@ -1185,12 +1230,16 @@ function reduce(state: AppState, command: Command): CommandResult {
         const incoming = result.document.layout[id];
         if (incoming) layout[id] = incoming;
       }
+      for (const [id, note] of Object.entries(result.document.model.notes)) {
+        events.push({ type: notes[id] ? 'note-updated' : 'note-created', id });
+        notes[id] = note;
+      }
       for (const [id, comment] of Object.entries(result.document.comments)) {
         events.push({ type: comments[id] ? 'comment-updated' : 'comment-created', id });
         comments[id] = comment;
       }
 
-      const merged = { ...state.document, model: { elements }, comments, layout };
+      const merged = { ...state.document, model: { elements, notes }, comments, layout };
       const check = loadDocument(merged);
       if (!check.ok) {
         return fail(
@@ -1222,10 +1271,14 @@ function reduce(state: AppState, command: Command): CommandResult {
     }
 
     case 'create-comment': {
-      if (state.document.model.elements[command.id] || state.document.comments[command.id]) {
+      if (
+        state.document.model.elements[command.id] ||
+        state.document.comments[command.id] ||
+        state.document.model.notes[command.id]
+      ) {
         return fail(command.type, 'duplicate-id', `${command.id} already names something in the document`);
       }
-      const targetError = checkCommentTargets(state, command.type, command.targets);
+      const targetError = checkTargets(state, command.type, command.targets);
       if (targetError) return { ok: false, error: targetError };
 
       const comment: Comment = {
@@ -1248,7 +1301,7 @@ function reduce(state: AppState, command: Command): CommandResult {
     case 'set-comment-targets': {
       const comment = state.document.comments[command.id];
       if (!comment) return unknownComment(command.type, command.id);
-      const targetError = checkCommentTargets(state, command.type, command.targets);
+      const targetError = checkTargets(state, command.type, command.targets);
       if (targetError) return { ok: false, error: targetError };
 
       return ok(
@@ -1301,6 +1354,118 @@ function reduce(state: AppState, command: Command): CommandResult {
       );
     }
 
+    case 'create-note': {
+      if (
+        state.document.model.elements[command.id] ||
+        state.document.comments[command.id] ||
+        state.document.model.notes[command.id]
+      ) {
+        return fail(command.type, 'duplicate-id', `${command.id} already names something in the document`);
+      }
+      const targetError = checkTargets(state, command.type, command.targets);
+      if (targetError) return { ok: false, error: targetError };
+      if (Object.keys(command.tags ?? {}).some((key) => key === '')) {
+        return fail(command.type, 'schema-invalid', 'tag key must not be empty');
+      }
+
+      const note: Note = {
+        id: command.id,
+        text: command.text,
+        targets: [...new Set(command.targets)],
+        tags: Object.fromEntries(
+          Object.entries(command.tags ?? {}).map(([key, values]) => [key, [...values]]),
+        ),
+      };
+      return ok(withNote(state, note), [{ type: 'note-created', id: command.id }]);
+    }
+
+    case 'set-note-text': {
+      const note = state.document.model.notes[command.id];
+      if (!note) return unknownNote(command.type, command.id);
+      return ok(withNote(state, { ...note, text: command.text }), [
+        { type: 'note-updated', id: command.id },
+      ]);
+    }
+
+    case 'set-note-targets': {
+      const note = state.document.model.notes[command.id];
+      if (!note) return unknownNote(command.type, command.id);
+      const targetError = checkTargets(state, command.type, command.targets);
+      if (targetError) return { ok: false, error: targetError };
+
+      return ok(withNote(state, { ...note, targets: [...new Set(command.targets)] }), [
+        { type: 'note-updated', id: command.id },
+      ]);
+    }
+
+    case 'set-note-tag': {
+      const note = state.document.model.notes[command.id];
+      if (!note) return unknownNote(command.type, command.id);
+      if (command.key === '') {
+        return fail(command.type, 'schema-invalid', 'tag key must not be empty');
+      }
+      return ok(
+        withNote(state, { ...note, tags: { ...note.tags, [command.key]: [...command.values] } }),
+        [{ type: 'note-updated', id: command.id }],
+      );
+    }
+
+    case 'remove-note-tag': {
+      const note = state.document.model.notes[command.id];
+      if (!note) return unknownNote(command.type, command.id);
+      const tags = { ...note.tags };
+      delete tags[command.key];
+      return ok(withNote(state, { ...note, tags }), [
+        { type: 'note-updated', id: command.id },
+      ]);
+    }
+
+    case 'move-note': {
+      const note = state.document.model.notes[command.id];
+      if (!note) return unknownNote(command.type, command.id);
+      if (!Number.isFinite(command.position.x) || !Number.isFinite(command.position.y)) {
+        return fail(command.type, 'schema-invalid', 'a position needs finite coordinates');
+      }
+
+      const previous = state.document.layout[command.id];
+      const existing = previous && 'width' in previous ? previous : { ...NOTE_CARD_SIZE };
+      return ok(
+        {
+          ...state,
+          document: {
+            ...state.document,
+            layout: {
+              ...state.document.layout,
+              [command.id]: { ...existing, x: command.position.x, y: command.position.y },
+            },
+          },
+        },
+        [{ type: 'note-updated', id: command.id }],
+      );
+    }
+
+    case 'delete-note': {
+      const note = state.document.model.notes[command.id];
+      if (!note) return unknownNote(command.type, command.id);
+
+      const notes = { ...state.document.model.notes };
+      delete notes[command.id];
+      const layout = { ...state.document.layout };
+      delete layout[command.id];
+      return ok(
+        {
+          ...state,
+          document: {
+            ...state.document,
+            model: { ...state.document.model, notes },
+            layout,
+          },
+          selection: state.selection.filter((id) => id !== command.id),
+        },
+        [{ type: 'note-deleted', id: command.id }],
+      );
+    }
+
     case 'set-comment-overlay': {
       // Opening drops any selected elements: the overlay never shows the
       // element selection UI, and clicking an element there speaks comments.
@@ -1342,11 +1507,15 @@ function unknownComment(commandType: CommandType, id: Id): CommandResult {
   return fail(commandType, 'unknown-element', `comment ${id} is not in the document`);
 }
 
+function unknownNote(commandType: CommandType, id: Id): CommandResult {
+  return fail(commandType, 'unknown-element', `note ${id} is not in the document`);
+}
+
 /**
- * Each target has to be an element. An empty list is legal: a comment with
- * no targets is a general remark about the whole document.
+ * Each target has to be an element. An empty list is legal: a comment or a
+ * note with no targets speaks about the whole document.
  */
-function checkCommentTargets(
+function checkTargets(
   state: AppState,
   commandType: CommandType,
   targets: Id[],
@@ -1369,6 +1538,19 @@ function withComment(state: AppState, comment: Comment): AppState {
     document: {
       ...state.document,
       comments: { ...state.document.comments, [comment.id]: comment },
+    },
+  };
+}
+
+function withNote(state: AppState, note: Note): AppState {
+  return {
+    ...state,
+    document: {
+      ...state.document,
+      model: {
+        ...state.document.model,
+        notes: { ...state.document.model.notes, [note.id]: note },
+      },
     },
   };
 }
@@ -1608,7 +1790,10 @@ function withElement(
     ...state,
     document: {
       ...state.document,
-      model: { elements: { ...state.document.model.elements, [element.id]: element } },
+      model: {
+        ...state.document.model,
+        elements: { ...state.document.model.elements, [element.id]: element },
+      },
       layout,
     },
   };

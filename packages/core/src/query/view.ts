@@ -1,6 +1,6 @@
-import { isConnection, type Comment, type Element, type Id } from '../model/types.js';
+import { isConnection, type Comment, type Element, type Id, type Note } from '../model/types.js';
 import type { AppState } from '../commands/types.js';
-import { parseFilter, selectIds } from './filter.js';
+import { notesMatchingTagTerms, parseFilter, selectIds } from './filter.js';
 import { ancestorsOf, descendantsOf, visibleAnchor } from './groups.js';
 
 /**
@@ -84,8 +84,9 @@ export function filterGuidance(
   expression: string,
   hidden: ReadonlySet<Id>,
   comments: Record<Id, Comment> = {},
+  notes: Record<Id, Note> = {},
 ): { emphasised: Set<Id>; descendantMatches: Map<Id, number> } {
-  const emphasised = selectIds(elements, expression, comments);
+  const emphasised = selectIds(elements, expression, comments, notes);
   const descendantMatches = new Map<Id, number>();
 
   const parsed = parseFilter(expression);
@@ -111,12 +112,14 @@ export function boardEmphasis(state: AppState): BoardEmphasis {
 
   const muted = new Set<Id>();
   let descendantMatches = new Map<Id, number>();
-  // A selected comment stands for the elements it discusses, so its targets
-  // highlight exactly as if the reader had pointed at them.
+  // A selected comment or note stands for the elements it speaks about, so
+  // its targets highlight exactly as if the reader had pointed at them.
   const selection = state.selection.flatMap((id) =>
     elements[id]
       ? [id]
-      : (state.document.comments[id]?.targets.filter((target) => elements[target]) ?? []),
+      : ((state.document.comments[id] ?? state.document.model.notes[id])?.targets.filter(
+          (target) => elements[target],
+        ) ?? []),
   );
 
   if (selection.length > 0 && state.selectionHighlight) {
@@ -149,7 +152,13 @@ export function boardEmphasis(state: AppState): BoardEmphasis {
       if (!near.has(id)) muted.add(id);
     }
   } else {
-    const guidance = filterGuidance(elements, state.filter, hidden, state.document.comments);
+    const guidance = filterGuidance(
+      elements,
+      state.filter,
+      hidden,
+      state.document.comments,
+      state.document.model.notes,
+    );
     descendantMatches = guidance.descendantMatches;
     for (const id of Object.keys(elements)) {
       if (!guidance.emphasised.has(id)) muted.add(id);
@@ -186,14 +195,22 @@ export function focusHiddenIds(state: AppState): Set<Id> {
 
   const elements = state.document.model.elements;
   const hidden = hiddenElementIds(elements, state.hidden);
-  const { emphasised } = filterGuidance(elements, state.filter, hidden, state.document.comments);
+  const { emphasised } = filterGuidance(
+    elements,
+    state.filter,
+    hidden,
+    state.document.comments,
+    state.document.model.notes,
+  );
 
-  // A selected comment stands for the elements it discusses, matching how
-  // boardEmphasis reads the selection.
+  // A selected comment or note stands for the elements it speaks about,
+  // matching how boardEmphasis reads the selection.
   const selection = state.selection.flatMap((id) =>
     elements[id]
       ? [id]
-      : (state.document.comments[id]?.targets.filter((target) => elements[target]) ?? []),
+      : ((state.document.comments[id] ?? state.document.model.notes[id])?.targets.filter(
+          (target) => elements[target],
+        ) ?? []),
   );
 
   const kept = new Set<Id>();
@@ -208,6 +225,39 @@ export function focusHiddenIds(state: AppState): Set<Id> {
     if (!kept.has(id)) removed.add(id);
   }
   return removed;
+}
+
+/**
+ * Notes whose cards belong on the board. A card is revealed rather than
+ * always drawn, so the notes written against one situation stay out of the
+ * way of a reader working in another; the badge on each target is what says
+ * a note exists while its card is away (issue #83 review, decision 030).
+ *
+ * Two things reveal a card. The reader points at it, meaning the note or one
+ * of the elements it describes is selected; a document-level note has no
+ * targets, so only its own selection does that. Or a committed filter names
+ * a context the note carries: the expression parses, holds at least one
+ * non-negated tag term, and every tag term in it holds against the note's
+ * tags, so `context=refunds -area=billing` reveals a refunds note that is not
+ * tagged area=billing. Only tags reveal, because a text term, a bare `note`,
+ * and `note=text` all pick elements rather than name a context.
+ *
+ * Notes mode is absent here: it is app state, and that layer draws every
+ * card because it is where notes are written.
+ */
+export function visibleNoteIds(state: AppState): Set<Id> {
+  const notes = state.document.model.notes;
+  const selected = new Set(state.selection);
+  const visible = new Set<Id>();
+  for (const [id, note] of Object.entries(notes)) {
+    if (selected.has(id) || note.targets.some((target) => selected.has(target))) visible.add(id);
+  }
+
+  const parsed = parseFilter(state.filter);
+  if (!parsed.ok) return visible;
+  if (!parsed.terms.some((term) => term.kind === 'tag' && !term.negated)) return visible;
+  for (const id of notesMatchingTagTerms(notes, parsed.terms)) visible.add(id);
+  return visible;
 }
 
 export interface Relation {

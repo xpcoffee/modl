@@ -60,6 +60,7 @@ function testIdOf(option: SearchOption): string {
   if (option.kind === 'element') return `search-element-${option.id}`;
   if (option.term.kind === 'text') return `search-text-${slug(option.term.text)}`;
   if (option.term.kind === 'comment') return `search-comment-${slug(option.label)}`;
+  if (option.term.kind === 'note') return `search-note-${slug(option.label)}`;
   return `search-tag-${slug(option.label)}`;
 }
 
@@ -258,9 +259,14 @@ export function SearchMenu() {
     setOpen(true);
     setMode({ kind: 'edit', index });
     // Text-bearing terms seed the words alone: the suggestions match against
-    // comment text and titles, and `comment=` punctuation is found in neither.
+    // comment and note text and titles, and `comment=` punctuation is found
+    // in none of them.
     setQuery(
-      term.kind === 'text' ? term.text : term.kind === 'comment' ? (term.text ?? '') : formatTerm(term),
+      term.kind === 'text'
+        ? term.text
+        : term.kind === 'comment' || term.kind === 'note'
+          ? (term.text ?? '')
+          : formatTerm(term),
     );
     setActive(0);
     setWindowStart(0);
@@ -445,6 +451,7 @@ export function SearchMenu() {
 /** What applying this filter narrows by, so like-reading options tell apart. */
 function filterSublabel(term: FilterTerm): string {
   if (term.kind === 'comment') return 'filter by comment';
+  if (term.kind === 'note') return 'filter by note';
   if (term.kind === 'tag') return 'filter by tag';
   return 'filter by name';
 }
@@ -452,11 +459,12 @@ function filterSublabel(term: FilterTerm): string {
 /**
  * The symbol carrying a term's kind. A tag named "comment" and the comment
  * filter would read identically as chips, so the kind shows as a glyph:
- * a luggage tag for tags, a speech bubble for comments, the funnel for a
- * name filter.
+ * a luggage tag for tags, a speech bubble for comments, a sticky note for
+ * notes, the funnel for a name filter.
  */
 function TermIcon({ term }: { term: FilterTerm }) {
   if (term.kind === 'comment') return <CommentIcon />;
+  if (term.kind === 'note') return <NoteIcon />;
   if (term.kind === 'tag') return <TagIcon />;
   return <FilterIcon />;
 }
@@ -473,6 +481,17 @@ function CommentIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="search-menu__icon">
       <path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z" />
+    </svg>
+  );
+}
+
+function NoteIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="search-menu__icon">
+      <path
+        fillRule="evenodd"
+        d="M20 2H4a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10l8-8V4a2 2 0 0 0-2-2zm-6 18v-6h6z"
+      />
     </svg>
   );
 }

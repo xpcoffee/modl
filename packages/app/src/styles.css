@@ -6,6 +6,7 @@
   --muted: #8b93a7;
   --accent: #5b8def;
   --comment: #e0a94f;
+  --note: #4fc0ae;
   color-scheme: dark;
 }
 
@@ -2218,6 +2219,190 @@ html[data-motion='reduced'] .comment-card-ghost {
   color: var(--muted);
 }
 
+/* Notes (issue #83): cards always on the board, a badge on everything a
+   note describes, and notes mode for writing them. Teal against the warm
+   discussion amber, so model content tells apart from opinion beside it. */
+
+.note-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--note);
+}
+
+.note-badge__icon {
+  width: 10px;
+  height: 10px;
+  fill: currentColor;
+}
+
+.note-badge__count {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.edge-label__title .note-badge {
+  margin-left: 4px;
+}
+
+/* The comment badge holds the right corner, so this one takes the left. */
+.connection-node .note-badge {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+}
+
+/* Notes mode never dims the model: a note is part of it. Hovering says an
+   element is pressable, in the notes accent. */
+.is-notes-mode .react-flow__node:hover .entity-node:not(.is-dimmed),
+.is-notes-mode .react-flow__node:hover .group-node:not(.is-dimmed),
+.is-notes-mode .react-flow__node:hover .connection-node:not(.is-dimmed) .connection-node__face {
+  outline: 2px solid var(--note);
+  cursor: pointer;
+}
+
+.is-notes-mode .react-flow__node .is-dimmed {
+  cursor: default;
+}
+
+.note-layer__arcs {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* Solid where a comment's arc dashes: what a note describes is a fact of
+   the model, not a remark hanging beside it. */
+.note-layer__arc {
+  stroke: var(--note);
+  stroke-width: 1;
+  opacity: 0.35;
+}
+
+.note-layer__arc.is-selected {
+  stroke-width: 1.6;
+  opacity: 1;
+}
+
+/* Squarer than a comment card and carrying a spine on its left edge, so the
+   two card kinds read apart before any text does. */
+.note-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--note);
+  border-left: 3px solid var(--note);
+  border-radius: 4px;
+  background: var(--panel);
+  cursor: grab;
+  /* The viewport portal is transparent to the pointer; the cards are not. */
+  pointer-events: all;
+  animation: comment-fade-in 0.3s ease;
+}
+
+.note-card.is-selected {
+  outline: 2px solid var(--note);
+  z-index: 10;
+}
+
+.note-card__meta {
+  font-size: 10px;
+  color: var(--note);
+  min-height: 0;
+}
+
+.note-card__meta:empty {
+  display: none;
+}
+
+.note-card__text {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.note-text-box {
+  margin-top: 4px;
+  font-size: 12px;
+  resize: vertical;
+  border-color: var(--note);
+  min-width: 180px;
+}
+
+.note-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.note-card__tags:empty {
+  display: none;
+}
+
+.note-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border: 1px solid var(--note);
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--note);
+}
+
+.note-tag-chip button {
+  padding: 0 2px;
+  border: none;
+  background: none;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.note-tag-chip button:hover {
+  color: var(--text);
+}
+
+.note-tag-chip--add {
+  border-style: dashed;
+}
+
+.note-tag-chip input {
+  width: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 10px;
+  color: var(--text);
+}
+
+/* Notes mode's answer to a pane click: the outline of the note a second
+   click would write there, on the comment ghost's pulse. */
+.note-card-ghost {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 1.5px dashed var(--note);
+  border-radius: 4px;
+  pointer-events: none;
+  animation: comment-ghost-pulse 0.65s ease-out forwards;
+}
+
+html[data-motion='reduced'] .note-card,
+html[data-motion='reduced'] .note-card-ghost {
+  animation: none;
+  transition: none;
+}
+
+html[data-motion='reduced'] .note-card-ghost {
+  opacity: 0.7;
+}
+
 .overlay-toggle {
   display: flex;
   border: 1px solid var(--border);
@@ -2236,5 +2421,10 @@ html[data-motion='reduced'] .comment-card-ghost {
 
 .overlay-toggle button.is-active {
   background: var(--comment);
+  color: var(--bg);
+}
+
+.overlay-toggle button.is-active.is-notes {
+  background: var(--note);
   color: var(--bg);
 }

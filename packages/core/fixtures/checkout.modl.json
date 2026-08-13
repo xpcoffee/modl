@@ -1,5 +1,5 @@
 {
-  "formatVersion": 8,
+  "formatVersion": 9,
   "id": "00000000-0000-4000-8000-000000000000",
   "title": "Checkout domain",
   "model": {
@@ -99,6 +99,27 @@
         },
         "sources": [],
         "groupId": null
+      }
+    },
+    "notes": {
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa": {
+        "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "text": "Refunds reverse the ledger entry through the same gateway call.",
+        "targets": [
+          "22222222-2222-4222-8222-222222222222",
+          "33333333-3333-4333-8333-333333333333"
+        ],
+        "tags": {
+          "context": [
+            "refunds"
+          ]
+        }
+      },
+      "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb": {
+        "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "text": "Amounts are minor units throughout: cents, never decimal currency.",
+        "targets": [],
+        "tags": {}
       }
     }
   },
