@@ -1,6 +1,7 @@
 import {
   boardEmphasis,
   commentsOn,
+  notesOn,
   focusHiddenIds,
   connectionAnchors,
   isConnection,
@@ -36,7 +37,19 @@ function commentViewOf(state: AppState, id: Id): CommentView {
   return { commentCount: commentsOn(state.document.comments, id).length };
 }
 
-export interface EntityNodeData extends Record<string, unknown>, CommentView {
+/**
+ * How many notes describe this element, drawn as its own badge apart from
+ * the comment one: a note is model content, a comment is discussion.
+ */
+export interface NoteView {
+  noteCount: number;
+}
+
+function noteViewOf(state: AppState, id: Id): NoteView {
+  return { noteCount: notesOn(state.document.model.notes, id).length };
+}
+
+export interface EntityNodeData extends Record<string, unknown>, CommentView, NoteView {
   id: Id;
   title: string;
   description: string;
@@ -62,7 +75,7 @@ export interface EntityNodeData extends Record<string, unknown>, CommentView {
 }
 
 /** A node is a junction, so it carries no type and no members. */
-export interface ConnectionNodeData extends Record<string, unknown>, CommentView {
+export interface ConnectionNodeData extends Record<string, unknown>, CommentView, NoteView {
   id: Id;
   title: string;
   description: string;
@@ -90,7 +103,7 @@ export interface EndLabel {
   read: boolean;
 }
 
-export interface ConnectionEdgeData extends Record<string, unknown>, CommentView {
+export interface ConnectionEdgeData extends Record<string, unknown>, CommentView, NoteView {
   connectionId: Id;
   title: string;
   description: string;
@@ -247,6 +260,7 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Board
           parentOrigin,
           origin: { x: rect.x, y: rect.y },
           ...commentViewOf(state, node.id),
+          ...noteViewOf(state, node.id),
           ...(node.style === undefined ? {} : { style: node.style }),
         },
       };
@@ -297,6 +311,7 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Board
         origin: { x: rect.x, y: rect.y },
         isContainer,
         ...commentViewOf(state, entity.id),
+        ...noteViewOf(state, entity.id),
         ...(entity.style === undefined ? {} : { style: entity.style }),
       },
     };
@@ -438,6 +453,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           // A roll-up stands in for several lines, so no one answer is its own.
           endLabels: [],
           commentCount: 0,
+          noteCount: 0,
         },
       });
       continue;
@@ -500,6 +516,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
           rolledUp: [],
           endLabels: endLabelsFor(elements, element, from, to, selected),
           ...commentViewOf(state, element.id),
+          ...noteViewOf(state, element.id),
           ...(element.style === undefined ? {} : { style: element.style }),
         },
       });
