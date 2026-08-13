@@ -13,6 +13,7 @@ export function initialState(documentId: Id, title?: string): AppState {
     hidden: [],
     selectionHighlight: true,
     commentOverlay: false,
+    focusMode: false,
     undo: { base: { id: document.id, title: document.title }, history: [], cursor: 0 },
   };
 }

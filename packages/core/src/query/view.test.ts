@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { applyAll } from '../commands/apply.js';
 import type { AppState, Command } from '../commands/types.js';
 import { initialState } from '../state.js';
-import { boardEmphasis, hiddenElementIds, relationsOf, suppressedConnectionIds } from './view.js';
+import { boardEmphasis, focusHiddenIds, hiddenElementIds, relationsOf, suppressedConnectionIds } from './view.js';
 
 const DOC = '00000000-0000-4000-8000-000000000000';
 const UI = '11111111-1111-4111-8111-111111111111';
@@ -389,5 +389,59 @@ describe('relationsOf', () => {
   it('returns nothing for an unconnected element', () => {
     const state = must(base, entity(GROUP, 'Loose end'));
     expect(relationsOf(state, GROUP)).toEqual([]);
+  });
+});
+
+describe('focusHiddenIds', () => {
+  const focused = (state: AppState): AppState =>
+    must(state, { type: 'set-focus-mode', enabled: true }, { type: 'set-filter', expression: 'team=payments' });
+
+  it('is empty while focus mode is off', () => {
+    const state = must(base, { type: 'set-filter', expression: 'team=payments' });
+    expect(focusHiddenIds(state)).toEqual(new Set());
+  });
+
+  it('is empty while no filter runs', () => {
+    const state = must(base, { type: 'set-focus-mode', enabled: true });
+    expect(focusHiddenIds(state)).toEqual(new Set());
+  });
+
+  it('removes elements the filter does not match, and never connections', () => {
+    expect(focusHiddenIds(focused(base))).toEqual(new Set([UI]));
+  });
+
+  it('keeps a selected non-match: the reader is pointing at it', () => {
+    const state = must(focused(base), { type: 'set-selection', ids: [UI] });
+    expect(focusHiddenIds(state)).toEqual(new Set());
+  });
+
+  it('keeps an explicitly hidden non-match under the hidden treatment', () => {
+    const state = must(focused(base), { type: 'set-hidden', id: UI, hidden: true });
+    expect(focusHiddenIds(state)).toEqual(new Set());
+  });
+
+  it('keeps a group above a match, so the collapsed badge still shows', () => {
+    const state = focused(
+      must(base, entity(GROUP, 'Backoffice'), { type: 'set-group', id: LEDGER, groupId: GROUP }),
+    );
+    expect(focusHiddenIds(state)).toEqual(new Set([UI]));
+  });
+
+  it('keeps the groups above a kept element, so it still has a place to render', () => {
+    const state = must(
+      focused(must(base, entity(GROUP, 'Web'), { type: 'set-group', id: UI, groupId: GROUP })),
+      { type: 'set-expanded', id: GROUP, expanded: true },
+      { type: 'set-selection', ids: [UI] },
+    );
+    expect(focusHiddenIds(state)).toEqual(new Set());
+  });
+
+  it('a selected comment stands for its targets', () => {
+    const state = must(
+      focused(base),
+      { type: 'create-comment', id: REPORT, text: 'slow checkout', targets: [UI] },
+      { type: 'set-selection', ids: [REPORT] },
+    );
+    expect(focusHiddenIds(state)).toEqual(new Set());
   });
 });

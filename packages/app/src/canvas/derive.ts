@@ -1,6 +1,7 @@
 import {
   boardEmphasis,
   commentsOn,
+  focusHiddenIds,
   connectionAnchors,
   isConnection,
   isEntity,
@@ -212,6 +213,7 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Board
   const elements = state.document.model.elements;
   const expanded = new Set(state.expanded);
   const { muted, descendantMatches } = boardEmphasis(state);
+  const focusHidden = focusHiddenIds(state);
   const hiddenSet = new Set(state.hidden);
   const selected = new Set(state.selection);
   const soleSelection = onlySelected(state, options);
@@ -219,7 +221,7 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Board
 
   const connectionNodes: Node<BoardNodeData>[] = Object.values(elements)
     .filter(isConnectionNode)
-    .filter((node) => isRendered(elements, node.id, expanded))
+    .filter((node) => isRendered(elements, node.id, expanded) && !focusHidden.has(node.id))
     .map((node) => {
       const rect = rectOf(state, node.id);
       const parentRect = node.groupId ? rects.get(node.groupId) : undefined;
@@ -252,7 +254,7 @@ export function deriveNodes(state: AppState, options: DeriveOptions): Node<Board
 
   const rendered = Object.values(elements)
     .filter(isEntity)
-    .filter((entity) => isRendered(elements, entity.id, expanded))
+    .filter((entity) => isRendered(elements, entity.id, expanded) && !focusHidden.has(entity.id))
     .sort((a, b) => depthOf(elements, a.id) - depthOf(elements, b.id));
 
   const entities: Node<BoardNodeData>[] = rendered.map((entity) => {
@@ -353,6 +355,7 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
   const expanded = new Set(state.expanded);
   const rects = measure(state, expanded);
   const { muted, suppressed } = boardEmphasis(state);
+  const focusHidden = focusHiddenIds(state);
   const selected = new Set(state.selection);
   const soleSelection = onlySelected(state, options);
 
@@ -376,6 +379,8 @@ export function deriveEdges(state: AppState, options: DeriveOptions): Edge<Conne
     for (const from of anchors.from) {
       for (const to of anchors.to) {
         if (from === to) continue;
+        // Focus mode took an endpoint off the board, so the line goes too.
+        if (focusHidden.has(from) || focusHidden.has(to)) continue;
         const key = [from, to].sort().join(' ');
         const entry = byPair.get(key) ?? [];
         entry.push({ from, to, connection: element });

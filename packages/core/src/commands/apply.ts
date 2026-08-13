@@ -84,6 +84,7 @@ function moveCursor(state: AppState, cursor: number, commandType: 'undo' | 'redo
     hidden: [],
     selectionHighlight: state.selectionHighlight,
     commentOverlay: state.commentOverlay,
+    focusMode: state.focusMode,
     undo: { ...state.undo, cursor },
   };
   for (const command of state.undo.history.slice(0, cursor)) {
@@ -133,6 +134,7 @@ function moveCursor(state: AppState, cursor: number, commandType: 'undo' | 'redo
       hidden: state.hidden.filter((id) => elements[id] !== undefined),
       selectionHighlight: state.selectionHighlight,
       commentOverlay: state.commentOverlay,
+      focusMode: state.focusMode,
     },
     events,
   );
@@ -1002,6 +1004,12 @@ function reduce(state: AppState, command: Command): CommandResult {
       ]);
     }
 
+    case 'set-focus-mode': {
+      return ok({ ...state, focusMode: command.enabled }, [
+        { type: 'focus-mode-changed', enabled: command.enabled },
+      ]);
+    }
+
     case 'set-selection': {
       for (const id of command.ids) {
         if (!state.document.model.elements[id] && !state.document.comments[id]) {
@@ -1091,6 +1099,7 @@ function reduce(state: AppState, command: Command): CommandResult {
           hidden: [],
           selectionHighlight: state.selectionHighlight,
           commentOverlay: false,
+          focusMode: false,
         },
         [{ type: 'document-loaded', id: result.document.id }],
       );

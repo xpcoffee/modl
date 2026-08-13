@@ -58,6 +58,13 @@ export interface AppState {
    * `expanded`, so it never reaches the saved file.
    */
   commentOverlay: boolean;
+  /**
+   * Whether an active filter removes non-matching elements from the board
+   * instead of dimming them. A way of looking at one document, like the
+   * filter itself, so a document load turns it off and it never reaches the
+   * saved file.
+   */
+  focusMode: boolean;
   undo: UndoState;
 }
 
@@ -156,6 +163,7 @@ export type Command =
   | { type: 'set-expanded'; id: Id; expanded: boolean }
   | { type: 'set-hidden'; id: Id; hidden: boolean }
   | { type: 'set-selection-highlight'; enabled: boolean }
+  | { type: 'set-focus-mode'; enabled: boolean }
   | { type: 'set-selection'; ids: Id[] }
   | { type: 'set-filter'; expression: string }
   | { type: 'set-view'; pan: Point; zoom: number }
@@ -224,6 +232,7 @@ export type DomainEvent =
   | { type: 'expansion-changed'; id: Id; expanded: boolean }
   | { type: 'visibility-changed'; id: Id; hidden: boolean }
   | { type: 'selection-highlight-changed'; enabled: boolean }
+  | { type: 'focus-mode-changed'; enabled: boolean }
   | { type: 'selection-changed'; ids: Id[] }
   | { type: 'filter-changed'; expression: string }
   | { type: 'view-changed'; view: View }
