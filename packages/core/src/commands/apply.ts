@@ -23,8 +23,8 @@ import {
 import { COLOR_PATTERN } from '../model/schema.js';
 import { isConnectionType, isEntityType } from '../model/paradigm.js';
 import { seededExpansion } from '../query/expansion.js';
-import { parseFilter } from '../query/filter.js';
-import { membersOf, wouldCycle } from '../query/groups.js';
+import { parseFilter, selectIds } from '../query/filter.js';
+import { ancestorsOf, membersOf, wouldCycle } from '../query/groups.js';
 import { hiddenElementIds, suppressedConnectionIds } from '../query/view.js';
 import { emptyDocument, loadDocument } from '../serialize/serialize.js';
 import { isUndoable } from './undo.js';
@@ -41,6 +41,22 @@ import type {
 
 function fail(commandType: CommandType, code: ErrorCode, message: string): CommandResult {
   return { ok: false, error: { code, message, commandType } };
+}
+
+/** Appends one expansion-changed event per group that entered or left the set. */
+function pushExpansionEvents(
+  events: DomainEvent[],
+  before: readonly Id[],
+  after: readonly Id[],
+): void {
+  const wasExpanded = new Set(before);
+  const isExpanded = new Set(after);
+  for (const id of after) {
+    if (!wasExpanded.has(id)) events.push({ type: 'expansion-changed', id, expanded: true });
+  }
+  for (const id of before) {
+    if (!isExpanded.has(id)) events.push({ type: 'expansion-changed', id, expanded: false });
+  }
 }
 
 /**
@@ -81,6 +97,7 @@ function moveCursor(state: AppState, cursor: number, commandType: 'undo' | 'redo
     filter: '',
     selection: [],
     expanded: [],
+    expandedBeforeFilter: null,
     hidden: [],
     selectionHighlight: state.selectionHighlight,
     commentOverlay: state.commentOverlay,
@@ -131,6 +148,8 @@ function moveCursor(state: AppState, cursor: number, commandType: 'undo' | 'redo
         (id) => elements[id] !== undefined || comments[id] !== undefined,
       ),
       expanded: state.expanded.filter((id) => elements[id] !== undefined),
+      expandedBeforeFilter:
+        state.expandedBeforeFilter?.filter((id) => elements[id] !== undefined) ?? null,
       hidden: state.hidden.filter((id) => elements[id] !== undefined),
       selectionHighlight: state.selectionHighlight,
       commentOverlay: state.commentOverlay,
@@ -1026,9 +1045,49 @@ function reduce(state: AppState, command: Command): CommandResult {
       if (!parsed.ok) {
         return fail(command.type, 'invalid-filter', parsed.message);
       }
-      return ok({ ...state, filter: command.expression }, [
+
+      const elements = state.document.model.elements;
+      const events: DomainEvent[] = [
         { type: 'filter-changed', expression: command.expression },
-      ]);
+      ];
+
+      // An expression with no terms clears the filter: restore the expansion
+      // set from before the filter, pruned of ids deleted while it ran.
+      if (parsed.terms.length === 0) {
+        const expanded =
+          state.expandedBeforeFilter?.filter((id) => elements[id] !== undefined) ??
+          state.expanded;
+        pushExpansionEvents(events, state.expanded, expanded);
+        return ok(
+          { ...state, filter: command.expression, expanded, expandedBeforeFilter: null },
+          events,
+        );
+      }
+
+      // Every committed expression derives expansion afresh: the pre-filter
+      // baseline plus each match's group chain. Deriving from the baseline
+      // rather than the current set keeps filter edits from stacking, and
+      // means narrowing a filter folds paths that no longer hold matches.
+      // Hidden matches drive no expansion: hiding beats filtering
+      // (decision 009).
+      const baseline = state.expandedBeforeFilter ?? state.expanded;
+      const expanded = new Set(baseline.filter((id) => elements[id] !== undefined));
+      const hidden = hiddenElementIds(elements, state.hidden);
+      for (const id of selectIds(elements, command.expression, state.document.comments)) {
+        if (hidden.has(id)) continue;
+        for (const group of ancestorsOf(elements, id)) expanded.add(group);
+      }
+      const expandedList = [...expanded].sort();
+      pushExpansionEvents(events, state.expanded, expandedList);
+      return ok(
+        {
+          ...state,
+          filter: command.expression,
+          expanded: expandedList,
+          expandedBeforeFilter: [...baseline],
+        },
+        events,
+      );
     }
 
     case 'set-view': {
@@ -1096,6 +1155,7 @@ function reduce(state: AppState, command: Command): CommandResult {
           filter: '',
           selection: [],
           expanded: seededExpansion(result.document),
+          expandedBeforeFilter: null,
           hidden: [],
           selectionHighlight: state.selectionHighlight,
           commentOverlay: false,

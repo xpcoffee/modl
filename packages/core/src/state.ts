@@ -10,6 +10,7 @@ export function initialState(documentId: Id, title?: string): AppState {
     filter: '',
     selection: [],
     expanded: [],
+    expandedBeforeFilter: null,
     hidden: [],
     selectionHighlight: true,
     commentOverlay: false,

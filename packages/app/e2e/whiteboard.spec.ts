@@ -738,6 +738,13 @@ test.describe('filtering', () => {
 
     await setFilter(page, 'team=payments');
 
+    // The filter opened the group to show the match (issue #77); collapse it
+    // by hand, which the filter respects until its next commit.
+    await page.getByTestId(`collapse-${GROUP}`).click();
+    // The click also selected the group; drop the selection so the filter
+    // keeps deciding emphasis.
+    await dispatch(page, [{ type: 'set-selection', ids: [] }]);
+
     // The ledger matches inside the collapsed group: the group stays readable
     // and shows the count, while the unrelated UI mutes.
     await expect(page.getByTestId(`entity-${GROUP}`)).not.toHaveClass(/is-dimmed/);
@@ -745,8 +752,6 @@ test.describe('filtering', () => {
     await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveClass(/is-dimmed/);
 
     await page.getByTestId(`expand-${GROUP}`).click();
-    // The click also selected the group; drop the selection so the filter
-    // keeps deciding emphasis.
     await dispatch(page, [{ type: 'set-selection', ids: [] }]);
 
     await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
@@ -841,6 +846,31 @@ test.describe('filtering', () => {
     await dispatch(page, [{ type: 'undo' }]);
     const document = await getDocument(page);
     expect(document.layout[IDS.ledger]).toMatchObject({ x: 560, y: 0 });
+  });
+
+  test('a filter opens the groups above a match, and clearing folds them back', async ({ page }) => {
+    const INNER = '88888888-8888-4888-8888-888888888888';
+    const OUTER = '99999999-9999-4999-8999-999999999999';
+    // Built with set-group rather than group-elements, which selects the new
+    // group and would hand emphasis to the selection highlight.
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'create-entity', id: INNER, entityType: 'component', title: 'Vault', position: { x: 560, y: 220 } },
+      { type: 'create-entity', id: OUTER, entityType: 'component', title: 'Backoffice', position: { x: 560, y: 440 } },
+      { type: 'set-group', id: IDS.ledger, groupId: INNER },
+      { type: 'set-group', id: INNER, groupId: OUTER },
+    ]);
+    await fit(page);
+
+    // The ledger sits two collapsed levels deep, so it starts off the board.
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveCount(0);
+
+    await setFilter(page, '"Ledger"');
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toBeVisible();
+
+    await setFilter(page, '');
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveCount(0);
+    await expect(page.getByTestId(`entity-${OUTER}`)).toBeVisible();
   });
 });
 

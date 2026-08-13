@@ -40,6 +40,13 @@ export interface AppState {
   /** Groups currently showing their members. Collapsed is the default. */
   expanded: Id[];
   /**
+   * The expansion set as it stood before the active filter was applied.
+   * A committed filter expands every group on the path to a match; clearing
+   * the filter restores this, so a search never permanently unfolds the
+   * board. Null while no filter is active. Session-only, like `expanded`.
+   */
+  expandedBeforeFilter: Id[] | null;
+  /**
    * Elements the reader has put away: drawn muted, with their connections not
    * drawn at all. Never holds a connection id: a hidden connection would have
    * no visible remnant to bring it back from, so connections only leave the

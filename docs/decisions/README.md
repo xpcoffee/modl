@@ -32,5 +32,7 @@ A decision earns a file when reversing it later would be expensive: it shapes th
 | [024](024-menu-docking.md) | Selection menus dock at the bottom centre when their anchors fail |
 | [025](025-menu-focus.md) | Tab moves real DOM focus: a ring over the selection menus, a soft focus over the board |
 | [026](026-zoom-floor-follows-board-extent.md) | The zoom floor follows the board's extent, and never moves the camera itself |
+| [027](027-filter-focus-compaction.md) | Focus compaction is a derived layout, and geometry gestures pause under it |
+| [028](028-filter-auto-expansion.md) | A committed filter opens the groups above its matches, and clearing restores the reader's set |
 
 The build order these decisions were first applied in lives in [the bootstrap spec](../specs/001-bootstrap.md).
