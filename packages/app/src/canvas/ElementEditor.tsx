@@ -10,14 +10,16 @@ import {
 import { store } from '../store/store.js';
 import { DeleteButton } from './DeleteButton.js';
 import { ElementIcon, type JunctionLabel } from './ElementIcon.js';
+import { usePanelStop } from './focusRing.js';
 import { StyleEditor } from './StyleEditor.js';
 
 /**
  * Editing surface attached to the selected element, so details are changed
  * where the element is rather than in a panel across the screen.
  *
- * `nodrag nopan nowheel` keep the canvas still while a field has focus, and
- * key events stop here so Delete edits text instead of removing the element.
+ * `nodrag nopan nowheel` keep the canvas still while a field has focus. The
+ * panel stop owns the keys: Delete edits text instead of removing the
+ * element, and the panel is the focus ring's bottom slot (decision 025).
  */
 export function ElementEditor({
   id,
@@ -44,6 +46,7 @@ export function ElementEditor({
 }) {
   const [addingTag, setAddingTag] = useState(false);
   const [pickingType, setPickingType] = useState(false);
+  const panelStop = usePanelStop();
   /**
    * What this element could be instead.
    *
@@ -59,9 +62,11 @@ export function ElementEditor({
 
   return (
     <div
+      ref={panelStop.ref}
+      tabIndex={panelStop.tabIndex}
       className="element-editor nodrag nopan nowheel"
       data-testid={`editor-${id}`}
-      onKeyDown={(event) => event.stopPropagation()}
+      onKeyDown={panelStop.onKeyDown}
       onDoubleClick={(event) => event.stopPropagation()}
     >
       <div className="element-editor__row">
@@ -326,7 +331,13 @@ function NewTagChip({ id, onDone }: { id: Id; onDone: () => void }) {
       }}
       onKeyDown={(event) => {
         if (event.key === 'Enter') finish(true);
-        if (event.key === 'Escape') finish(false);
+        if (event.key === 'Escape') {
+          // preventDefault marks the press spent: abandoning the draft is its
+          // one level, so the panel above must not also step focus out
+          // (decision 025).
+          event.preventDefault();
+          finish(false);
+        }
       }}
     >
       <input

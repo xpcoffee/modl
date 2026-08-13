@@ -93,6 +93,7 @@ import {
 } from './CommentOverlay.js';
 import { getCommentEdit } from './commentEditing.js';
 import { startEditing, stopEditing, useEditingId } from './editing.js';
+import { installFocusCycle } from './focusRing.js';
 import { useHighlightId } from './highlight.js';
 import { lastConnectionStyle, lastEntityStyle } from './styleMemory.js';
 import { GLIDE_MS, pressRipple, takeGlide, useGlidesStarted, useWarpingIds } from './animations.js';
@@ -333,6 +334,10 @@ export function Canvas() {
   const glideFrame = useRef(0);
 
   useEffect(() => () => window.cancelAnimationFrame(glideFrame.current), []);
+
+  // Tab and Enter drive keyboard focus over the board and the selection
+  // menus (decision 025).
+  useEffect(() => installFocusCycle(), []);
 
   useEffect(() => {
     glideTargets.current = new Map(derived.map((node) => [node.id, node.position]));
@@ -1316,7 +1321,10 @@ export function Canvas() {
         });
         setDraft(null);
       }}
-      onKeyDown={(event) => matchesKey('cancel', event) && disarm()}
+      // No cancel handler here: the window handler above owns the cancel
+      // levels, and a duplicate answering the same press disarmed the
+      // placement and deselected together once the focus ring made a press
+      // from inside the canvas routine (decision 025).
       tabIndex={-1}
     >
       <ArrowMarkers />

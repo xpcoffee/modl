@@ -3,6 +3,7 @@ import { isConnection } from '@modl/core';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
 import { DeleteButton } from './DeleteButton.js';
+import { usePanelStop } from './focusRing.js';
 import { StyleEditor } from './StyleEditor.js';
 import { useDockedTransform } from './docking.js';
 
@@ -18,6 +19,7 @@ export function SelectionActions() {
   const state = useAppState();
   const { selection } = state;
   const transform = useDockedTransform('panel', selection.length >= 2);
+  const panelStop = usePanelStop();
   if (selection.length < 2) return null;
 
   // Connections cannot be hidden directly, so only the rest count. A mixed
@@ -33,9 +35,12 @@ export function SelectionActions() {
   return (
     <ViewportPortal>
       <div
+        ref={panelStop.ref}
+        tabIndex={panelStop.tabIndex}
         className="selection-actions nodrag nopan"
         data-testid="selection-actions"
         style={{ transform }}
+        onKeyDown={panelStop.onKeyDown}
       >
         {/* One panel for the whole selection: each row edits the elements it
             can mean something to, so a mixed selection still edits its
