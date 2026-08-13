@@ -752,6 +752,45 @@ test.describe('filtering', () => {
     await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
     await expect(page.getByTestId(`match-count-${GROUP}`)).toHaveCount(0);
   });
+
+  test('focus mode removes non-matches from the board and the minimap', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    const saved = await serialize(page);
+    await setFilter(page, 'team=payments');
+
+    await page.getByTestId('focus-toggle').click();
+
+    await expect(page.getByTestId('focus-toggle')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveCount(0);
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).toBeVisible();
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toBeVisible();
+    // The line into the removed UI goes with it; the one between the two
+    // matches stays drawn.
+    await expect(page.locator('.react-flow__edge')).toHaveCount(1);
+    await expect(page.locator('.react-flow__minimap-node')).toHaveCount(2);
+    // A transient view: the saved document is untouched.
+    expect(await serialize(page)).toBe(saved);
+
+    await page.getByTestId('focus-toggle').click();
+
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toBeVisible();
+    await expect(page.locator('.react-flow__minimap-node')).toHaveCount(3);
+    expect(await serialize(page)).toBe(saved);
+  });
+
+  test('clearing the filter in focus mode brings everything back', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await setFilter(page, 'team=payments');
+    await page.getByTestId('focus-toggle').click();
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveCount(0);
+
+    await setFilter(page, '');
+
+    // The mode stays on with nothing to do, ready for the next filter.
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toBeVisible();
+    await expect(page.getByTestId('focus-toggle')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.react-flow__node')).toHaveCount(3);
+  });
 });
 
 test.describe('search menu', () => {

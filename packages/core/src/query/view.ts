@@ -164,6 +164,52 @@ export function boardEmphasis(state: AppState): BoardEmphasis {
   return { muted, suppressed, descendantMatches };
 }
 
+/**
+ * Elements focus mode removes from the board entirely: with the mode on and a
+ * filter active, everything the filter neither matches nor promotes goes
+ * unrendered instead of dimming. Connections are not listed; a connection
+ * leaves the board when an endpoint does, judged by the renderer against its
+ * visible anchors.
+ *
+ * Three kinds of element stay put, with their enclosing groups kept so what
+ * remains still has somewhere to render:
+ * - matches and the groups above them (`filterGuidance`);
+ * - the selection, since the reader is pointing at it;
+ * - elements the reader explicitly hid, which keep the hidden treatment
+ *   (drawn muted) rather than joining the removal.
+ */
+export function focusHiddenIds(state: AppState): Set<Id> {
+  const removed = new Set<Id>();
+  if (!state.focusMode) return removed;
+  const parsed = parseFilter(state.filter);
+  if (!parsed.ok || parsed.terms.length === 0) return removed;
+
+  const elements = state.document.model.elements;
+  const hidden = hiddenElementIds(elements, state.hidden);
+  const { emphasised } = filterGuidance(elements, state.filter, hidden, state.document.comments);
+
+  // A selected comment stands for the elements it discusses, matching how
+  // boardEmphasis reads the selection.
+  const selection = state.selection.flatMap((id) =>
+    elements[id]
+      ? [id]
+      : (state.document.comments[id]?.targets.filter((target) => elements[target]) ?? []),
+  );
+
+  const kept = new Set<Id>();
+  for (const id of [...emphasised, ...selection, ...hidden]) {
+    if (!elements[id]) continue;
+    kept.add(id);
+    for (const group of ancestorsOf(elements, id)) kept.add(group);
+  }
+
+  for (const [id, element] of Object.entries(elements)) {
+    if (isConnection(element)) continue;
+    if (!kept.has(id)) removed.add(id);
+  }
+  return removed;
+}
+
 export interface Relation {
   connectionId: Id;
   /** The element at the other end, as it appears on the board. */

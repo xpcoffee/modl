@@ -321,6 +321,22 @@ export function SearchMenu() {
         </button>
       )}
 
+      <button
+        type="button"
+        className={`search-menu__focus${state.focusMode ? ' is-on' : ''}`}
+        data-testid="focus-toggle"
+        aria-pressed={state.focusMode}
+        aria-label="Focus mode: hide elements the filter does not match"
+        title={
+          state.focusMode
+            ? 'Focus mode is on: elements the filter does not match leave the board'
+            : 'Focus mode: hide elements the filter does not match'
+        }
+        onClick={() => store.dispatch({ type: 'set-focus-mode', enabled: !state.focusMode })}
+      >
+        <FocusIcon />
+      </button>
+
       {(open || closing) && (
         <div className={`search-menu__bar${closing ? ' is-closing' : ''}`} data-testid="search-bar">
           <div className="search-menu__field">
@@ -473,6 +489,14 @@ function FilterIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="search-menu__icon">
       <path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z" />
+    </svg>
+  );
+}
+
+function FocusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="search-menu__icon">
+      <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 3h-2.07A7 7 0 0 0 13 5.07V3h-2v2.07A7 7 0 0 0 5.07 11H3v2h2.07A7 7 0 0 0 11 18.93V21h2v-2.07A7 7 0 0 0 18.93 13H21v-2zm-9 6a5 5 0 1 1 0-10 5 5 0 0 1 0 10z" />
     </svg>
   );
 }

@@ -1008,6 +1008,38 @@ describe('set-selection-highlight', () => {
   });
 });
 
+describe('set-focus-mode', () => {
+  it('turns the mode on and off', () => {
+    let state = must(base, { type: 'set-focus-mode', enabled: true });
+    expect(state.focusMode).toBe(true);
+
+    state = must(state, { type: 'set-focus-mode', enabled: false });
+    expect(state.focusMode).toBe(false);
+  });
+
+  it('a document load turns it off, like the filter', () => {
+    const other = must(initialState('55555555-5555-4555-8555-555555555555'), entity(C, 'Solo'));
+    const state = must(
+      must(base, { type: 'set-focus-mode', enabled: true }),
+      { type: 'load-document', document: other.document },
+    );
+    expect(state.focusMode).toBe(false);
+  });
+
+  it('stays out of the undo history and survives an undo', () => {
+    const state = must(
+      base,
+      entity(C, 'Ledger'),
+      { type: 'set-focus-mode', enabled: true },
+      { type: 'undo' },
+    );
+    // Undo reached past the toggle to the last document change, and the mode
+    // carried over the refold.
+    expect(state.document.model.elements[C]).toBeUndefined();
+    expect(state.focusMode).toBe(true);
+  });
+});
+
 describe('load-document', () => {
   it('replaces the document and clears session state', () => {
     const other = must(initialState('55555555-5555-4555-8555-555555555555'), entity(C, 'Solo'));
