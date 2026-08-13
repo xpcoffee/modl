@@ -858,6 +858,141 @@ describe('set-filter', () => {
   });
 });
 
+describe('set-filter expands groups holding matches', () => {
+  const INNER = '66666666-6666-4666-8666-666666666666';
+  const OUTER = '77777777-7777-4777-8777-777777777777';
+  const OTHER = '88888888-8888-4888-8888-888888888888';
+  const EXTRA = '99999999-9999-4999-8999-999999999998';
+
+  /** A (tagged team=web) inside INNER inside OUTER; C inside OTHER. All collapsed. */
+  let nested: AppState;
+
+  beforeEach(() => {
+    nested = must(
+      base,
+      entity(C, 'Ledger', 480),
+      { type: 'set-tag', id: A, key: 'team', values: ['web'] },
+      { type: 'group-elements', id: INNER, title: 'Inner', memberIds: [A], position: { x: 0, y: 0 } },
+      { type: 'group-elements', id: OUTER, title: 'Outer', memberIds: [INNER], position: { x: 0, y: 0 } },
+      { type: 'group-elements', id: OTHER, title: 'Other', memberIds: [C], position: { x: 600, y: 0 } },
+    );
+  });
+
+  it('expands every group on the path to a match, two levels deep', () => {
+    const state = must(nested, { type: 'set-filter', expression: 'team=web' });
+    expect(state.expanded).toEqual([INNER, OUTER]);
+    expect(state.expandedBeforeFilter).toEqual([]);
+  });
+
+  it('emits expansion-changed for each group it opens', () => {
+    const result = apply(nested, { type: 'set-filter', expression: 'team=web' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.events).toEqual([
+      { type: 'filter-changed', expression: 'team=web' },
+      { type: 'expansion-changed', id: INNER, expanded: true },
+      { type: 'expansion-changed', id: OUTER, expanded: true },
+    ]);
+  });
+
+  it('leaves groups holding no match as they were', () => {
+    const state = must(
+      nested,
+      { type: 'set-expanded', id: OTHER, expanded: true },
+      { type: 'set-filter', expression: 'team=web' },
+    );
+    expect(state.expanded).toEqual([INNER, OUTER, OTHER]);
+  });
+
+  it('clearing the filter restores the pre-filter expansion', () => {
+    const state = must(
+      nested,
+      { type: 'set-expanded', id: OTHER, expanded: true },
+      { type: 'set-filter', expression: 'team=web' },
+      { type: 'set-filter', expression: '' },
+    );
+    expect(state.expanded).toEqual([OTHER]);
+    expect(state.expandedBeforeFilter).toBeNull();
+  });
+
+  it('an edited expression re-derives from the pre-filter set instead of stacking', () => {
+    const state = must(
+      nested,
+      { type: 'set-filter', expression: 'team=web' },
+      { type: 'set-filter', expression: 'team=web team=missing' },
+    );
+    // The narrowed filter matches nothing, so the paths it opened fold back.
+    expect(state.expanded).toEqual([]);
+    expect(state.expandedBeforeFilter).toEqual([]);
+  });
+
+  it('a manual collapse while filtering holds until the next filter commit', () => {
+    let state = must(
+      nested,
+      { type: 'set-filter', expression: 'team=web' },
+      { type: 'set-expanded', id: INNER, expanded: false },
+    );
+    expect(state.expanded).toEqual([OUTER]);
+
+    state = must(state, { type: 'set-filter', expression: 'team=web "Checkout"' });
+    expect(state.expanded).toEqual([INNER, OUTER]);
+  });
+
+  it('a hidden match expands nothing', () => {
+    const state = must(
+      nested,
+      { type: 'set-hidden', id: A, hidden: true },
+      { type: 'set-filter', expression: 'team=web' },
+    );
+    expect(state.expanded).toEqual([]);
+  });
+
+  it('a group deleted while filtering drops from the restored set', () => {
+    const state = must(
+      nested,
+      { type: 'set-expanded', id: OTHER, expanded: true },
+      { type: 'set-filter', expression: 'team=web' },
+      { type: 'delete-element', id: OTHER },
+      { type: 'set-filter', expression: '' },
+    );
+    expect(state.expanded).toEqual([]);
+  });
+
+  it('load-document resets the restore point with the filter', () => {
+    const other = must(initialState('55555555-5555-4555-8555-555555555555'), entity(EXTRA, 'Solo'));
+    const state = must(
+      nested,
+      { type: 'set-filter', expression: 'team=web' },
+      { type: 'load-document', document: other.document },
+    );
+    expect(state.filter).toBe('');
+    expect(state.expandedBeforeFilter).toBeNull();
+  });
+
+  it('undo keeps the restore point, so clearing still puts the board back', () => {
+    const state = must(
+      nested,
+      { type: 'set-expanded', id: OTHER, expanded: true },
+      { type: 'set-filter', expression: 'team=web' },
+      entity(EXTRA, 'Note'),
+      { type: 'undo' },
+      { type: 'set-filter', expression: '' },
+    );
+    expect(state.expanded).toEqual([OTHER]);
+  });
+
+  it('a cyclic group chain cannot loop the expansion walk', () => {
+    // Cycles are rejected at load and by set-group; forge one to prove the
+    // walk still terminates on a corrupt state.
+    const forged = structuredClone(nested);
+    const outer = forged.document.model.elements[OUTER];
+    if (!outer) throw new Error('missing group');
+    forged.document.model.elements[OUTER] = { ...outer, groupId: INNER };
+    const result = apply(forged, { type: 'set-filter', expression: 'team=web' });
+    expect(result.ok).toBe(true);
+  });
+});
+
 describe('set-view', () => {
   it('stores pan and zoom', () => {
     const state = must(base, { type: 'set-view', pan: { x: 10, y: 20 }, zoom: 1.5 });
