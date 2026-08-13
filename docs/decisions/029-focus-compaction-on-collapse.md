@@ -16,6 +16,8 @@ The existing derivation already restores: the overlay is computed on render, so 
 
 The collapse-driven move glides the same way the filter-driven one does: `expansion-changed` joins `filter-changed` as a glide trigger while the mode runs.
 
+**The camera re-fits on every focus relayout.** The pack can move the visible elements away from where the camera sits, leaving the reader looking at empty space. On the same events that glide (the mode's toggle, and a filter or expansion change while the mode runs), the canvas fits the camera to the box the relayout puts the root nodes in, over the glide's duration, and skips the fit when the relayout moved nothing. The bounds come from the derived nodes' own sizes rather than React Flow's measurements, which do not exist yet for nodes the relayout introduces.
+
 ## Consequences
 
 Toggling focus mode on with no filter now compacts the whole board. Before this change the toggle did nothing without a filter; the toggle's labels now say so.

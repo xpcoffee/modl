@@ -898,6 +898,20 @@ test.describe('filtering', () => {
     expect(await serialize(page)).toBe(saved);
   });
 
+  test('a focus relayout re-fits the camera, so the board stays on screen', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await dispatch(page, [
+      { type: 'move-element', id: IDS.ledger, position: { x: 1200, y: 400 } },
+      { type: 'set-view', pan: { x: -4000, y: 0 }, zoom: 1 },
+    ]);
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toBeInViewport();
+
+    await page.getByTestId('focus-toggle').click();
+
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toBeInViewport();
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toBeInViewport();
+  });
+
   test('a filter opens the groups above a match, and clearing folds them back', async ({ page }) => {
     const INNER = '88888888-8888-4888-8888-888888888888';
     const OUTER = '99999999-9999-4999-8999-999999999999';

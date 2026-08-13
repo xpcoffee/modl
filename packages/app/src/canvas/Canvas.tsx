@@ -100,7 +100,7 @@ import { startEditing, stopEditing, useEditingId } from './editing.js';
 import { installFocusCycle } from './focusRing.js';
 import { useHighlightId } from './highlight.js';
 import { lastConnectionStyle, lastEntityStyle } from './styleMemory.js';
-import { GLIDE_MS, pressRipple, takeGlide, useGlidesStarted, useWarpingIds } from './animations.js';
+import { focusRelayout, GLIDE_MS, pressRipple, takeGlide, useGlidesStarted, useWarpingIds } from './animations.js';
 import { GravityGrid } from './GravityGrid.js';
 import { WarpGhosts } from './WarpGhosts.js';
 
@@ -131,6 +131,29 @@ function zoomFloor(bounds: Rect, width: number, height: number): number {
   }
   const fitZoom = Math.min(width / bounds.width, height / bounds.height);
   return Math.min(DEFAULT_MIN_ZOOM, fitZoom * (1 - 2 * ZOOM_FLOOR_PADDING));
+}
+
+/**
+ * The box around the root nodes as derived, read from the sizes their styles
+ * carry: unlike React Flow's `getNodesBounds`, this works on nodes that have
+ * not rendered yet, so a camera fit can aim at where a relayout will put them.
+ */
+function boardBounds(nodes: Node<BoardNodeData>[]): Rect | null {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const node of nodes) {
+    if (node.parentId) continue;
+    const width = typeof node.style?.width === 'number' ? node.style.width : 0;
+    const height = typeof node.style?.height === 'number' ? node.style.height : 0;
+    minX = Math.min(minX, node.position.x);
+    minY = Math.min(minY, node.position.y);
+    maxX = Math.max(maxX, node.position.x + width);
+    maxY = Math.max(maxY, node.position.y + height);
+  }
+  if (minX === Infinity) return null;
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
 /**
@@ -270,7 +293,7 @@ export function Canvas() {
   const editingId = useEditingId();
   const highlightId = useHighlightId();
   const loadCount = useLoadCount();
-  const { screenToFlowPosition, fitView, setViewport, setCenter, getViewport, getNodesBounds } =
+  const { screenToFlowPosition, fitView, fitBounds, setViewport, setCenter, getViewport, getNodesBounds } =
     useReactFlow();
   const flowStore = useStoreApi();
 
@@ -386,6 +409,21 @@ export function Canvas() {
 
   useEffect(() => () => window.cancelAnimationFrame(glideFrame.current), []);
 
+  /**
+   * A camera fit queued by a focus relayout. The pack can move the visible
+   * elements away from where the camera sits, so the fit follows them to
+   * where the relayout puts them. The event listener runs before the state
+   * render, so the sync below sees the flag in time.
+   */
+  const focusFitPending = useRef(false);
+  useEffect(
+    () =>
+      store.subscribeEvents((events, _before, after) => {
+        if (focusRelayout(events, after)) focusFitPending.current = true;
+      }),
+    [],
+  );
+
   // Tab and Enter drive keyboard focus over the board and the selection
   // menus (decision 025).
   useEffect(() => installFocusCycle(), []);
@@ -403,6 +441,24 @@ export function Canvas() {
       };
     }
     const active = glide.current;
+
+    if (focusFitPending.current) {
+      focusFitPending.current = false;
+      const drawn = new Map(nodesRef.current.map((node) => [node.id, node.position]));
+      const moved =
+        derived.length !== nodesRef.current.length ||
+        derived.some((node) => {
+          const before = drawn.get(node.id);
+          return !before || before.x !== node.position.x || before.y !== node.position.y;
+        });
+      const bounds = moved ? boardBounds(derived) : null;
+      if (bounds) {
+        void fitBounds(bounds, {
+          padding: ZOOM_FLOOR_PADDING,
+          duration: motionReduced() ? 0 : GLIDE_MS,
+        });
+      }
+    }
 
     // Carry each node's measured size forward. Handing React Flow a fresh
     // unmeasured object on every state change makes it hide the node until it
@@ -450,7 +506,7 @@ export function Canvas() {
       else glide.current = null;
     };
     glideFrame.current = window.requestAnimationFrame(step);
-  }, [derived]);
+  }, [derived, fitBounds]);
 
   /**
    * Frames the board when a document arrives, so a file whose elements sit
