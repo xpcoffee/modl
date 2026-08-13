@@ -459,6 +459,12 @@ select {
   box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
 }
 
+/* Node strokes are set in board units and would thin to nothing once a
+   large board scales down; this holds them at screen scale instead. */
+.react-flow__minimap-node {
+  vector-effect: non-scaling-stroke;
+}
+
 .react-flow__attribution {
   display: none;
 }

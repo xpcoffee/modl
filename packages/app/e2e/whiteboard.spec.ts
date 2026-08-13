@@ -4221,6 +4221,63 @@ test.describe('minimap', () => {
     expect(Object.keys((await getDocument(page)).model.elements)).toHaveLength(5);
     expect(await page.evaluate(() => window.__modl.getState().selection)).toEqual([]);
   });
+
+  /** The minimap rectangle drawn for one element. */
+  function miniMapRect(page: import('@playwright/test').Page, id: string) {
+    return page.locator(`.react-flow__minimap-node.mm-${id}`);
+  }
+
+  test('an element draws with the readable fill and a visible stroke', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    const rect = miniMapRect(page, IDS.ui);
+    await expect(rect).toHaveCSS('fill', 'rgb(126, 136, 160)'); // #7e88a0
+    await expect(rect).toHaveCSS('stroke', 'rgb(174, 183, 201)'); // #aeb7c9
+  });
+
+  test('a filtered-out element fades in the minimap and a match keeps full strength', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+
+    await setFilter(page, 'team=payments');
+
+    await expect(miniMapRect(page, IDS.ui)).toHaveCSS('fill', 'rgb(69, 76, 92)'); // #454c5c
+    await expect(miniMapRect(page, IDS.ui)).toHaveCSS('stroke', 'rgb(90, 98, 117)'); // #5a6275
+    await expect(miniMapRect(page, IDS.gateway)).toHaveCSS('fill', 'rgb(126, 136, 160)');
+  });
+
+  test('an authored fill keeps its colour in the minimap, dimmed to a fainter mix', async ({ page }) => {
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'set-style', id: IDS.gateway, style: { fill: '#5b8def' } },
+    ]);
+
+    await expect(miniMapRect(page, IDS.gateway)).toHaveCSS('fill', 'rgb(91, 141, 239)');
+
+    await setFilter(page, 'team=web');
+
+    // #5b8def mixed at 35% over the minimap background.
+    await expect(miniMapRect(page, IDS.gateway)).toHaveCSS('fill', 'rgb(47, 66, 105)');
+  });
+
+  test('an expanded container draws as a tint its members show through', async ({ page }) => {
+    const GROUP = '77777777-7777-4777-8777-777777777777';
+    await dispatch(page, [
+      ...sampleDomain(),
+      {
+        type: 'group-elements',
+        id: GROUP,
+        title: 'Payments',
+        memberIds: [IDS.gateway, IDS.ledger],
+        position: { x: 280, y: 0 },
+      },
+    ]);
+    await fit(page);
+    await page.getByTestId(`expand-${GROUP}`).click();
+
+    await expect(miniMapRect(page, GROUP)).toHaveCSS('fill', 'rgba(126, 136, 160, 0.15)');
+    await expect(miniMapRect(page, GROUP)).toHaveCSS('stroke', 'rgb(174, 183, 201)');
+    await expect(miniMapRect(page, IDS.gateway)).toHaveCSS('fill', 'rgb(126, 136, 160)');
+  });
 });
 
 test.describe('duplication', () => {
