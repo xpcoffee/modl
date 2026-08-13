@@ -1,4 +1,4 @@
-# 029: Notes are taggable context inside the model, held apart from discussion
+# 030: Notes are taggable context inside the model, held apart from discussion
 
 **Status**: proposed (proof of concept, issue #83) · **Date**: 2026-08-13
 

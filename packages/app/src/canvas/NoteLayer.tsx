@@ -26,7 +26,7 @@ import {
 import { NoteTextBox } from './NoteTextBox.js';
 
 /**
- * Notes drawn as movable cards (issue #83, decision 029). Outside notes mode
+ * Notes drawn as movable cards (issue #83, decision 030). Outside notes mode
  * a card waits to be revealed, by the selection or by a tag filter
  * (`visibleNoteIds`), so notes written for one situation stay out of the way
  * of a reader working in another; the badge on each target still says a note

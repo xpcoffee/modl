@@ -327,7 +327,7 @@ The filter key `note` is reserved, mirroring `comment`: `note` matches every ele
 
 Note ids share the selection's id space with elements and comments, so selecting a note is the same gesture as selecting a box, and it highlights the elements the note describes. A note the reader has arranged on the board keeps a pin in `layout` under its own id, `{x, y, width, height}`, written by `move-note` and deleted with the note.
 
-A note's card is revealed rather than always drawn: it appears when the note or one of its targets is selected, or when a committed filter carries at least one non-negated tag term and the note's tags satisfy every tag term in it. Text terms, `comment` terms, and `note` terms reveal nothing, since they pick elements rather than name a context. The elements a note describes carry a badge either way, so a reader sees that context exists before asking for it. See [decision 029](decisions/029-domain-notes.md).
+A note's card is revealed rather than always drawn: it appears when the note or one of its targets is selected, or when a committed filter carries at least one non-negated tag term and the note's tags satisfy every tag term in it. Text terms, `comment` terms, and `note` terms reveal nothing, since they pick elements rather than name a context. The elements a note describes carry a badge either way, so a reader sees that context exists before asking for it. See [decision 030](decisions/030-domain-notes.md).
 
 ## Comments
 

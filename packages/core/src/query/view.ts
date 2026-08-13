@@ -231,7 +231,7 @@ export function focusHiddenIds(state: AppState): Set<Id> {
  * Notes whose cards belong on the board. A card is revealed rather than
  * always drawn, so the notes written against one situation stay out of the
  * way of a reader working in another; the badge on each target is what says
- * a note exists while its card is away (issue #83 review, decision 029).
+ * a note exists while its card is away (issue #83 review, decision 030).
  *
  * Two things reveal a card. The reader points at it, meaning the note or one
  * of the elements it describes is selected; a document-level note has no
