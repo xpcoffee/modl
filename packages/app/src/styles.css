@@ -1633,6 +1633,14 @@ select {
   color: #fff;
 }
 
+/* While the focus overlay repositions the board, the drawn geometry is not
+   the saved geometry, so the gestures that write geometry (bend drags,
+   resizes) put their handles away. Node drags pause via nodesDraggable. */
+.is-focus-overlaid .waypoints,
+.is-focus-overlaid .react-flow__resize-control {
+  display: none;
+}
+
 /* The button the bar grows out of. Width and radius carry the motion, so a
    reduced-motion reader gets the same two shapes with nothing in between. */
 .search-menu__entrance {

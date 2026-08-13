@@ -247,7 +247,13 @@ function onDomainEvents(events: DomainEvent[], before: AppState, after: AppState
     if (event.type === 'element-deleted') warpOut(event.id, before);
   }
 
-  if (events.some((event) => event.type === 'layout-reflowed')) {
+  // The focus overlay repositions the visible elements the way a reflow
+  // does, so the same glide carries them: on the mode's toggle, and on a
+  // filter change while the mode runs.
+  const focusMoved =
+    events.some((event) => event.type === 'focus-mode-changed') ||
+    (after.focusMode && events.some((event) => event.type === 'filter-changed'));
+  if (events.some((event) => event.type === 'layout-reflowed') || focusMoved) {
     glidePending = true;
     glidesStarted += 1;
     emit();
