@@ -59,6 +59,7 @@ import { ConnectionNodeView } from './ConnectionNodeView.js';
 import { GroupNode } from './GroupNode.js';
 import { ConnectionEdge } from './ConnectionEdge.js';
 import { ArrowMarkers } from './ArrowMarkers.js';
+import { MINIMAP_BG, miniMapElementOf, miniMapFill, miniMapStroke } from './minimap.js';
 import { BoxSelectPreview } from './BoxSelectPreview.js';
 import { PlacementPreview } from './PlacementPreview.js';
 import { DuplicatePreview } from './DuplicatePreview.js';
@@ -1138,11 +1139,18 @@ export function Canvas() {
   // that a reflow animated (or, under reduced motion, that it did not).
   const glidesStarted = useGlidesStarted();
 
-  /** Muted elements stay muted in the minimap, so it mirrors the board. */
-  const miniMapNodeColor = useCallback(
-    (node: Node) => (node.data['dimmed'] === true ? '#242938' : '#3c4354'),
+  /**
+   * The minimap mirrors the board: muted elements stay faint, authored
+   * colours stay recognisable, an open container draws as a tint so its
+   * members show through. Values and ratios live in minimap.ts.
+   */
+  const miniMapNodeColor = useCallback((node: Node) => miniMapFill(miniMapElementOf(node.data)), []);
+  const miniMapNodeStrokeColor = useCallback(
+    (node: Node) => miniMapStroke(miniMapElementOf(node.data)),
     [],
   );
+  /** One class per element, so a spec can find a given element's rectangle. */
+  const miniMapNodeClassName = useCallback((node: Node) => `mm-${node.id}`, []);
 
   return (
     <div
@@ -1407,10 +1415,14 @@ export function Canvas() {
           pannable
           zoomable
           position="bottom-right"
-          bgColor="#171a21"
-          maskColor="rgb(18 20 26 / 65%)"
+          bgColor={MINIMAP_BG}
+          maskColor="rgb(18 20 26 / 35%)"
+          maskStrokeColor="#aeb7c9"
+          maskStrokeWidth={1}
           nodeColor={miniMapNodeColor}
-          nodeStrokeColor="transparent"
+          nodeStrokeColor={miniMapNodeStrokeColor}
+          nodeStrokeWidth={1.5}
+          nodeClassName={miniMapNodeClassName}
           onClick={onMiniMapClick}
         />
         <DockSentinel nodes={nodes} selection={state.selection} />
