@@ -791,6 +791,57 @@ test.describe('filtering', () => {
     await expect(page.getByTestId('focus-toggle')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('.react-flow__node')).toHaveCount(3);
   });
+
+  test('focus mode compacts the visible elements and puts them back exactly', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    // Spread the two matches far apart, so the compaction is measurable.
+    await dispatch(page, [
+      { type: 'move-element', id: IDS.ledger, position: { x: 1200, y: 400 } },
+    ]);
+    const saved = await serialize(page);
+
+    /** Where a node is drawn, read from its transform. */
+    const drawn = (id: string) =>
+      page.locator(`.react-flow__node[data-id="${id}"]`).evaluate((node) => {
+        const match = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(
+          (node as HTMLElement).style.transform,
+        );
+        return { x: Number(match?.[1]), y: Number(match?.[2]) };
+      });
+
+    await setFilter(page, 'team=payments');
+    await page.getByTestId('focus-toggle').click();
+
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-focus-overlaid', 'true');
+    // The two matches close up over the space the hidden UI left: they sat
+    // just over 1000 flow pixels apart.
+    await expect
+      .poll(async () => {
+        const gateway = await drawn(IDS.gateway);
+        const ledger = await drawn(IDS.ledger);
+        return Math.hypot(ledger.x - gateway.x, ledger.y - gateway.y);
+      })
+      .toBeLessThan(500);
+    // The gateway read first before the compaction, and still reads first.
+    const gateway = await drawn(IDS.gateway);
+    const ledger = await drawn(IDS.ledger);
+    expect(ledger.y > gateway.y || (ledger.y === gateway.y && ledger.x > gateway.x)).toBe(true);
+    // A transient view: the saved geometry is untouched.
+    expect(await serialize(page)).toBe(saved);
+
+    await page.getByTestId('focus-toggle').click();
+
+    await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-focus-overlaid');
+    await expect.poll(() => drawn(IDS.ledger)).toEqual({ x: 1200, y: 400 });
+    await expect.poll(() => drawn(IDS.gateway)).toEqual({ x: 280, y: 0 });
+    expect(await serialize(page)).toBe(saved);
+
+    // The toggles added nothing to the history: one undo reaches straight
+    // past them to the move that spread the ledger out.
+    await dispatch(page, [{ type: 'undo' }]);
+    const document = await getDocument(page);
+    expect(document.layout[IDS.ledger]).toMatchObject({ x: 560, y: 0 });
+  });
 });
 
 test.describe('search menu', () => {

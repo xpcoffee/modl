@@ -23,6 +23,7 @@ import {
   DEFAULT_ENTITY_SIZE,
   connectionTypeFor,
   descendantsOf,
+  focusLayoutState,
   isConnection,
   isEntity,
   isEntityLayout,
@@ -325,6 +326,17 @@ export function Canvas() {
     return state;
   }, [state, preview, overlay]);
 
+  /**
+   * What focus mode draws: the same session with the compact plan merged
+   * into the layout, recomputed from scratch on every change and never
+   * written back. Identity says whether anything is overlaid, so clearing
+   * the filter or the mode returns every element to its saved position.
+   * While the overlay stands, geometry gestures pause: a drag would read a
+   * compacted position and write it into the document as a real move.
+   */
+  const focused = useMemo(() => focusLayoutState(shown), [shown]);
+  const focusOverlaid = focused !== shown;
+
   /** What the filter lets the overlay touch. Everything, with no filter. */
   const interactable = useMemo(
     () =>
@@ -334,12 +346,15 @@ export function Canvas() {
 
   const derived = useMemo(
     () =>
-      deriveNodes(shown, options).map((node) =>
-        warping.has(node.id) ? { ...node, className: 'is-warping-in' } : node,
-      ),
-    [shown, options, warping],
+      deriveNodes(focused, options).map((node) => {
+        const drawn = warping.has(node.id) ? { ...node, className: 'is-warping-in' } : node;
+        // Per-node `draggable` (an open container) outranks `nodesDraggable`,
+        // so the overlaid stillness is stamped on every node.
+        return focusOverlaid ? { ...drawn, draggable: false } : drawn;
+      }),
+    [focused, focusOverlaid, options, warping],
   );
-  const edges = useMemo(() => deriveEdges(shown, options), [shown, options]);
+  const edges = useMemo(() => deriveEdges(focused, options), [focused, options]);
 
   /**
    * React Flow owns node positions while a drag is in flight, so the node
@@ -1190,10 +1205,11 @@ export function Canvas() {
   return (
     <div
       ref={canvasRef}
-      className={`canvas${pending ? ' is-placing' : ''}${overlay ? ' is-comment-overlay' : ''}`}
+      className={`canvas${pending ? ' is-placing' : ''}${overlay ? ' is-comment-overlay' : ''}${focusOverlaid ? ' is-focus-overlaid' : ''}`}
       data-testid="canvas"
       data-placing={pending ?? undefined}
       data-comment-overlay={overlay ? 'true' : undefined}
+      data-focus-overlaid={focusOverlaid ? 'true' : undefined}
       data-glides={glidesStarted}
       // The board owns the right button, so it can be bound to an action
       // rather than opening the browser's menu.
@@ -1387,7 +1403,8 @@ export function Canvas() {
         onConnect={onConnect}
         onReconnect={onReconnect}
         // The overlay reads and discusses; the model underneath holds still.
-        nodesDraggable={!overlay}
+        // A focus-compacted board holds still too: see `focusOverlaid`.
+        nodesDraggable={!overlay && !focusOverlaid}
         nodesConnectable={!overlay}
         reconnectRadius={16}
         // A junction's contact points are small dots on its vertices, so a

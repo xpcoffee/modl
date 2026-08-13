@@ -18,6 +18,7 @@ export * from './query/filter.js';
 export * from './query/fuzzy.js';
 export * from './query/search.js';
 export * from './query/expansion.js';
+export * from './query/focus.js';
 export * from './query/groups.js';
 export * from './query/labels.js';
 export * from './query/layout-report.js';
