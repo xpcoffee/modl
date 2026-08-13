@@ -326,11 +326,11 @@ export function SearchMenu() {
         className={`search-menu__focus${state.focusMode ? ' is-on' : ''}`}
         data-testid="focus-toggle"
         aria-pressed={state.focusMode}
-        aria-label="Focus mode: hide elements the filter does not match"
+        aria-label="Focus mode: compact the board and hide elements the filter does not match"
         title={
           state.focusMode
-            ? 'Focus mode is on: elements the filter does not match leave the board'
-            : 'Focus mode: hide elements the filter does not match'
+            ? 'Focus mode is on: the board draws compacted, and elements the filter does not match leave it'
+            : 'Focus mode: compact the board and hide elements the filter does not match'
         }
         onClick={() => store.dispatch({ type: 'set-focus-mode', enabled: !state.focusMode })}
       >

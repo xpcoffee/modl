@@ -132,6 +132,21 @@ export function takeGlide(): boolean {
   return take;
 }
 
+/**
+ * Whether these events relayout the focus overlay: the mode toggled, or the
+ * filter or an expansion changed while it runs. The glide and the camera fit
+ * both key on this.
+ */
+export function focusRelayout(events: DomainEvent[], after: AppState): boolean {
+  return (
+    events.some((event) => event.type === 'focus-mode-changed') ||
+    (after.focusMode &&
+      events.some(
+        (event) => event.type === 'filter-changed' || event.type === 'expansion-changed',
+      ))
+  );
+}
+
 interface WaveShape {
   amplitude: number;
   reach: number;
@@ -248,12 +263,8 @@ function onDomainEvents(events: DomainEvent[], before: AppState, after: AppState
   }
 
   // The focus overlay repositions the visible elements the way a reflow
-  // does, so the same glide carries them: on the mode's toggle, and on a
-  // filter change while the mode runs.
-  const focusMoved =
-    events.some((event) => event.type === 'focus-mode-changed') ||
-    (after.focusMode && events.some((event) => event.type === 'filter-changed'));
-  if (events.some((event) => event.type === 'layout-reflowed') || focusMoved) {
+  // does, so the same glide carries them.
+  if (events.some((event) => event.type === 'layout-reflowed') || focusRelayout(events, after)) {
     glidePending = true;
     glidesStarted += 1;
     emit();
