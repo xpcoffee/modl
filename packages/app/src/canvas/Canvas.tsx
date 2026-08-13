@@ -7,6 +7,7 @@ import {
   Panel,
   ReactFlow,
   useReactFlow,
+  useStore,
   useStoreApi,
   ViewportPortal,
   type Connection,
@@ -14,6 +15,7 @@ import {
   type EdgeChange,
   type Node,
   type NodeChange,
+  type Rect,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
@@ -105,6 +107,29 @@ const EDGE_TYPES = { connection: ConnectionEdge };
 
 /** How far past the control cluster the click guard reaches, in pixels. */
 const CONTROLS_GUARD_MARGIN = 16;
+
+/** React Flow's default zoom floor, kept whenever the board fits at it. */
+const DEFAULT_MIN_ZOOM = 0.5;
+/**
+ * Screen share kept clear per side when the floor has to drop below the
+ * default. Matches the fit-on-load padding, and stays above the fit
+ * control's 0.1, so neither fit is ever clamped short of framing the board
+ * (see docs/decisions/026-zoom-floor-follows-board-extent.md).
+ */
+const ZOOM_FLOOR_PADDING = 0.15;
+
+/**
+ * The lowest zoom the camera may reach: the default floor, lowered when the
+ * board cannot fit on screen at it. Only the reach of zoom gestures changes;
+ * the camera itself never moves in answer to a floor change.
+ */
+function zoomFloor(bounds: Rect, width: number, height: number): number {
+  if (bounds.width <= 0 || bounds.height <= 0 || width <= 0 || height <= 0) {
+    return DEFAULT_MIN_ZOOM;
+  }
+  const fitZoom = Math.min(width / bounds.width, height / bounds.height);
+  return Math.min(DEFAULT_MIN_ZOOM, fitZoom * (1 - 2 * ZOOM_FLOOR_PADDING));
+}
 
 /**
  * Whether a point sits on or near the board control cluster (zoom, fit,
@@ -243,7 +268,8 @@ export function Canvas() {
   const editingId = useEditingId();
   const highlightId = useHighlightId();
   const loadCount = useLoadCount();
-  const { screenToFlowPosition, fitView, setViewport, setCenter, getViewport } = useReactFlow();
+  const { screenToFlowPosition, fitView, setViewport, setCenter, getViewport, getNodesBounds } =
+    useReactFlow();
   const flowStore = useStoreApi();
 
   // A selection box in flight keeps element editors shut.
@@ -323,6 +349,15 @@ export function Canvas() {
   // The positions drawn right now, for a glide to start from.
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
+
+  // The floor follows the drawn nodes, so it tracks adds, removes, moves,
+  // and expansion as they render, plus the pane's own size on resize.
+  const flowWidth = useStore((flow) => flow.width);
+  const flowHeight = useStore((flow) => flow.height);
+  const minZoom = useMemo(
+    () => zoomFloor(getNodesBounds(nodes), flowWidth, flowHeight),
+    [nodes, getNodesBounds, flowWidth, flowHeight],
+  );
   /**
    * A glide in flight: where each node started, and when. Targets live in
    * their own ref and refresh on every sync, so a mid-glide state change (a
@@ -1385,6 +1420,9 @@ export function Canvas() {
         // element re-framed the board and the new element jumped away from
         // the pointer that made it. The fit control does this on request.
         defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+        // A board too large for the default 0.5 floor lowers it until the
+        // whole board fits on screen. `maxZoom` keeps its default.
+        minZoom={minZoom}
         proOptions={{ hideAttribution: true }}
       >
         <GravityGrid />

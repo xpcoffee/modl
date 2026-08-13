@@ -139,6 +139,16 @@ export async function openSearch(page: Page): Promise<void> {
   await page.getByTestId('search-input').waitFor();
 }
 
+/** The zoom the camera is drawn at, read from the viewport transform. */
+export async function viewportZoom(page: Page): Promise<number> {
+  const transform = await page
+    .locator('.react-flow__viewport')
+    .evaluate((viewport) => viewport.style.transform);
+  const scale = /scale\(([^)]+)\)/.exec(transform);
+  if (!scale) throw new Error(`no scale in viewport transform: ${transform}`);
+  return Number(scale[1]);
+}
+
 export async function getDocument(page: Page): Promise<Document> {
   return page.evaluate(() => window.__modl.getDocument());
 }
