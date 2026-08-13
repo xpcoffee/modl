@@ -2830,6 +2830,11 @@ test.describe('selection highlight', () => {
 });
 
 test.describe('relations menu', () => {
+  // The roller-geometry spec races overlay layout when local workers share
+  // the machine: it failed once under a full parallel run and passed 3/3
+  // alone (#49).
+  test.describe.configure({ retries: 1 });
+
   test('a selected connected component offers its relations', async ({ page }) => {
     await dispatch(page, sampleDomain());
 

@@ -57,6 +57,10 @@ async function waveRadiusOnScreen(page: Page, x: number, y: number): Promise<num
 }
 
 test.describe('gravity waves', () => {
+  // These specs race wave timing when local workers share the machine: two
+  // failed once each under a full parallel run and passed 3/3 alone (#49).
+  test.describe.configure({ retries: 1 });
+
   test.use({ contextOptions: { reducedMotion: 'no-preference' } });
 
   test.beforeEach(async ({ page }) => {
@@ -342,6 +346,11 @@ test.describe('reduced motion', () => {
 });
 
 test.describe('turning motion off', () => {
+  // The bar-shrink spec races transition timing when local workers share the
+  // machine: it failed once under a full parallel run and passed 3/3 alone
+  // (#49).
+  test.describe.configure({ retries: 1 });
+
   test.use({ contextOptions: { reducedMotion: 'no-preference' } });
 
   test('the search button grows into the bar, then the panel unfolds below it', async ({ page }) => {
