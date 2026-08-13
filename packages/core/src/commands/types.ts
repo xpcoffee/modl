@@ -34,8 +34,8 @@ export interface AppState {
   document: Document;
   /** Active tag filter expression. Empty matches everything. */
   filter: string;
-  /** Ids of elements, and of comments: pointing at a remark and pointing at
-   * a box are the same gesture, so they share one list. */
+  /** Ids of elements, of comments, and of notes: pointing at a remark and
+   * pointing at a box are the same gesture, so they share one list. */
   selection: Id[];
   /** Groups currently showing their members. Collapsed is the default. */
   expanded: Id[];
@@ -182,6 +182,20 @@ export type Command =
    */
   | { type: 'set-default-expanded'; defaultExpanded: true | Id[] | null }
   | { type: 'set-sources'; id: Id; sources: SourceRef[] }
+  | {
+      type: 'create-note';
+      id: Id;
+      text: string;
+      targets: Id[];
+      tags?: Record<string, string[]>;
+    }
+  | { type: 'set-note-text'; id: Id; text: string }
+  | { type: 'set-note-targets'; id: Id; targets: Id[] }
+  | { type: 'set-note-tag'; id: Id; key: string; values: string[] }
+  | { type: 'remove-note-tag'; id: Id; key: string }
+  /** Pins the note's card at a position of the reader's choosing. */
+  | { type: 'move-note'; id: Id; position: Point }
+  | { type: 'delete-note'; id: Id }
   | { type: 'create-comment'; id: Id; text: string; targets: Id[]; createdAt?: string }
   | { type: 'set-comment-text'; id: Id; text: string }
   | { type: 'set-comment-targets'; id: Id; targets: Id[] }
@@ -231,6 +245,9 @@ export type DomainEvent =
    */
   | { type: 'layout-reflowed'; ids: Id[] }
   | { type: 'element-deleted'; id: Id }
+  | { type: 'note-created'; id: Id }
+  | { type: 'note-updated'; id: Id }
+  | { type: 'note-deleted'; id: Id }
   | { type: 'comment-created'; id: Id }
   | { type: 'comment-updated'; id: Id }
   | { type: 'comment-deleted'; id: Id }

@@ -28,6 +28,19 @@ export function serializeDocument(document: Document): string {
     if (element) elements[id] = orderElement(element);
   }
 
+  const notes: Record<string, unknown> = {};
+  for (const id of Object.keys(document.model.notes).sort()) {
+    const note = document.model.notes[id];
+    if (note) {
+      notes[id] = {
+        id: note.id,
+        text: note.text,
+        targets: [...note.targets].sort(),
+        tags: orderTags(note.tags),
+      };
+    }
+  }
+
   const comments: Record<string, unknown> = {};
   for (const id of Object.keys(document.comments).sort()) {
     const comment = document.comments[id];
@@ -51,7 +64,7 @@ export function serializeDocument(document: Document): string {
     formatVersion: document.formatVersion,
     id: document.id,
     title: document.title,
-    model: { elements },
+    model: { elements, notes },
     comments,
     layout,
     view: {
@@ -181,7 +194,10 @@ export function loadDocument(raw: unknown): ParseResult {
     formatVersion: FORMAT_VERSION,
     id: input.id,
     title: input.title,
-    model: { elements: { ...input.model.elements } },
+    model: {
+      elements: { ...input.model.elements },
+      notes: { ...(input.model.notes ?? {}) },
+    },
     comments: { ...(input.comments ?? {}) },
     layout: withDefaultLayout(input.model.elements, input.layout ?? {}),
     view: input.view ?? DEFAULT_VIEW,
@@ -289,7 +305,7 @@ export function emptyDocument(id: Id, title = 'Untitled domain'): Document {
     formatVersion: FORMAT_VERSION,
     id,
     title,
-    model: { elements: {} },
+    model: { elements: {}, notes: {} },
     comments: {},
     layout: {},
     view: { pan: { ...DEFAULT_VIEW.pan }, zoom: DEFAULT_VIEW.zoom },

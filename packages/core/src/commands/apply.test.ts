@@ -1339,6 +1339,7 @@ describe('merge-document', () => {
         elements: {
           [C]: { ...other.document.model.elements[C]!, title: 'Ledger v2' },
         },
+        notes: {},
       },
     };
 

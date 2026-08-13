@@ -1,4 +1,4 @@
-import type { Comment, Element, Id } from '../model/types.js';
+import type { Comment, Element, Id, Note } from '../model/types.js';
 import { readableName } from '../naming/readable-name.js';
 import { fuzzyMatches } from './fuzzy.js';
 
@@ -19,7 +19,8 @@ import { fuzzyMatches } from './fuzzy.js';
  *
  * The key `comment` is reserved: `comment` matches every element a comment
  * is attached to, and `comment=text` narrows to comments containing `text`.
- * A tag key literally named "comment" stays reachable by quoting the key:
+ * The key `note` is reserved the same way for notes (issue #83). A tag key
+ * literally named "comment" or "note" stays reachable by quoting the key:
  * `"comment"=todo` filters on the tag, and `"comment"=*` matches any value
  * of it. A quoted key is always read literally as a tag, never as the
  * reserved word, so both filters coexist (issue #37).
@@ -51,7 +52,19 @@ export interface CommentTerm {
   text?: string;
 }
 
-export type FilterTerm = TagTerm | TextTerm | CommentTerm;
+export interface NoteTerm {
+  kind: 'note';
+  negated: boolean;
+  /**
+   * Matched as a case-insensitive substring of an attached note's text, the
+   * same rule a comment term follows: note text is prose, and a fuzzy match
+   * across a sentence catches far more than anyone typed. Absent matches any
+   * note.
+   */
+  text?: string;
+}
+
+export type FilterTerm = TagTerm | TextTerm | CommentTerm | NoteTerm;
 
 export type FilterParseResult =
   | { ok: true; terms: FilterTerm[] }
@@ -132,15 +145,16 @@ export function parseFilter(expression: string): FilterParseResult {
       });
       continue;
     }
-    if (key === 'comment') {
-      // Comment text is prose, so `comment="fix this"` keeps a space inside
-      // one term. The quotes are the tokenizer's, not part of the text.
+    if (key === 'comment' || key === 'note') {
+      // Comment and note text is prose, so `comment="fix this"` keeps a
+      // space inside one term. The quotes are the tokenizer's, not part of
+      // the text.
       const unquoted =
         value !== undefined && value.startsWith('"') && value.endsWith('"') && value.length >= 2
           ? value.slice(1, -1)
           : value;
       terms.push({
-        kind: 'comment',
+        kind: key,
         negated: negation === '-',
         ...(unquoted === undefined || unquoted === '*' ? {} : { text: unquoted }),
       });
@@ -160,15 +174,15 @@ export function parseFilter(expression: string): FilterParseResult {
 export function formatTerm(term: FilterTerm): string {
   const negation = term.negated ? '-' : '';
   if (term.kind === 'text') return `${negation}"${term.text}"`;
-  if (term.kind === 'comment') {
-    if (term.text === undefined) return `${negation}comment`;
+  if (term.kind === 'comment' || term.kind === 'note') {
+    if (term.text === undefined) return `${negation}${term.kind}`;
     const text = /\s/.test(term.text) ? `"${term.text}"` : term.text;
-    return `${negation}comment=${text}`;
+    return `${negation}${term.kind}=${text}`;
   }
-  // The tag key that collides with the reserved word is written quoted, and
+  // A tag key that collides with a reserved word is written quoted, and
   // with an explicit value: a bare quoted key would read back as a text term.
-  if (term.key === 'comment') {
-    return `${negation}"comment"=${term.value ?? '*'}`;
+  if (term.key === 'comment' || term.key === 'note') {
+    return `${negation}"${term.key}"=${term.value ?? '*'}`;
   }
   return `${negation}${term.key}${term.value === undefined ? '' : `=${term.value}`}`;
 }
@@ -219,12 +233,14 @@ function searchableName(element: Element): string {
 /**
  * True when the element satisfies every term. A key holds several values, and
  * a term matches when any one of them does. A comment term reads the
- * document's comments, so a caller filtering on them passes the map along.
+ * document's comments and a note term the model's notes, so a caller
+ * filtering on them passes the maps along.
  */
 export function matchesTerms(
   element: Element,
   terms: readonly FilterTerm[],
   comments: Record<Id, Comment> = {},
+  notes: Record<Id, Note> = {},
 ): boolean {
   return terms.every((term) => {
     const present =
@@ -232,18 +248,28 @@ export function matchesTerms(
         ? fuzzyMatches(term.text, searchableName(element))
         : term.kind === 'comment'
           ? hasComment(element, term, comments)
-          : hasTag(element, term);
+          : term.kind === 'note'
+            ? hasNote(element, term, notes)
+            : hasTag(element, term, notes);
     return term.negated ? !present : present;
   });
 }
 
-function hasTag(element: Element, term: TagTerm): boolean {
-  const actual = element.tags[term.key];
-  return (
-    actual !== undefined &&
-    actual.length >= 0 &&
-    (term.value === undefined || actual.includes(term.value))
+/**
+ * An element carries a tag through its own `tags`, or through a note
+ * attached to it: a note's tags describe the elements it targets, so a tag
+ * filter reaches them too.
+ */
+function hasTag(element: Element, term: TagTerm, notes: Record<Id, Note>): boolean {
+  if (tagsMatch(element.tags, term)) return true;
+  return Object.values(notes).some(
+    (note) => note.targets.includes(element.id) && tagsMatch(note.tags, term),
   );
+}
+
+function tagsMatch(tags: Record<string, string[]>, term: TagTerm): boolean {
+  const actual = tags[term.key];
+  return actual !== undefined && (term.value === undefined || actual.includes(term.value));
 }
 
 function hasComment(
@@ -259,6 +285,14 @@ function hasComment(
   );
 }
 
+function hasNote(element: Element, term: NoteTerm, notes: Record<Id, Note>): boolean {
+  return Object.values(notes).some(
+    (note) =>
+      note.targets.includes(element.id) &&
+      (term.text === undefined || note.text.toLowerCase().includes(term.text.toLowerCase())),
+  );
+}
+
 /**
  * Ids the filter selects. An empty or unparseable expression selects
  * everything, so a half-typed filter leaves the board readable.
@@ -267,6 +301,7 @@ export function selectIds(
   elements: Record<Id, Element>,
   expression: string,
   comments: Record<Id, Comment> = {},
+  notes: Record<Id, Note> = {},
 ): Set<Id> {
   const parsed = parseFilter(expression);
   const all = new Set(Object.keys(elements));
@@ -274,25 +309,57 @@ export function selectIds(
 
   const selected = new Set<Id>();
   for (const [id, element] of Object.entries(elements)) {
-    if (matchesTerms(element, parsed.terms, comments)) selected.add(id);
+    if (matchesTerms(element, parsed.terms, comments, notes)) selected.add(id);
   }
   return selected;
 }
 
-/** Every tag key in the document, sorted. Drives filter suggestions. */
-export function tagKeys(elements: Record<Id, Element>): string[] {
+/**
+ * Ids of the notes a filter keeps visible. A note matches when every tag
+ * term matches its tags and every text term is a case-insensitive substring
+ * of its text; comment terms and note terms never hide a note, since they
+ * pick elements rather than describe notes.
+ */
+export function matchingNoteIds(
+  notes: Record<Id, Note>,
+  terms: readonly FilterTerm[],
+): Set<Id> {
+  const matching = new Set<Id>();
+  for (const [id, note] of Object.entries(notes)) {
+    const matches = terms.every((term) => {
+      if (term.kind === 'comment' || term.kind === 'note') return true;
+      const present =
+        term.kind === 'text'
+          ? note.text.toLowerCase().includes(term.text.toLowerCase())
+          : tagsMatch(note.tags, term);
+      return term.negated ? !present : present;
+    });
+    if (matches) matching.add(id);
+  }
+  return matching;
+}
+
+/** Every tag key on an element or a note, sorted. Drives filter suggestions. */
+export function tagKeys(
+  elements: Record<Id, Element>,
+  notes: Record<Id, Note> = {},
+): string[] {
   const keys = new Set<string>();
-  for (const element of Object.values(elements)) {
-    for (const key of Object.keys(element.tags)) keys.add(key);
+  for (const holder of [...Object.values(elements), ...Object.values(notes)]) {
+    for (const key of Object.keys(holder.tags)) keys.add(key);
   }
   return [...keys].sort();
 }
 
-/** Values recorded against a tag key, sorted. */
-export function tagValues(elements: Record<Id, Element>, key: string): string[] {
+/** Values recorded against a tag key, on elements and notes, sorted. */
+export function tagValues(
+  elements: Record<Id, Element>,
+  key: string,
+  notes: Record<Id, Note> = {},
+): string[] {
   const values = new Set<string>();
-  for (const element of Object.values(elements)) {
-    for (const value of element.tags[key] ?? []) values.add(value);
+  for (const holder of [...Object.values(elements), ...Object.values(notes)]) {
+    for (const value of holder.tags[key] ?? []) values.add(value);
   }
   return [...values].sort();
 }

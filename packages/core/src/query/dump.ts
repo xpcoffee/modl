@@ -9,6 +9,7 @@ import {
   type Id,
 } from '../model/types.js';
 import { allComments } from './comments.js';
+import { allNotes } from './notes.js';
 import { labelsOnConnection } from './labels.js';
 import { nameOf } from './neighbourhood.js';
 
@@ -18,8 +19,8 @@ import { nameOf } from './neighbourhood.js';
  * sorted by id, and comments by the time they were written, so the same
  * document always dumps to the same text and a change shows as a small diff.
  *
- * Only `model` and `comments` appear. Layout is geometry, and a reader
- * checking geometry has `check` and `render`.
+ * Only `model` (its notes included) and `comments` appear. Layout is
+ * geometry, and a reader checking geometry has `check` and `render`.
  */
 export function dumpDocument(document: Document): string {
   const elements = document.model.elements;
@@ -30,6 +31,7 @@ export function dumpDocument(document: Document): string {
   const boxes = sorted.filter((element) => !isConnection(element));
   const connections = sorted.filter(isConnection);
   const comments = allComments(document.comments);
+  const notes = allNotes(document.model.notes);
 
   const lines: string[] = [];
   lines.push(document.title === '' ? document.id : document.title);
@@ -38,6 +40,7 @@ export function dumpDocument(document: Document): string {
       count(boxes.filter(isEntity).length, 'entity', 'entities'),
       count(boxes.filter(isConnectionNode).length, 'connection node'),
       count(connections.length, 'connection'),
+      count(notes.length, 'note'),
       count(comments.length, 'comment'),
     ].join(', '),
   );
@@ -66,6 +69,18 @@ export function dumpDocument(document: Document): string {
         `  ${connection.id.padEnd(idWidth)}  ${connection.type.padEnd(typeWidth)}` +
           `  ${endpointsOf(elements, connection)}`,
       );
+    }
+  }
+
+  if (notes.length > 0) {
+    lines.push('', 'notes');
+    for (const note of notes) {
+      const targets =
+        note.targets.length === 0
+          ? 'the document'
+          : note.targets.map((target) => nameOf(elements, target)).join(', ');
+      lines.push(`  ${note.id}  on ${targets}`);
+      for (const textLine of note.text.split('\n')) lines.push(`    ${textLine}`);
     }
   }
 

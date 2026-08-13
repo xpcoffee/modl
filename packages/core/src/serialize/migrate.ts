@@ -134,6 +134,20 @@ function v7ToV8(document: Loose): Loose {
   return { ...document, formatVersion: 8 };
 }
 
+/**
+ * 8 -> 9: the model carries `notes`, contextual descriptions attached to
+ * elements. An older file has none yet, so it arrives with an empty map; the
+ * bump stops a version 8 build from silently dropping notes on save.
+ */
+function v8ToV9(document: Loose): Loose {
+  const model = (document['model'] ?? {}) as Loose;
+  return {
+    ...document,
+    formatVersion: 9,
+    model: { ...model, notes: model['notes'] ?? {} },
+  };
+}
+
 const MIGRATIONS: Record<number, (document: Loose) => Loose> = {
   1: v1ToV2,
   2: v2ToV3,
@@ -142,6 +156,7 @@ const MIGRATIONS: Record<number, (document: Loose) => Loose> = {
   5: v5ToV6,
   6: v6ToV7,
   7: v7ToV8,
+  8: v8ToV9,
 };
 
 export function migrateDocument(raw: unknown): MigrationResult {

@@ -273,3 +273,38 @@ describe('7 -> 8', () => {
     expect(saved.view).toEqual(V7.view);
   });
 });
+
+describe('8 -> 9', () => {
+  const V8 = {
+    formatVersion: 8,
+    id: 'doc',
+    title: 'Eight',
+    model: {
+      elements: {
+        a: { id:'a', kind:'entity', type:'component', title:'A',
+             description:'', tags:{}, sources:[], groupId:null },
+      },
+    },
+    comments: {},
+    layout: {},
+    view: { pan: { x: 0, y: 0 }, zoom: 1 },
+  };
+
+  it('gives the model an empty set of notes', () => {
+    const result = migrateDocument(V8);
+    expect(result).toMatchObject({ ok: true, from: 8, migrated: true });
+    if (!result.ok) return;
+    const document = result.document as typeof V8 & { model: { notes: unknown } };
+    expect(document.formatVersion).toBe(FORMAT_VERSION);
+    expect(document.model.notes).toEqual({});
+    expect(document.model.elements['a']).toEqual(V8.model.elements['a']);
+  });
+
+  it('loads and saves a version 8 document at the current version', () => {
+    const result = parseDocument(JSON.stringify(V8));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.document.model.notes).toEqual({});
+    expect(JSON.parse(serializeDocument(result.document)).formatVersion).toBe(FORMAT_VERSION);
+  });
+});

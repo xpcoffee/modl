@@ -60,9 +60,16 @@ interface ConnectionNode extends ElementBase {
 }
 
 type Element = Entity | Connection | ConnectionNode;
+
+interface Note {
+  id: Id;
+  text: string;                      // free text
+  targets: Id[];                     // elements this describes; empty means the whole document
+  tags: Record<string, string[]>;    // filterable labels, the shape element tags take
+}
 ```
 
-`kind` discriminates the union. `type` sub-classifies within a kind and carries the paradigm.
+`kind` discriminates the union. `type` sub-classifies within a kind and carries the paradigm. `model` holds two maps: `elements`, and `notes` for the contextual descriptions attached to them (see [Notes](#notes)).
 
 ### Ids
 
@@ -103,7 +110,7 @@ The whiteboard remembers the last style the reader chose and applies it to the n
 
 ### Versions
 
-`formatVersion` is 8. Older documents still load, and saving writes the current version, so a file upgrades the first time it is written.
+`formatVersion` is 9. Older documents still load, and saving writes the current version, so a file upgrades the first time it is written.
 
 | Change | What the reader does |
 |---|---|
@@ -114,6 +121,7 @@ The whiteboard remembers the last style the reader chose and applies it to the n
 | 5 → 6 | A connection node carries `labels`. Existing nodes gain an empty map; the bump stops a version 5 build from stripping the answers written against each branch |
 | 6 → 7 | The document carries `comments`. An older file gains an empty map; the bump stops a version 6 build from dropping the discussion on save |
 | 7 → 8 | The view may carry `defaultExpanded`, the author's first-open hint. Nothing is rewritten; the bump stops a version 7 build from stripping the hint on save |
+| 8 → 9 | The model carries `notes`, contextual descriptions attached to elements. An older file gains an empty map; the bump stops a version 8 build from dropping notes on save |
 
 ## Paradigms
 
@@ -158,7 +166,7 @@ One JSON file. `.modl.json` by convention.
 }
 ```
 
-- `model.elements` is the structure. A consumer needs nothing else.
+- `model.elements` is the structure and `model.notes` its contextual descriptions (see [Notes](#notes)). A consumer needs nothing else. A missing `notes` means an empty map.
 - `comments` is discussion about the structure, keyed by comment id (see [Comments](#comments)). Missing means an empty map.
 - `layout` is keyed by element id. Entities and forks carry `{x, y, width, height}`; an entity may also carry an optional `expanded: {width, height}`. The first is the size drawn when collapsed, the second the container box drawn when expanded, which also decides membership. They are independent, so opening a group to work inside it does not swell the node it shrinks back to. Connections carry `{waypoints: {x,y}[]}` for hand-placed bends, plus optional `sourceSide` and `targetSide` naming the points a reader dragged the line onto. Which side of a box a line touches says nothing about the domain, so a producer omits them and the renderer picks the nearest sides. An id missing from `layout` gets a computed default, so a generated document can omit `layout` entirely. The default walks entities in sorted id order and places them on a 4-column grid spaced 240 by 140, at 180 by 72 each. Connections get no default, and the renderer routes them between their endpoints.
 - `view` is the camera, plus the optional first-open hint `defaultExpanded`: `true` opens every group on load, an array of group ids opens exactly those, and missing means collapsed. The hint only seeds the session; see [Groups](#groups). Missing `view` means origin at zoom 1.
@@ -194,9 +202,9 @@ Two tiers, and they behave differently.
 |---|---|
 | `schema-invalid` | An element fails its schema: missing field, wrong type, unknown `kind`, malformed id |
 | `version-unsupported` | `formatVersion` is missing or from a newer release |
-| `id-key-mismatch` | An element's or a comment's map key differs from its `id` |
-| `id-collision` | A comment shares its id with an element. The two maps feed one selection, so an id has to mean one thing |
-| `unknown-reference` | A `from`, `to`, `groupId`, or comment target names an id absent from `elements` |
+| `id-key-mismatch` | An element's, a note's, or a comment's map key differs from its `id` |
+| `id-collision` | A comment or a note shares its id with an element, or a note with a comment. The maps feed one selection, so an id has to mean one thing |
+| `unknown-reference` | A `from`, `to`, `groupId`, note target, or comment target names an id absent from `elements` |
 | `not-a-group` | `groupId` names a connection or a fork, and a group is an entity |
 | `unknown-command` | A dispatched command has a type the reducer does not know |
 | `group-cycle` | `groupId` chain closes a loop, including an element naming itself |
@@ -298,6 +306,27 @@ Expansion is session state rather than document state. Which groups a reader has
 
 Deleting a group lifts its members to whatever contained the group. Nothing is left pointing at an id that no longer exists.
 
+## Notes
+
+A note is a contextual description of one or more elements: background a reader needs that no single element should carry as its own claim. It describes the domain, so it lives in `model.notes` and travels with the structure, where a comment (discussion about the model) stays beside it in `comments`. A consumer reading the model reads the notes too, and a producer regenerating a subsystem regenerates them with it. See [decision 016](decisions/016-comments.md) for the boundary between the two.
+
+```ts
+interface Note {
+  id: Id;
+  text: string;                     // free text
+  targets: Id[];                    // elements this describes; empty means the whole document
+  tags: Record<string, string[]>;   // filterable labels, the shape element tags take
+}
+```
+
+Targets can be any element, connections included. A note with no targets describes the whole document. Deleting an element removes it from every attached note's targets, and an attached note losing its last target is deleted with it, the same rule a comment follows: it was written against that thing. Duplicating elements does not copy their notes.
+
+A note carries tags in the same shape an element does, written with `set-note-tag` and `remove-note-tag`, and `rename-tag` renames a key on a note the same way it does on an element. A tag filter reaches an element through its notes: an element matches `context=refunds` when its own tags match or a note attached to it carries the tag.
+
+The filter key `note` is reserved, mirroring `comment`: `note` matches every element a note is attached to, `note=text` narrows to notes whose text contains `text` (case-insensitive substring), and a tag key literally named "note" stays reachable by quoting the key (`"note"=todo`). A committed filter also decides which notes stay on the board: a note stays visible when every tag term matches its tags and every text term appears in its text, while comment terms and note terms never hide a note.
+
+Note ids share the selection's id space with elements and comments, so selecting a note is the same gesture as selecting a box, and it highlights the elements the note describes. A note the reader has arranged on the board keeps a pin in `layout` under its own id, `{x, y, width, height}`, written by `move-note` and deleted with the note.
+
 ## Comments
 
 A comment is a remark about one or more elements: a question, an objection, a note for the next reader. It iterates on the model rather than describing the domain, so it lives in `comments`, a top-level map beside `model`: a consumer reading structure ignores it, and the discussion never pollutes the elements it is about. See [decision 016](decisions/016-comments.md).
@@ -325,4 +354,4 @@ The filter key `comment` is reserved: `comment` matches every element a comment 
 
 ## Coverage
 
-Implemented: `Entity` across all four types, `Connection`, `ConnectionNode` with branch labels, element styles, comments, groups with collapse and expand, the full document format, readable names, validation.
+Implemented: `Entity` across all four types, `Connection`, `ConnectionNode` with branch labels, element styles, notes, comments, groups with collapse and expand, the full document format, readable names, validation.

@@ -134,8 +134,17 @@ export const viewSchema = z.object({
   defaultExpanded: z.union([z.literal(true), z.array(idSchema)]).optional(),
 });
 
+export const noteSchema = z.object({
+  id: idSchema,
+  text: z.string(),
+  /** Empty means the note describes the whole document. */
+  targets: z.array(idSchema),
+  tags: tagsSchema.default({}),
+});
+
 export const modelSchema = z.object({
   elements: z.record(idSchema, elementSchema),
+  notes: z.record(idSchema, noteSchema).default({}),
 });
 
 export const commentSchema = z.object({

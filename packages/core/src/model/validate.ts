@@ -162,6 +162,42 @@ export function validateDocument(input: unknown): ValidationResult {
     }
   }
 
+  const commentIds = new Set(Object.keys(document.comments));
+  for (const [key, note] of Object.entries(document.model.notes)) {
+    if (key !== note.id) {
+      errors.push({
+        code: 'id-key-mismatch',
+        elementId: note.id,
+        message: `note keyed as ${key} carries id ${note.id}`,
+      });
+    }
+    // Notes share the selection's id space with elements and comments, so
+    // one id naming two of them would make pointing at either ambiguous.
+    if (known.has(note.id)) {
+      errors.push({
+        code: 'id-collision',
+        elementId: note.id,
+        message: `note ${note.id} shares its id with an element`,
+      });
+    }
+    if (commentIds.has(note.id)) {
+      errors.push({
+        code: 'id-collision',
+        elementId: note.id,
+        message: `note ${note.id} shares its id with a comment`,
+      });
+    }
+    for (const ref of note.targets) {
+      if (!known.has(ref)) {
+        errors.push({
+          code: 'unknown-reference',
+          elementId: note.id,
+          message: `note target ${ref} names no element in the document`,
+        });
+      }
+    }
+  }
+
   for (const id of cyclicGroupIds(elements)) {
     errors.push({
       code: 'group-cycle',

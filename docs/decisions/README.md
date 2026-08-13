@@ -35,5 +35,6 @@ A decision earns a file when reversing it later would be expensive: it shapes th
 | [027](027-filter-focus-compaction.md) | Focus compaction is a derived layout, and geometry gestures pause under it |
 | [028](028-filter-auto-expansion.md) | A committed filter opens the groups above its matches, and clearing restores the reader's set |
 | [029](029-focus-compaction-on-collapse.md) | Focus mode compacts whenever it is on, so collapse reflows the view |
+| [030](030-domain-notes.md) | Notes are taggable context inside the model, held apart from discussion |
 
 The build order these decisions were first applied in lives in [the bootstrap spec](../specs/001-bootstrap.md).

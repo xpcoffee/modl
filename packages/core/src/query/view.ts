@@ -1,6 +1,6 @@
-import { isConnection, type Comment, type Element, type Id } from '../model/types.js';
+import { isConnection, type Comment, type Element, type Id, type Note } from '../model/types.js';
 import type { AppState } from '../commands/types.js';
-import { parseFilter, selectIds } from './filter.js';
+import { matchingNoteIds, parseFilter, selectIds } from './filter.js';
 import { ancestorsOf, descendantsOf, visibleAnchor } from './groups.js';
 
 /**
@@ -84,8 +84,9 @@ export function filterGuidance(
   expression: string,
   hidden: ReadonlySet<Id>,
   comments: Record<Id, Comment> = {},
+  notes: Record<Id, Note> = {},
 ): { emphasised: Set<Id>; descendantMatches: Map<Id, number> } {
-  const emphasised = selectIds(elements, expression, comments);
+  const emphasised = selectIds(elements, expression, comments, notes);
   const descendantMatches = new Map<Id, number>();
 
   const parsed = parseFilter(expression);
@@ -111,12 +112,14 @@ export function boardEmphasis(state: AppState): BoardEmphasis {
 
   const muted = new Set<Id>();
   let descendantMatches = new Map<Id, number>();
-  // A selected comment stands for the elements it discusses, so its targets
-  // highlight exactly as if the reader had pointed at them.
+  // A selected comment or note stands for the elements it speaks about, so
+  // its targets highlight exactly as if the reader had pointed at them.
   const selection = state.selection.flatMap((id) =>
     elements[id]
       ? [id]
-      : (state.document.comments[id]?.targets.filter((target) => elements[target]) ?? []),
+      : ((state.document.comments[id] ?? state.document.model.notes[id])?.targets.filter(
+          (target) => elements[target],
+        ) ?? []),
   );
 
   if (selection.length > 0 && state.selectionHighlight) {
@@ -149,7 +152,13 @@ export function boardEmphasis(state: AppState): BoardEmphasis {
       if (!near.has(id)) muted.add(id);
     }
   } else {
-    const guidance = filterGuidance(elements, state.filter, hidden, state.document.comments);
+    const guidance = filterGuidance(
+      elements,
+      state.filter,
+      hidden,
+      state.document.comments,
+      state.document.model.notes,
+    );
     descendantMatches = guidance.descendantMatches;
     for (const id of Object.keys(elements)) {
       if (!guidance.emphasised.has(id)) muted.add(id);
@@ -186,14 +195,22 @@ export function focusHiddenIds(state: AppState): Set<Id> {
 
   const elements = state.document.model.elements;
   const hidden = hiddenElementIds(elements, state.hidden);
-  const { emphasised } = filterGuidance(elements, state.filter, hidden, state.document.comments);
+  const { emphasised } = filterGuidance(
+    elements,
+    state.filter,
+    hidden,
+    state.document.comments,
+    state.document.model.notes,
+  );
 
-  // A selected comment stands for the elements it discusses, matching how
-  // boardEmphasis reads the selection.
+  // A selected comment or note stands for the elements it speaks about,
+  // matching how boardEmphasis reads the selection.
   const selection = state.selection.flatMap((id) =>
     elements[id]
       ? [id]
-      : (state.document.comments[id]?.targets.filter((target) => elements[target]) ?? []),
+      : ((state.document.comments[id] ?? state.document.model.notes[id])?.targets.filter(
+          (target) => elements[target],
+        ) ?? []),
   );
 
   const kept = new Set<Id>();
@@ -208,6 +225,24 @@ export function focusHiddenIds(state: AppState): Set<Id> {
     if (!kept.has(id)) removed.add(id);
   }
   return removed;
+}
+
+/**
+ * Notes a committed filter takes off the board: everything `matchingNoteIds`
+ * does not keep. Empty while no filter is active, so an unfiltered board
+ * shows every note.
+ */
+export function hiddenNoteIds(state: AppState): Set<Id> {
+  const hidden = new Set<Id>();
+  const parsed = parseFilter(state.filter);
+  if (!parsed.ok || parsed.terms.length === 0) return hidden;
+
+  const notes = state.document.model.notes;
+  const matching = matchingNoteIds(notes, parsed.terms);
+  for (const id of Object.keys(notes)) {
+    if (!matching.has(id)) hidden.add(id);
+  }
+  return hidden;
 }
 
 export interface Relation {

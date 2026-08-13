@@ -1,5 +1,12 @@
 import type { AppState } from '../commands/types.js';
-import { isConnection, isEntity, type Comment, type Element, type Id } from '../model/types.js';
+import {
+  isConnection,
+  isEntity,
+  type Comment,
+  type Element,
+  type Id,
+  type Note,
+} from '../model/types.js';
 import { readableName } from '../naming/readable-name.js';
 import { fuzzyScore } from './fuzzy.js';
 import { formatTerm, parseFilter, tagKeys, tagValues, type FilterTerm } from './filter.js';
@@ -63,6 +70,7 @@ export function searchElements(
 export function tagSuggestions(
   elements: Record<Id, Element>,
   query: string,
+  notes: Record<Id, Note> = {},
 ): Extract<SearchOption, { kind: 'filter' }>[] {
   const suggestions: Extract<SearchOption, { kind: 'filter' }>[] = [];
 
@@ -73,9 +81,9 @@ export function tagSuggestions(
     suggestions.push({ kind: 'filter', term, label, score });
   };
 
-  for (const key of tagKeys(elements)) {
+  for (const key of tagKeys(elements, notes)) {
     consider({ kind: 'tag', negated: false, key });
-    for (const value of tagValues(elements, key)) {
+    for (const value of tagValues(elements, key, notes)) {
       consider({ kind: 'tag', negated: false, key, value });
     }
   }
@@ -108,6 +116,43 @@ export function commentSuggestions(
   if (trimmed !== '' && inText) {
     const term: FilterTerm = { kind: 'comment', negated: false, text: trimmed };
     // Above the bare `comment` chip: the reader typed words, and the option
+    // carrying them is the one they are reaching for.
+    suggestions.push({
+      kind: 'filter',
+      term,
+      label: formatTerm(term),
+      score: (allScore ?? 0) + 1,
+    });
+  }
+
+  return suggestions.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label));
+}
+
+/**
+ * Note filters matching the query. `note` on its own shows everything a note
+ * describes, and a query found inside a note's text is offered as
+ * `note=query`, mirroring the comment suggestions (issue #83).
+ */
+export function noteSuggestions(
+  notes: Record<Id, Note>,
+  query: string,
+): Extract<SearchOption, { kind: 'filter' }>[] {
+  if (Object.keys(notes).length === 0) return [];
+
+  const suggestions: Extract<SearchOption, { kind: 'filter' }>[] = [];
+  const all: FilterTerm = { kind: 'note', negated: false };
+  const allScore = fuzzyScore(query, 'note');
+  if (allScore !== null) {
+    suggestions.push({ kind: 'filter', term: all, label: formatTerm(all), score: allScore });
+  }
+
+  const trimmed = query.trim();
+  const inText = Object.values(notes).some((note) =>
+    note.text.toLowerCase().includes(trimmed.toLowerCase()),
+  );
+  if (trimmed !== '' && inText) {
+    const term: FilterTerm = { kind: 'note', negated: false, text: trimmed };
+    // Above the bare `note` chip: the reader typed words, and the option
     // carrying them is the one they are reaching for.
     suggestions.push({
       kind: 'filter',
@@ -159,8 +204,9 @@ export function searchOptions(
     filters.push({ kind: 'filter', term, label: formatTerm(term), score: Number.POSITIVE_INFINITY });
   }
   if (allowNewFilter) {
-    filters.push(...tagSuggestions(elements, trimmed));
+    filters.push(...tagSuggestions(elements, trimmed, state.document.model.notes));
     filters.push(...commentSuggestions(state.document.comments, trimmed));
+    filters.push(...noteSuggestions(state.document.model.notes, trimmed));
   }
 
   return [...filters, ...hits];

@@ -41,7 +41,7 @@ describe('round trip', () => {
       const element = document.model.elements[id];
       if (element) reversed[id] = element;
     }
-    const shuffled: Document = { ...document, model: { elements: reversed } };
+    const shuffled: Document = { ...document, model: { ...document.model, elements: reversed } };
     expect(serializeDocument(shuffled)).toBe(serializeDocument(document));
   });
 

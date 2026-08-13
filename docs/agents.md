@@ -38,7 +38,9 @@ Emit the model and leave `layout` out. [The model reference](domain-model.md) is
 
 Ids are opaque strings. Mint UUID v5 from a namespace and your own key when generating, so re-running against an unchanged source gives the same ids and the document diffs cleanly. Readable ids like `checkout-ui` are legal too, which is what makes a document writable by hand.
 
-A tag key holds a list, so an element can belong to several flows at once. `sources` records where each claim came from, which is what makes a generated document auditable:
+Context that spans elements goes into `model.notes` rather than into one element's `description`: a note carries `text`, `targets` (element ids; empty means the whole document), and `tags` in the same shape element tags take, so a producer can label a note `context=refunds` and a filter finds both the note and the elements it describes. The commands are `create-note`, `set-note-text`, `set-note-targets`, `set-note-tag`, `remove-note-tag`, and `delete-note`.
+
+A tag key holds a list, so an element can belong to several flows at once. Notes take the same shape, and `rename-tag` renames a key on either. `sources` records where each claim came from, which is what makes a generated document auditable:
 
 ```json
 "tags": { "flow": ["checkout", "refund"] },

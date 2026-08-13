@@ -109,6 +109,29 @@ export type ElementKind = Element['kind'];
 
 export interface Model {
   elements: Record<Id, Element>;
+  /** Contextual descriptions, keyed by note id. Part of the model, unlike
+   * `Document.comments`: a note describes the domain, so a consumer reading
+   * structure reads it too. */
+  notes: Record<Id, Note>;
+}
+
+/**
+ * A contextual description of one or more elements: background a reader
+ * needs that is not a claim any single element should carry. It describes
+ * the domain, so it lives inside `model` and travels with the structure,
+ * where a comment (discussion about the model) stays beside it.
+ */
+export interface Note {
+  id: Id;
+  text: string;
+  /**
+   * Elements this note describes. Empty means the note describes the whole
+   * document. An attached note whose last target is deleted goes with it,
+   * the same rule a comment follows.
+   */
+  targets: Id[];
+  /** Filterable labels, the same shape an element's tags take. */
+  tags: Record<string, string[]>;
 }
 
 /**
@@ -210,15 +233,21 @@ export interface Document {
  * 7 -> 8: the view may carry `defaultExpanded`, the author's first-open
  *         hint. Additive; the bump stops a version 7 build from stripping
  *         the hint on save.
+ * 8 -> 9: the model carries `notes`, contextual descriptions attached to
+ *         elements. Additive, and the bump exists for the same reason as
+ *         the comments bump: a version 8 build would silently drop every
+ *         note on save.
  *
  * Older documents still load: the reader migrates them.
  */
-export const FORMAT_VERSION = 8;
+export const FORMAT_VERSION = 9;
 export const OLDEST_READABLE_VERSION = 1;
 
 export const DEFAULT_ENTITY_SIZE = { width: 180, height: 72 } as const;
 /** The box a comment card reserves in `layout` when a reader pins it. */
 export const COMMENT_CARD_SIZE = { width: 240, height: 88 } as const;
+/** The box a note card reserves in `layout` when a reader pins it. */
+export const NOTE_CARD_SIZE = { width: 240, height: 88 } as const;
 /** A node is a junction, drawn small so it reads as a point rather than a box. */
 export const CONNECTION_NODE_SIZE = { width: 64, height: 64 } as const;
 export const DEFAULT_VIEW: View = { pan: { x: 0, y: 0 }, zoom: 1 };
