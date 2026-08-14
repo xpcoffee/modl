@@ -783,6 +783,29 @@ test.describe('filtering', () => {
     expect(await serialize(page)).toBe(saved);
   });
 
+  test('a filter matching only a connection keeps its endpoints on the board', async ({ page }) => {
+    // Only the authorise line carries the tag (issue #92): its endpoints
+    // stay readable so the line has somewhere to draw.
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'set-tag', id: IDS.authorise, key: 'flow', values: ['checkout'] },
+    ]);
+
+    await setFilter(page, 'flow=checkout');
+
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveClass(/is-dimmed/);
+
+    await page.getByTestId('focus-toggle').click();
+
+    // Focus mode keeps the matching line with both endpoints; the ledger goes.
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveCount(0);
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toBeVisible();
+    await expect(page.getByTestId(`entity-${IDS.gateway}`)).toBeVisible();
+    await expect(page.locator('.react-flow__edge')).toHaveCount(1);
+  });
+
   test('clearing the filter in focus mode brings everything back', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await setFilter(page, 'team=payments');
@@ -975,7 +998,10 @@ test.describe('search menu', () => {
     await page.getByTestId('search-input').fill('ent');
 
     await expect(page.getByTestId(`entity-${IDS.gateway}`)).not.toHaveClass(/is-dimmed/);
-    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveClass(/is-dimmed/);
+    // "post entry" matches too, and a matching connection keeps its ledger
+    // endpoint readable (issue #92); only the checkout UI dims.
+    await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveClass(/is-dimmed/);
     // The preview is not the filter: nothing has been applied yet.
     expect(await page.evaluate(() => window.__modl.getState().filter)).toBe('');
   });
@@ -984,11 +1010,11 @@ test.describe('search menu', () => {
     await dispatch(page, sampleDomain());
     await openSearch(page);
     await page.getByTestId('search-input').fill('ent');
-    await expect(page.getByTestId(`entity-${IDS.ledger}`)).toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveClass(/is-dimmed/);
 
     await page.keyboard.press('Escape');
 
-    await expect(page.getByTestId(`entity-${IDS.ledger}`)).not.toHaveClass(/is-dimmed/);
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).not.toHaveClass(/is-dimmed/);
   });
 
   test('the first option makes the narrowing permanent', async ({ page }) => {
@@ -1003,7 +1029,9 @@ test.describe('search menu', () => {
 
     expect(await page.evaluate(() => window.__modl.getState().filter)).toBe('"ent"');
     await expect(page.getByTestId('filter-chip-0')).toContainText('"ent"');
-    await expect(page.getByTestId('element-count')).toContainText('2 of 5');
+    // The gateway, the "post entry" line, and the ledger at its far end
+    // (issue #92).
+    await expect(page.getByTestId('element-count')).toContainText('3 of 5');
   });
 
   test('Enter takes the active option', async ({ page }) => {
