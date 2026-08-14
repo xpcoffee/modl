@@ -3,8 +3,10 @@ import { ViewportPortal, useNodes, useReactFlow } from '@xyflow/react';
 import {
   NOTE_CARD_SIZE,
   allNotes,
+  cardPinAt,
   isEntityLayout,
   notesOn,
+  spawnCardPin,
   visibleNoteIds,
   type AppState,
   type Id,
@@ -13,7 +15,13 @@ import {
 } from '@modl/core';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
-import { rectCentre, type LiveCentres } from './CommentOverlay.js';
+import {
+  derivedCardAt,
+  rectCentre,
+  useVisibleRect,
+  type CardSpawn,
+  type LiveCentres,
+} from './CommentOverlay.js';
 import {
   enterNotesMode,
   getNoteEdit,
@@ -77,19 +85,11 @@ function placeCards(state: AppState, live?: LiveCentres): CardPlace[] {
     const pin = state.document.layout[note.id];
     if (pin && 'x' in pin) return { note, at: { x: pin.x, y: pin.y }, anchors };
 
-    if (anchors.length === 0) {
+    const derived = derivedCardAt(anchors, DERIVED_CARD_OFFSET);
+    if (derived === null) {
       return { note, at: documentFallback(state, unpinnedDocumentNotes++), anchors };
     }
-
-    const centroid = anchors.reduce(
-      (sum, point) => ({ x: sum.x + point.x / anchors.length, y: sum.y + point.y / anchors.length }),
-      { x: 0, y: 0 },
-    );
-    return {
-      note,
-      at: { x: centroid.x + DERIVED_CARD_OFFSET.x, y: centroid.y + DERIVED_CARD_OFFSET.y },
-      anchors,
-    };
+    return { note, at: derived, anchors };
   });
 }
 
@@ -108,18 +108,29 @@ function isTyping(target: EventTarget | null): boolean {
  * Creates a note on the given elements and opens its card for writing. `at`
  * pins the card there (a document-level note lands where it was
  * double-clicked); without it the card derives its place from its targets.
+ * `spawn` pins the card into the viewport when that derived place is off
+ * screen (issue #93), so the editor always opens where the writer is looking.
  */
-export function quickAddNote(targets: Id[], at?: Point): void {
+export function quickAddNote(targets: Id[], at?: Point, spawn?: CardSpawn): void {
   settleOpenNoteCard();
   const id = crypto.randomUUID();
   const result = store.dispatch({ type: 'create-note', id, text: '', targets });
   if (!result.ok) return;
-  if (at !== undefined) {
-    store.dispatch({
-      type: 'move-note',
-      id,
-      position: { x: at.x - NOTE_CARD_SIZE.width / 2, y: at.y - 12 },
-    });
+  let position = at !== undefined ? cardPinAt(at, NOTE_CARD_SIZE) : null;
+  if (position === null && spawn !== undefined) {
+    const state = store.getState();
+    const anchors = targets
+      .map((target) => rectCentre(state, target))
+      .filter((point): point is Point => point !== null);
+    position = spawnCardPin(
+      derivedCardAt(anchors, DERIVED_CARD_OFFSET),
+      NOTE_CARD_SIZE,
+      spawn.view,
+      spawn.cursor,
+    );
+  }
+  if (position !== null) {
+    store.dispatch({ type: 'move-note', id, position });
   }
   store.dispatch({ type: 'set-selection', ids: [id] });
   startNoteEdit(id);
@@ -130,12 +141,12 @@ export function quickAddNote(targets: Id[], at?: Point): void {
  * latest note on the element opens for editing, and an element with none
  * gets a fresh card, so pointing at a thing is all writing takes.
  */
-export function openElementNote(elementId: Id): void {
+export function openElementNote(elementId: Id, spawn?: CardSpawn): void {
   const state = store.getState();
   const existing = notesOn(state.document.model.notes, elementId);
   const latest = existing[existing.length - 1];
   if (latest === undefined) {
-    quickAddNote([elementId]);
+    quickAddNote([elementId], undefined, spawn);
     return;
   }
   if (getNoteEdit()?.noteId !== latest.id) settleOpenNoteCard();
@@ -174,6 +185,7 @@ export function NoteLayer() {
   const edit = useNoteEdit();
   const mode = useNotesMode();
   const { screenToFlowPosition } = useReactFlow();
+  const visibleRect = useVisibleRect();
 
   // The two modes exclude each other: the overlay opening (the toggle, `c`,
   // wherever the command came from) closes notes mode.
@@ -250,7 +262,7 @@ export function NoteLayer() {
         const elements = current.document.model.elements;
         const targets = current.selection.filter((id) => elements[id]);
         enterNotesMode();
-        if (targets.length > 0) quickAddNote(targets);
+        if (targets.length > 0) quickAddNote(targets, undefined, { view: visibleRect() });
         return;
       }
 
@@ -272,7 +284,7 @@ export function NoteLayer() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [visibleRect]);
 
   /**
    * Drags a card, arcs following live; the pin lands as one move-note on

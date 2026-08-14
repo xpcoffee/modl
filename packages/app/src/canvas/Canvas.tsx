@@ -95,6 +95,7 @@ import {
   OverlayToggle,
   quickAddComment,
   toggleCommentTarget,
+  useVisibleRect,
 } from './CommentOverlay.js';
 import { getCommentEdit } from './commentEditing.js';
 import {
@@ -307,6 +308,7 @@ export function Canvas() {
   const { screenToFlowPosition, fitView, fitBounds, setViewport, setCenter, getViewport, getNodesBounds } =
     useReactFlow();
   const flowStore = useStoreApi();
+  const visibleRect = useVisibleRect();
 
   // A selection box in flight keeps element editors shut.
   const [boxSelecting, setBoxSelecting] = useState(false);
@@ -1377,7 +1379,12 @@ export function Canvas() {
           if ((event.ctrlKey || event.metaKey) && edit !== null) {
             toggleCommentTarget(edit.commentId, pressedId);
           } else {
-            openElementComment(pressedId);
+            // The press carries the cursor, so a fresh card on an element
+            // whose centre is off screen opens under it instead (issue #93).
+            openElementComment(pressedId, {
+              view: visibleRect(),
+              cursor: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+            });
           }
           return;
         }
@@ -1394,7 +1401,11 @@ export function Canvas() {
           if ((event.ctrlKey || event.metaKey) && edit !== null) {
             toggleNoteTarget(edit.noteId, pressedId);
           } else {
-            openElementNote(pressedId);
+            // Cursor and viewport, for the same reason as the overlay press.
+            openElementNote(pressedId, {
+              view: visibleRect(),
+              cursor: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+            });
           }
           return;
         }

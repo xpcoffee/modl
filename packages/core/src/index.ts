@@ -10,6 +10,7 @@ export * from './serialize/migrate.js';
 export * from './commands/types.js';
 export * from './commands/apply.js';
 export * from './commands/undo.js';
+export * from './query/card-placement.js';
 export * from './query/comments.js';
 export * from './query/compact.js';
 export * from './query/dump.js';

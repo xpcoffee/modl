@@ -5541,6 +5541,96 @@ test.describe('discussion overlay', () => {
     expect((await getDocument(page)).comments[SECOND]).toBeUndefined();
     await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-comment-overlay', 'true');
   });
+
+  test('a comment on an element whose centre is off screen opens under the cursor', async ({ page }) => {
+    const WIDE = 'oversized-component';
+    // A component wider than the screen: its centre, where an unpinned card
+    // derives its place, sits past the right edge of the viewport (issue #93).
+    await dispatch(page, [
+      { type: 'create-entity', id: WIDE, entityType: 'component', title: 'Wide', position: { x: 100, y: 200 } },
+      { type: 'resize-element', id: WIDE, width: 4000, height: 160 },
+      { type: 'set-view', pan: { x: -50, y: 0 }, zoom: 1 },
+    ]);
+    await page.waitForTimeout(500);
+    await page.keyboard.press('c');
+
+    const node = (await page.getByTestId(`entity-${WIDE}`).boundingBox())!;
+    const click = { x: node.x + 300, y: node.y + 80 };
+    await page.mouse.click(click.x, click.y);
+
+    const editor = page.locator('[data-testid^="comment-text-box-"]');
+    await expect(editor).toBeVisible();
+
+    // The card hangs under the cursor, whole and on screen.
+    const card = (await page.locator('.comment-card').boundingBox())!;
+    expect(Math.abs(card.x + card.width / 2 - click.x)).toBeLessThanOrEqual(3);
+    expect(Math.abs(card.y - (click.y - 12))).toBeLessThanOrEqual(3);
+    const viewport = page.viewportSize()!;
+    expect(card.x).toBeGreaterThanOrEqual(0);
+    expect(card.y).toBeGreaterThanOrEqual(0);
+    expect(card.x + card.width).toBeLessThanOrEqual(viewport.width);
+    expect(card.y + card.height).toBeLessThanOrEqual(viewport.height);
+  });
+
+  test('a comment on a large expanded group opens on screen', async ({ page }) => {
+    const NEAR = 'near-member';
+    const FAR_OFF = 'far-member';
+    const GROUP = 'sprawling-group';
+    // An expanded group drawn far larger than its collapsed box: the
+    // viewport sits over its upper-left content, so the collapsed box's
+    // centre is in view while the drawn centre, where an unpinned card
+    // derives its place, is far below the fold (issue #93 review).
+    await dispatch(page, [
+      { type: 'create-entity', id: NEAR, entityType: 'component', title: 'Near', position: { x: 300, y: 200 } },
+      { type: 'create-entity', id: FAR_OFF, entityType: 'component', title: 'Far', position: { x: 2800, y: 1700 } },
+      { type: 'group-elements', id: GROUP, title: 'Sprawl', memberIds: [NEAR, FAR_OFF], position: { x: 300, y: 200 } },
+      { type: 'set-expanded', id: GROUP, expanded: true },
+      { type: 'set-selection', ids: [] },
+      { type: 'set-view', pan: { x: -10, y: 0 }, zoom: 1 },
+    ]);
+    await page.waitForTimeout(500);
+    await page.keyboard.press('c');
+
+    // A press on the group's empty container area, well inside the viewport.
+    const click = { x: 690, y: 450 };
+    await page.mouse.click(click.x, click.y);
+
+    const editor = page.locator('[data-testid^="comment-text-box-"]');
+    await expect(editor).toBeVisible();
+
+    // The card hangs under the cursor, whole and on screen.
+    const card = (await page.locator('.comment-card').boundingBox())!;
+    expect(Math.abs(card.x + card.width / 2 - click.x)).toBeLessThanOrEqual(3);
+    expect(Math.abs(card.y - (click.y - 12))).toBeLessThanOrEqual(3);
+    const viewport = page.viewportSize()!;
+    expect(card.x).toBeGreaterThanOrEqual(0);
+    expect(card.y).toBeGreaterThanOrEqual(0);
+    expect(card.x + card.width).toBeLessThanOrEqual(viewport.width);
+    expect(card.y + card.height).toBeLessThanOrEqual(viewport.height);
+  });
+
+  test('c with an off-screen selection clamps the fresh card into view', async ({ page }) => {
+    const FAR = 'far-component';
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'create-entity', id: FAR, entityType: 'component', title: 'Far', position: { x: 5000, y: 2000 } },
+      { type: 'set-view', pan: { x: -10, y: 0 }, zoom: 1 },
+      { type: 'set-selection', ids: [FAR] },
+    ]);
+    await page.waitForTimeout(500);
+    await expect(page.getByTestId(`entity-${FAR}`)).not.toBeInViewport();
+
+    await page.keyboard.press('c');
+
+    const editor = page.locator('[data-testid^="comment-text-box-"]');
+    await expect(editor).toBeVisible();
+    const card = (await page.locator('.comment-card').boundingBox())!;
+    const viewport = page.viewportSize()!;
+    expect(card.x).toBeGreaterThanOrEqual(0);
+    expect(card.y).toBeGreaterThanOrEqual(0);
+    expect(card.x + card.width).toBeLessThanOrEqual(viewport.width);
+    expect(card.y + card.height).toBeLessThanOrEqual(viewport.height);
+  });
 });
 
 test.describe('notes', () => {
@@ -5992,6 +6082,36 @@ test.describe('notes mode', () => {
     // The UI matches, so pressing it writes its note.
     await page.getByTestId(`entity-${IDS.ui}`).click();
     await expect(page.locator('[data-testid^="note-text-box-"]')).toBeVisible();
+  });
+
+  test('a note on an element whose centre is off screen opens under the cursor', async ({ page }) => {
+    const WIDE = 'oversized-component';
+    // A component wider than the screen: its centre, where an unpinned card
+    // derives its place, sits past the right edge of the viewport (issue #93).
+    await dispatch(page, [
+      { type: 'create-entity', id: WIDE, entityType: 'component', title: 'Wide', position: { x: 100, y: 200 } },
+      { type: 'resize-element', id: WIDE, width: 4000, height: 160 },
+      { type: 'set-view', pan: { x: -50, y: 0 }, zoom: 1 },
+    ]);
+    await page.waitForTimeout(500);
+    await page.getByTestId('overlay-notes').click();
+
+    const node = (await page.getByTestId(`entity-${WIDE}`).boundingBox())!;
+    const click = { x: node.x + 300, y: node.y + 80 };
+    await page.mouse.click(click.x, click.y);
+
+    const editor = page.locator('[data-testid^="note-text-box-"]');
+    await expect(editor).toBeVisible();
+
+    // The card hangs under the cursor, whole and on screen.
+    const card = (await page.locator('.note-card').boundingBox())!;
+    expect(Math.abs(card.x + card.width / 2 - click.x)).toBeLessThanOrEqual(3);
+    expect(Math.abs(card.y - (click.y - 12))).toBeLessThanOrEqual(3);
+    const viewport = page.viewportSize()!;
+    expect(card.x).toBeGreaterThanOrEqual(0);
+    expect(card.y).toBeGreaterThanOrEqual(0);
+    expect(card.x + card.width).toBeLessThanOrEqual(viewport.width);
+    expect(card.y + card.height).toBeLessThanOrEqual(viewport.height);
   });
 });
 
