@@ -347,7 +347,9 @@ describe('filtering by note', () => {
       state.document.comments,
       state.document.model.notes,
     );
-    expect(selected).toEqual(new Set([A, LINK]));
+    // B joins as the attached connection's endpoint: a matched connection
+    // brings both ends so its line can draw (issue #92).
+    expect(selected).toEqual(new Set([A, LINK, B]));
   });
 
   it('`note=text` narrows to notes containing the text, case-insensitively', () => {

@@ -99,6 +99,53 @@ describe('selectIds', () => {
   });
 });
 
+describe('selectIds: connections', () => {
+  const LINK = '44444444-4444-4444-8444-444444444444';
+
+  function connection(id: Id, from: Id[], to: Id[], tags: Record<string, string[]>): Element {
+    return {
+      id,
+      kind: 'connection',
+      type: 'interaction',
+      title: id,
+      description: '',
+      tags,
+      sources: [],
+      groupId: null,
+      from,
+      to,
+      direction: 'forward',
+    };
+  }
+
+  it('a matching connection brings its endpoints, so the line can draw', () => {
+    const elements: Record<Id, Element> = {
+      ...ELEMENTS,
+      [LINK]: connection(LINK, [A], [B], { flow: ['checkout'] }),
+    };
+    expect(selectIds(elements, 'flow=checkout')).toEqual(new Set([LINK, A, B]));
+  });
+
+  it('a purely negated filter brings no endpoints', () => {
+    // The untagged connection matches -deprecated by carrying nothing, and C
+    // is exactly what the reader excluded; the match says nothing about C.
+    const elements: Record<Id, Element> = {
+      [A]: entity(A, { team: ['web'], tier: ['1'] }),
+      [C]: entity(C, { deprecated: ['yes'] }),
+      [LINK]: connection(LINK, [A], [C], {}),
+    };
+    expect(selectIds(elements, '-deprecated')).toEqual(new Set([A, LINK]));
+  });
+
+  it('a non-matching connection brings nothing', () => {
+    const elements: Record<Id, Element> = {
+      ...ELEMENTS,
+      [LINK]: connection(LINK, [A], [B], {}),
+    };
+    expect(selectIds(elements, 'deprecated')).toEqual(new Set([C]));
+  });
+});
+
 describe('tag suggestions', () => {
   it('lists every key, sorted', () => {
     expect(tagKeys(ELEMENTS)).toEqual(['deprecated', 'team', 'tier']);

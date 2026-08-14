@@ -266,6 +266,49 @@ describe('boardEmphasis: tag filter', () => {
   });
 });
 
+describe('boardEmphasis: filter matching a connection', () => {
+  const NOTE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  /** Only the authorise connection carries the flow tag. */
+  const tagged = (state: AppState): AppState =>
+    must(
+      state,
+      { type: 'set-tag', id: AUTHORISE, key: 'flow', values: ['checkout'] },
+      { type: 'set-filter', expression: 'flow=checkout' },
+    );
+
+  it('keeps the connection and its endpoints readable (issue #92)', () => {
+    const { muted } = boardEmphasis(tagged(base));
+    expect(muted).toEqual(new Set([LEDGER, POST]));
+  });
+
+  it('keeps a group holding an endpoint readable', () => {
+    const state = tagged(
+      must(base, entity(GROUP, 'Frontend'), { type: 'set-group', id: UI, groupId: GROUP }),
+    );
+    const { muted, descendantMatches } = boardEmphasis(state);
+    expect(muted.has(GROUP)).toBe(false);
+    expect(descendantMatches.get(GROUP)).toBe(1);
+  });
+
+  it('hiding still beats the promotion for an endpoint', () => {
+    const state = must(tagged(base), { type: 'set-hidden', id: UI, hidden: true });
+    const { muted, suppressed } = boardEmphasis(state);
+    expect(muted.has(UI)).toBe(true);
+    expect(suppressed.has(AUTHORISE)).toBe(true);
+  });
+
+  it('a note tagged onto a connection reaches its endpoints too', () => {
+    const state = must(
+      base,
+      { type: 'create-note', id: NOTE, text: 'checkout path', targets: [AUTHORISE], tags: { flow: ['checkout'] } },
+      { type: 'set-filter', expression: 'flow=checkout' },
+    );
+    const { muted } = boardEmphasis(state);
+    expect(muted).toEqual(new Set([LEDGER, POST]));
+  });
+});
+
 describe('boardEmphasis: filter matches inside groups', () => {
   const OUTER = '99999999-9999-4999-8999-999999999999';
 
@@ -434,6 +477,16 @@ describe('focusHiddenIds', () => {
       { type: 'set-selection', ids: [UI] },
     );
     expect(focusHiddenIds(state)).toEqual(new Set());
+  });
+
+  it('keeps the endpoints of a matching connection, so its line can draw (issue #92)', () => {
+    const state = must(
+      base,
+      { type: 'set-tag', id: AUTHORISE, key: 'flow', values: ['checkout'] },
+      { type: 'set-focus-mode', enabled: true },
+      { type: 'set-filter', expression: 'flow=checkout' },
+    );
+    expect(focusHiddenIds(state)).toEqual(new Set([LEDGER]));
   });
 
   it('a selected comment stands for its targets', () => {

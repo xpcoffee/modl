@@ -13,7 +13,9 @@ import { ancestorsOf, descendantsOf, visibleAnchor } from './groups.js';
  *   depth, as selected. A preference (`selectionHighlight`) turns this off.
  * - The tag filter mutes elements that do not match. A group above a match
  *   counts as matching, so a match inside a collapsed group still guides the
- *   reader to the group holding it.
+ *   reader to the group holding it. A matching connection's endpoints count
+ *   too, so a filter whose only matches are connections still draws them
+ *   (issue #92).
  *
  * Precedence: hiding beats highlighting beats filtering, except that a
  * directly selected element is never muted, since the reader is pointing at

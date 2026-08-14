@@ -290,7 +290,9 @@ describe('filtering by comment', () => {
       'comment',
       state.document.comments,
     );
-    expect(selected).toEqual(new Set([A, LINK]));
+    // B joins as the attached connection's endpoint: a matched connection
+    // brings both ends so its line can draw (issue #92).
+    expect(selected).toEqual(new Set([A, LINK, B]));
   });
 
   it('`comment=text` narrows to comments containing the text, case-insensitively', () => {

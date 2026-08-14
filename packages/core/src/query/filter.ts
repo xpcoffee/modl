@@ -1,4 +1,4 @@
-import type { Comment, Element, Id, Note } from '../model/types.js';
+import { isConnection, type Comment, type Element, type Id, type Note } from '../model/types.js';
 import { readableName } from '../naming/readable-name.js';
 import { fuzzyMatches } from './fuzzy.js';
 
@@ -296,6 +296,12 @@ function hasNote(element: Element, term: NoteTerm, notes: Record<Id, Note>): boo
 /**
  * Ids the filter selects. An empty or unparseable expression selects
  * everything, so a half-typed filter leaves the board readable.
+ *
+ * A matching connection brings its endpoints: a line cannot draw without
+ * both ends on the board, so a filter whose only matches are connections
+ * would otherwise show nothing (issue #92). A purely negated filter brings
+ * none, since under one a connection matches by carrying nothing, and its
+ * endpoints may be exactly what the reader excluded.
  */
 export function selectIds(
   elements: Record<Id, Element>,
@@ -310,6 +316,16 @@ export function selectIds(
   const selected = new Set<Id>();
   for (const [id, element] of Object.entries(elements)) {
     if (matchesTerms(element, parsed.terms, comments, notes)) selected.add(id);
+  }
+
+  if (parsed.terms.some((term) => !term.negated)) {
+    for (const id of [...selected]) {
+      const element = elements[id];
+      if (element === undefined || !isConnection(element)) continue;
+      for (const end of [...element.from, ...element.to]) {
+        if (elements[end] !== undefined) selected.add(end);
+      }
+    }
   }
   return selected;
 }
