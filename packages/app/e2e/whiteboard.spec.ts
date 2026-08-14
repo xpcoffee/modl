@@ -5512,6 +5512,43 @@ test.describe('discussion overlay', () => {
     expect(card.y + card.height).toBeLessThanOrEqual(viewport.height);
   });
 
+  test('a comment on a large expanded group opens on screen', async ({ page }) => {
+    const NEAR = 'near-member';
+    const FAR_OFF = 'far-member';
+    const GROUP = 'sprawling-group';
+    // An expanded group drawn far larger than its collapsed box: the
+    // viewport sits over its upper-left content, so the collapsed box's
+    // centre is in view while the drawn centre, where an unpinned card
+    // derives its place, is far below the fold (issue #93 review).
+    await dispatch(page, [
+      { type: 'create-entity', id: NEAR, entityType: 'component', title: 'Near', position: { x: 300, y: 200 } },
+      { type: 'create-entity', id: FAR_OFF, entityType: 'component', title: 'Far', position: { x: 2800, y: 1700 } },
+      { type: 'group-elements', id: GROUP, title: 'Sprawl', memberIds: [NEAR, FAR_OFF], position: { x: 300, y: 200 } },
+      { type: 'set-expanded', id: GROUP, expanded: true },
+      { type: 'set-selection', ids: [] },
+      { type: 'set-view', pan: { x: -10, y: 0 }, zoom: 1 },
+    ]);
+    await page.waitForTimeout(500);
+    await page.keyboard.press('c');
+
+    // A press on the group's empty container area, well inside the viewport.
+    const click = { x: 690, y: 450 };
+    await page.mouse.click(click.x, click.y);
+
+    const editor = page.locator('[data-testid^="comment-text-box-"]');
+    await expect(editor).toBeVisible();
+
+    // The card hangs under the cursor, whole and on screen.
+    const card = (await page.locator('.comment-card').boundingBox())!;
+    expect(Math.abs(card.x + card.width / 2 - click.x)).toBeLessThanOrEqual(3);
+    expect(Math.abs(card.y - (click.y - 12))).toBeLessThanOrEqual(3);
+    const viewport = page.viewportSize()!;
+    expect(card.x).toBeGreaterThanOrEqual(0);
+    expect(card.y).toBeGreaterThanOrEqual(0);
+    expect(card.x + card.width).toBeLessThanOrEqual(viewport.width);
+    expect(card.y + card.height).toBeLessThanOrEqual(viewport.height);
+  });
+
   test('c with an off-screen selection clamps the fresh card into view', async ({ page }) => {
     const FAR = 'far-component';
     await dispatch(page, [

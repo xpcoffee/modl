@@ -4,8 +4,8 @@ import {
   COMMENT_CARD_SIZE,
   allComments,
   cardPinAt,
-  isConnection,
   isEntityLayout,
+  renderedCentre,
   spawnCardPin,
   type AppState,
   type Comment,
@@ -92,21 +92,7 @@ export function derivedCardAt(anchors: readonly Point[], offset: Point): Point |
 }
 
 export function rectCentre(state: AppState, id: Id, live?: LiveCentres): Point | null {
-  const drawn = live?.get(id);
-  if (drawn) return drawn;
-  const entry = state.document.layout[id];
-  if (entry && 'x' in entry) {
-    return { x: entry.x + entry.width / 2, y: entry.y + entry.height / 2 };
-  }
-  // A connection has no box; its line runs between its endpoints, so the
-  // midpoint of the first pair stands in for it.
-  const element = state.document.model.elements[id];
-  if (element && isConnection(element)) {
-    const from = element.from[0] === undefined ? null : rectCentre(state, element.from[0], live);
-    const to = element.to[0] === undefined ? null : rectCentre(state, element.to[0], live);
-    if (from && to) return { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
-  }
-  return null;
+  return renderedCentre(state, id, live === undefined ? undefined : (anchor) => live.get(anchor));
 }
 
 /**
