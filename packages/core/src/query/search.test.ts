@@ -118,6 +118,24 @@ describe('searchOptions', () => {
     expect(options.length).toBeGreaterThan(0);
     expect(options.every((option) => option.kind === 'filter')).toBe(true);
   });
+
+  it('leaves out a filter that is already active', () => {
+    const filtered = must(base, { type: 'set-filter', expression: 'team=web' });
+    const labels = searchOptions(filtered, 'team').map((option) =>
+      option.kind === 'filter' ? option.label : '',
+    );
+    expect(labels).not.toContain('team=web');
+    expect(labels).toContain('team=payments');
+  });
+
+  it('leaves out the active filters with nothing typed', () => {
+    const filtered = must(base, { type: 'set-filter', expression: 'team' });
+    const labels = searchOptions(filtered, '').map((option) =>
+      option.kind === 'filter' ? option.label : '',
+    );
+    expect(labels).not.toContain('team');
+    expect(labels).toContain('team=web');
+  });
 });
 
 describe('activeFilterTerms', () => {

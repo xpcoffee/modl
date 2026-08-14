@@ -208,12 +208,19 @@ export function formatFilter(terms: readonly FilterTerm[]): string {
 }
 
 /**
- * The expression with one more term on the end. An expression that does not
- * parse is replaced rather than appended to, since there is nothing to keep.
+ * The expression with one more term on the end. A term the expression already
+ * holds is not added again, so applying the same filter twice changes nothing
+ * (issue #95). An expression that does not parse is replaced rather than
+ * appended to, since there is nothing to keep.
  */
 export function addTerm(expression: string, term: FilterTerm): string {
   const parsed = parseFilter(expression);
-  return formatFilter(parsed.ok ? [...parsed.terms, term] : [term]);
+  if (!parsed.ok) return formatFilter([term]);
+  const formatted = formatTerm(term);
+  if (parsed.terms.some((existing) => formatTerm(existing) === formatted)) {
+    return formatFilter(parsed.terms);
+  }
+  return formatFilter([...parsed.terms, term]);
 }
 
 /**
