@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ViewportPortal, useNodes, useReactFlow } from '@xyflow/react';
+import { ViewportPortal, useNodes, useReactFlow, useStoreApi } from '@xyflow/react';
 import {
   COMMENT_CARD_SIZE,
   allComments,
+  cardPinAt,
   isConnection,
   isEntityLayout,
+  spawnCardPin,
   type AppState,
   type Comment,
   type DomainEvent,
   type Id,
   type Point,
+  type Rect,
 } from '@modl/core';
 import { matchesKey } from '../preferences/keybindings.js';
 import { motionReduced } from '../preferences/motion.js';
@@ -50,6 +53,43 @@ interface CardPlace {
  * Shared with the note cards (NoteLayer), which anchor the same way.
  */
 export type LiveCentres = ReadonlyMap<Id, Point>;
+
+/**
+ * The viewport a card must open inside, and the pointer that asked for it
+ * when the action came from one. Read at creation time by `quickAddComment`
+ * and `quickAddNote` so a fresh card never opens off screen (issue #93).
+ */
+export interface CardSpawn {
+  view: Rect;
+  cursor?: Point;
+}
+
+/**
+ * The viewport in flow coordinates, read on demand so a key or pointer
+ * handler sees the camera as it stands rather than as it was rendered.
+ */
+export function useVisibleRect(): () => Rect {
+  const flow = useStoreApi();
+  return useCallback(() => {
+    const { transform, width, height } = flow.getState();
+    const [x, y, zoom] = transform;
+    return { x: -x / zoom, y: -y / zoom, width: width / zoom, height: height / zoom };
+  }, [flow]);
+}
+
+/** The derived, unpinned place for a card: its anchors' centroid plus the offset. */
+export function derivedCardAt(anchors: readonly Point[], offset: Point): Point | null {
+  const first = anchors[0];
+  if (first === undefined) return null;
+  const centroid = anchors.reduce(
+    (sum, point) => ({
+      x: sum.x + point.x / anchors.length,
+      y: sum.y + point.y / anchors.length,
+    }),
+    { x: 0, y: 0 },
+  );
+  return { x: centroid.x + offset.x, y: centroid.y + offset.y };
+}
 
 export function rectCentre(state: AppState, id: Id, live?: LiveCentres): Point | null {
   const drawn = live?.get(id);
@@ -95,19 +135,11 @@ function placeCards(state: AppState, live?: LiveCentres): CardPlace[] {
     const pin = state.document.layout[comment.id];
     if (pin && 'x' in pin) return { comment, at: { x: pin.x, y: pin.y }, anchors };
 
-    if (anchors.length === 0) {
+    const derived = derivedCardAt(anchors, DERIVED_CARD_OFFSET);
+    if (derived === null) {
       return { comment, at: generalFallback(state, unpinnedGenerals++), anchors };
     }
-
-    const centroid = anchors.reduce(
-      (sum, point) => ({ x: sum.x + point.x / anchors.length, y: sum.y + point.y / anchors.length }),
-      { x: 0, y: 0 },
-    );
-    return {
-      comment,
-      at: { x: centroid.x + DERIVED_CARD_OFFSET.x, y: centroid.y + DERIVED_CARD_OFFSET.y },
-      anchors,
-    };
+    return { comment, at: derived, anchors };
   });
 }
 
@@ -147,8 +179,10 @@ function settleOpenCard(): void {
  * Creates a comment on the given elements and opens its card for writing.
  * `at` pins the card there (a general remark lands where it was
  * double-clicked); without it the card derives its place from its targets.
+ * `spawn` pins the card into the viewport when that derived place is off
+ * screen (issue #93), so the editor always opens where the writer is looking.
  */
-export function quickAddComment(targets: Id[], at?: Point): void {
+export function quickAddComment(targets: Id[], at?: Point, spawn?: CardSpawn): void {
   settleOpenCard();
   const id = crypto.randomUUID();
   const result = store.dispatch({
@@ -159,12 +193,21 @@ export function quickAddComment(targets: Id[], at?: Point): void {
     createdAt: new Date().toISOString(),
   });
   if (!result.ok) return;
-  if (at !== undefined) {
-    store.dispatch({
-      type: 'move-comment',
-      id,
-      position: { x: at.x - COMMENT_CARD_SIZE.width / 2, y: at.y - 12 },
-    });
+  let position = at !== undefined ? cardPinAt(at, COMMENT_CARD_SIZE) : null;
+  if (position === null && spawn !== undefined) {
+    const state = store.getState();
+    const anchors = targets
+      .map((target) => rectCentre(state, target))
+      .filter((point): point is Point => point !== null);
+    position = spawnCardPin(
+      derivedCardAt(anchors, DERIVED_CARD_OFFSET),
+      COMMENT_CARD_SIZE,
+      spawn.view,
+      spawn.cursor,
+    );
+  }
+  if (position !== null) {
+    store.dispatch({ type: 'move-comment', id, position });
   }
   store.dispatch({ type: 'set-selection', ids: [id] });
   startCommentEdit(id, 'overlay');
@@ -175,14 +218,14 @@ export function quickAddComment(targets: Id[], at?: Point): void {
  * The latest comment on the element opens for editing, and an element with
  * none gets a fresh card, so pointing at a thing is all writing takes.
  */
-export function openElementComment(elementId: Id): void {
+export function openElementComment(elementId: Id, spawn?: CardSpawn): void {
   const state = store.getState();
   const discussion = allComments(state.document.comments).filter((comment) =>
     comment.targets.includes(elementId),
   );
   const latest = discussion[discussion.length - 1];
   if (latest === undefined) {
-    quickAddComment([elementId]);
+    quickAddComment([elementId], undefined, spawn);
     return;
   }
   if (getCommentEdit()?.commentId !== latest.id) settleOpenCard();
@@ -220,6 +263,7 @@ export function CommentOverlay() {
   const state = useAppState();
   const edit = useCommentEdit();
   const { setCenter, getViewport, screenToFlowPosition } = useReactFlow();
+  const visibleRect = useVisibleRect();
   const open = state.commentOverlay;
 
   // A drag in flight, held locally so the card AND its arcs follow the
@@ -350,7 +394,7 @@ export function CommentOverlay() {
         }
         const elements = current.document.model.elements;
         const targets = current.selection.filter((id) => elements[id]);
-        if (targets.length > 0) quickAddComment(targets);
+        if (targets.length > 0) quickAddComment(targets, undefined, { view: visibleRect() });
         return;
       }
 
@@ -373,7 +417,7 @@ export function CommentOverlay() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [panTo]);
+  }, [panTo, visibleRect]);
 
   /**
    * Drags a card, arcs following live; the pin lands as one move-comment on
