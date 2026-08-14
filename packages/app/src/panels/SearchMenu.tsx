@@ -512,10 +512,11 @@ function FilterIcon() {
   );
 }
 
+// A coffee cup: sit down with the few things the filter kept (issue #88).
 function FocusIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="search-menu__icon">
-      <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 3h-2.07A7 7 0 0 0 13 5.07V3h-2v2.07A7 7 0 0 0 5.07 11H3v2h2.07A7 7 0 0 0 11 18.93V21h2v-2.07A7 7 0 0 0 18.93 13H21v-2zm-9 6a5 5 0 1 1 0-10 5 5 0 0 1 0 10z" />
+      <path d="M20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.11 0 2-.89 2-2V5c0-1.11-.89-2-2-2zm0 5h-2V5h2v3zM4 19h16v2H4v-2z" />
     </svg>
   );
 }

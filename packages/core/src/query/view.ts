@@ -271,15 +271,18 @@ export interface Relation {
 /**
  * Where a reader can go from an element: every drawn connection touching it,
  * paired with the element at the other end. Feeds the relations menu. Ends
- * are resolved to their visible anchors, and suppressed
- * connections are left out, so every relation returned is on the board.
+ * are resolved to their visible anchors; suppressed connections and peers
+ * focus mode removed are left out, so every relation returned is on the
+ * board the reader sees.
  */
 export function relationsOf(state: AppState, id: Id): Relation[] {
   const elements = state.document.model.elements;
   const expanded = new Set(state.expanded);
   const hidden = hiddenElementIds(elements, state.hidden);
   const suppressed = suppressedConnectionIds(elements, expanded, hidden);
+  const focusHidden = focusHiddenIds(state);
   const self = visibleAnchor(elements, id, expanded);
+  if (focusHidden.has(self)) return [];
 
   const relations: Relation[] = [];
   const seen = new Set<string>();
@@ -295,10 +298,10 @@ export function relationsOf(state: AppState, id: Id): Relation[] {
     const from = element.from.map((end) => visibleAnchor(elements, end, expanded));
     const to = element.to.map((end) => visibleAnchor(elements, end, expanded));
     if (from.includes(self)) {
-      for (const peer of to) if (peer !== self) add(element.id, peer);
+      for (const peer of to) if (peer !== self && !focusHidden.has(peer)) add(element.id, peer);
     }
     if (to.includes(self)) {
-      for (const peer of from) if (peer !== self) add(element.id, peer);
+      for (const peer of from) if (peer !== self && !focusHidden.has(peer)) add(element.id, peer);
     }
   }
 

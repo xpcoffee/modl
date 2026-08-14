@@ -3072,6 +3072,26 @@ test.describe('relations menu', () => {
     await expect(page.getByTestId(`relation-${IDS.ledger}`)).toBeVisible();
   });
 
+  test('focus mode drops relations to peers the filter removed', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await setFilter(page, 'team=payments');
+    await page.getByTestId('focus-toggle').click();
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveCount(0);
+
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+
+    // The UI left the board, so the roller offers only the ledger: every
+    // relation it lists can be walked to (issue #87).
+    await expect(page.getByTestId('relations-menu-toggle')).toContainText('1');
+    await page.getByTestId('relations-menu-toggle').click();
+    await expect(page.getByTestId(`relation-${IDS.ledger}`)).toBeVisible();
+    await expect(page.getByTestId(`relation-${IDS.ui}`)).toHaveCount(0);
+
+    // Turning focus mode off brings the UI, and its relation, back.
+    await page.getByTestId('focus-toggle').click();
+    await expect(page.getByTestId('relations-menu-toggle')).toContainText('2');
+  });
+
   test('an unconnected element offers nothing', async ({ page }) => {
     await dispatch(page, [
       ...sampleDomain(),
