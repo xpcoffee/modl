@@ -13,6 +13,7 @@ const POST = '55555555-5555-4555-8555-555555555555';
 const GROUP = '66666666-6666-4666-8666-666666666666';
 const INNER = '77777777-7777-4777-8777-777777777777';
 const REPORT = '88888888-8888-4888-8888-888888888888';
+const NOTE = '99999999-9999-4999-8999-999999999999';
 
 function entity(id: string, title: string, x = 0): Command {
   return { type: 'create-entity', id, entityType: 'component', title, position: { x, y: 0 } };
@@ -527,5 +528,74 @@ describe('focusHiddenIds', () => {
       { type: 'set-selection', ids: [REPORT] },
     );
     expect(focusHiddenIds(state)).toEqual(new Set());
+  });
+
+  it('a comment follows its only target off the board (issue #102)', () => {
+    const state = must(focused(base), {
+      type: 'create-comment',
+      id: REPORT,
+      text: 'slow checkout',
+      targets: [UI],
+    });
+    expect(focusHiddenIds(state)).toEqual(new Set([UI, REPORT]));
+  });
+
+  it('one standing target keeps a comment spanning several elements', () => {
+    const state = must(focused(base), {
+      type: 'create-comment',
+      id: REPORT,
+      text: 'checkout posts here',
+      targets: [UI, LEDGER],
+    });
+    expect(focusHiddenIds(state)).toEqual(new Set([UI]));
+  });
+
+  it('a note follows its targets off the board like a comment', () => {
+    const state = must(focused(base), {
+      type: 'create-note',
+      id: NOTE,
+      text: 'refund context',
+      targets: [UI],
+    });
+    expect(focusHiddenIds(state)).toEqual(new Set([UI, NOTE]));
+  });
+
+  it('an attachment without targets scopes to the document and never leaves', () => {
+    const state = must(focused(base), {
+      type: 'create-comment',
+      id: REPORT,
+      text: 'general remark',
+      targets: [],
+    });
+    expect(focusHiddenIds(state)).toEqual(new Set([UI]));
+  });
+
+  it('a target inside a kept collapsed group counts as the group standing in', () => {
+    const state = must(
+      focused(
+        must(
+          base,
+          entity(GROUP, 'Backoffice'),
+          entity(INNER, 'Archive'),
+          { type: 'set-tag', id: GROUP, key: 'team', values: ['payments'] },
+          { type: 'set-group', id: INNER, groupId: GROUP },
+        ),
+      ),
+      { type: 'create-comment', id: REPORT, text: 'inner detail', targets: [INNER] },
+    );
+    // The inner element is no filter match, but its group is on the board and
+    // stands in for it, so the comment stays.
+    expect(focusHiddenIds(state).has(REPORT)).toBe(false);
+  });
+
+  it('a comment on a connection goes when its line does', () => {
+    const state = must(focused(base), {
+      type: 'create-comment',
+      id: REPORT,
+      text: 'about the authorise call',
+      targets: [AUTHORISE],
+    });
+    // The filter removes the UI, taking the authorise line with it.
+    expect(focusHiddenIds(state)).toEqual(new Set([UI, REPORT]));
   });
 });

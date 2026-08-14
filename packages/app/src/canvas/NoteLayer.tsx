@@ -4,6 +4,7 @@ import {
   NOTE_CARD_SIZE,
   allNotes,
   cardPinAt,
+  focusHiddenIds,
   isEntityLayout,
   notesOn,
   spawnCardPin,
@@ -76,21 +77,26 @@ function documentFallback(state: AppState, index: number): Point {
 }
 
 function placeCards(state: AppState, live?: LiveCentres): CardPlace[] {
+  // A card focus mode took away draws nowhere, notes mode included, the same
+  // rule the comment cards follow (issue #102).
+  const focusHidden = focusHiddenIds(state);
   let unpinnedDocumentNotes = 0;
-  return allNotes(state.document.model.notes).map((note) => {
-    const anchors = note.targets
-      .map((target) => rectCentre(state, target, live))
-      .filter((point): point is Point => point !== null);
+  return allNotes(state.document.model.notes)
+    .filter((note) => !focusHidden.has(note.id))
+    .map((note) => {
+      const anchors = note.targets
+        .map((target) => rectCentre(state, target, live))
+        .filter((point): point is Point => point !== null);
 
-    const pin = state.document.layout[note.id];
-    if (pin && 'x' in pin) return { note, at: { x: pin.x, y: pin.y }, anchors };
+      const pin = state.document.layout[note.id];
+      if (pin && 'x' in pin) return { note, at: { x: pin.x, y: pin.y }, anchors };
 
-    const derived = derivedCardAt(anchors, DERIVED_CARD_OFFSET);
-    if (derived === null) {
-      return { note, at: documentFallback(state, unpinnedDocumentNotes++), anchors };
-    }
-    return { note, at: derived, anchors };
-  });
+      const derived = derivedCardAt(anchors, DERIVED_CARD_OFFSET);
+      if (derived === null) {
+        return { note, at: documentFallback(state, unpinnedDocumentNotes++), anchors };
+      }
+      return { note, at: derived, anchors };
+    });
 }
 
 /** The single selected note, if the selection is exactly that. */

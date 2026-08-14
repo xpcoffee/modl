@@ -935,6 +935,39 @@ test.describe('filtering', () => {
     await expect(page.getByTestId(`entity-${IDS.ledger}`)).toBeInViewport();
   });
 
+  test('focus mode hides the cards on filtered-out components, board and timeline (issue #102)', async ({ page }) => {
+    const ON_UI = 'comment-on-ui';
+    const ON_LEDGER = 'comment-on-ledger';
+    const UI_NOTE = 'note-on-ui';
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'create-comment' as const, id: ON_UI, text: 'about the ui', targets: [IDS.ui], createdAt: '2026-08-14T09:00:00Z' },
+      { type: 'create-comment' as const, id: ON_LEDGER, text: 'about the ledger', targets: [IDS.ledger], createdAt: '2026-08-14T10:00:00Z' },
+      { type: 'create-note' as const, id: UI_NOTE, text: 'ui context', targets: [IDS.ui] },
+    ]);
+
+    await setFilter(page, 'team=payments');
+    await page.getByTestId('focus-toggle').click();
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toHaveCount(0);
+
+    // The discussion overlay draws the cards the board still has: the UI's
+    // comment left with the UI, on the board and in the timeline.
+    await page.getByTestId('overlay-discussion').click();
+    await expect(page.getByTestId(`comment-card-${ON_LEDGER}`)).toBeVisible();
+    await expect(page.getByTestId(`comment-card-${ON_UI}`)).toHaveCount(0);
+    await expect(page.getByTestId(`timeline-entry-${ON_LEDGER}`)).toBeVisible();
+    await expect(page.getByTestId(`timeline-entry-${ON_UI}`)).toHaveCount(0);
+
+    // Notes follow the same derivation, in the layer that draws every card.
+    await page.getByTestId('overlay-notes').click();
+    await expect(page.getByTestId(`note-card-${UI_NOTE}`)).toHaveCount(0);
+
+    // Leaving focus mode brings the UI and its note back.
+    await page.getByTestId('focus-toggle').click();
+    await expect(page.getByTestId(`entity-${IDS.ui}`)).toBeVisible();
+    await expect(page.getByTestId(`note-card-${UI_NOTE}`)).toBeVisible();
+  });
+
   test('a filter opens the groups above a match, and clearing folds them back', async ({ page }) => {
     const INNER = '88888888-8888-4888-8888-888888888888';
     const OUTER = '99999999-9999-4999-8999-999999999999';
