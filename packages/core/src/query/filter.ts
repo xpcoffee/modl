@@ -11,6 +11,10 @@ import { fuzzyMatches } from './fuzzy.js';
  *               | ['-'] key             matches any element carrying the key
  *   value      := literal | '*'         '*' matches any value
  *
+ * A key or value holding a space is written in double quotes, so a tag like
+ * `flow=user login` stays one term (issue #94). A quoted key always carries
+ * an explicit value, since a bare quoted token reads as a text term.
+ *
  * A text term is the non-tag filter issue #33 asks for: the search menu turns
  * whatever someone typed into one of these, so a view narrowed by name can be
  * made permanent the same way a tag filter is. It is quoted so a name with a
@@ -77,8 +81,20 @@ export type FilterParseResult =
  */
 export const MAX_FILTERS = 5;
 
-const TAG = /^(-?)([^=\s]+)(?:=(.*))?$/;
+const TAG = /^(-?)("[^"]+"|[^=\s]+)(?:=(.*))?$/;
 const TEXT = /^(-?)"(.*)"$/;
+
+/**
+ * The tokenizer keeps quotes in place, so a value written `"user login"`
+ * arrives here still wearing them. The quotes are the tokenizer's, not part
+ * of the value.
+ */
+function unquoteValue(value: string | undefined): string | undefined {
+  if (value !== undefined && value.startsWith('"') && value.endsWith('"') && value.length >= 2) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
 
 /**
  * Splits on whitespace, except inside double quotes. Written out rather than
@@ -136,23 +152,17 @@ export function parseFilter(expression: string): FilterParseResult {
     // A quoted key is a literal tag key, which is how a tag named "comment"
     // stays reachable past the reserved word.
     const literalKey = /^"(.+)"$/.exec(key)?.[1];
+    const unquoted = unquoteValue(value);
     if (literalKey !== undefined) {
       terms.push({
         kind: 'tag',
         negated: negation === '-',
-        ...(value === undefined || value === '*' ? {} : { value }),
+        ...(unquoted === undefined || unquoted === '*' ? {} : { value: unquoted }),
         key: literalKey,
       });
       continue;
     }
     if (key === 'comment' || key === 'note') {
-      // Comment and note text is prose, so `comment="fix this"` keeps a
-      // space inside one term. The quotes are the tokenizer's, not part of
-      // the text.
-      const unquoted =
-        value !== undefined && value.startsWith('"') && value.endsWith('"') && value.length >= 2
-          ? value.slice(1, -1)
-          : value;
       terms.push({
         kind: key,
         negated: negation === '-',
@@ -163,7 +173,7 @@ export function parseFilter(expression: string): FilterParseResult {
     terms.push({
       kind: 'tag',
       negated: negation === '-',
-      ...(value === undefined || value === '*' ? {} : { value }),
+      ...(unquoted === undefined || unquoted === '*' ? {} : { value: unquoted }),
       key,
     });
   }
@@ -179,12 +189,17 @@ export function formatTerm(term: FilterTerm): string {
     const text = /\s/.test(term.text) ? `"${term.text}"` : term.text;
     return `${negation}${term.kind}=${text}`;
   }
-  // A tag key that collides with a reserved word is written quoted, and
-  // with an explicit value: a bare quoted key would read back as a text term.
-  if (term.key === 'comment' || term.key === 'note') {
-    return `${negation}"${term.key}"=${term.value ?? '*'}`;
+  // A value holding a space is quoted, so the tokenizer keeps it one term
+  // rather than one per word (issue #94).
+  const value =
+    term.value !== undefined && /\s/.test(term.value) ? `"${term.value}"` : term.value;
+  // A tag key that collides with a reserved word, or holds a space, is
+  // written quoted, and with an explicit value: a bare quoted key would read
+  // back as a text term.
+  if (term.key === 'comment' || term.key === 'note' || /\s/.test(term.key)) {
+    return `${negation}"${term.key}"=${value ?? '*'}`;
   }
-  return `${negation}${term.key}${term.value === undefined ? '' : `=${term.value}`}`;
+  return `${negation}${term.key}${value === undefined ? '' : `=${value}`}`;
 }
 
 /** Terms joined back into one expression. */
