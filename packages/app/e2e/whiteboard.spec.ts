@@ -1173,6 +1173,18 @@ test.describe('search menu', () => {
     const trace = await getTrace(page);
     expect(trace.some((entry) => entry.command.type === 'set-filter')).toBe(false);
   });
+
+  test('an applied filter leaves the suggestion list', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    await setFilter(page, 'team=payments');
+    await openSearch(page);
+
+    await page.getByTestId('search-input').fill('team');
+
+    // The other suggestions for the key stay on offer.
+    await expect(page.getByTestId('search-tag-team')).toBeVisible();
+    await expect(page.getByTestId('search-tag-team-payments')).toHaveCount(0);
+  });
 });
 
 test.describe('save and load', () => {

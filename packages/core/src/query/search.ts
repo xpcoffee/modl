@@ -185,6 +185,9 @@ export interface SearchOptionsInput {
  * would make the narrowing permanent, then the tag filters that read like the
  * query, then the elements themselves. A query matching exactly one element
  * offers only that element.
+ *
+ * A filter already active is left out: it sits under the bar as a chip, and
+ * choosing it again would change nothing (issue #95).
  */
 export function searchOptions(
   state: AppState,
@@ -209,7 +212,8 @@ export function searchOptions(
     filters.push(...noteSuggestions(state.document.model.notes, trimmed));
   }
 
-  return [...filters, ...hits];
+  const active = new Set(activeFilterTerms(state.filter).map(formatTerm));
+  return [...filters.filter((option) => !active.has(option.label)), ...hits];
 }
 
 /** How many filters are active, for the count on the menu's button. */

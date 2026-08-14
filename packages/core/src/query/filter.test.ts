@@ -202,6 +202,12 @@ describe('writing expressions', () => {
     expect(addTerm('=broken', { kind: 'tag', negated: false, key: 'tier' })).toBe('tier');
   });
 
+  it('adds a term the expression already holds only once', () => {
+    expect(addTerm('team=web', { kind: 'tag', negated: false, key: 'team', value: 'web' })).toBe(
+      'team=web',
+    );
+  });
+
   it('replaces a term in place', () => {
     expect(replaceTerm('team=web tier', 0, { kind: 'tag', negated: false, key: 'team', value: 'payments' })).toBe(
       'team=payments tier',
