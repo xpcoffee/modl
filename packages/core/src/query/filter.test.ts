@@ -63,6 +63,20 @@ describe('parseFilter', () => {
   it('reads an empty value as a literal empty string', () => {
     expect(parseFilter('team=')).toEqual({ ok: true, terms: [{ kind: 'tag', negated: false, key: 'team', value: '' }] });
   });
+
+  it('keeps a space inside a quoted value in one term', () => {
+    expect(parseFilter('flow="user login"')).toEqual({
+      ok: true,
+      terms: [{ kind: 'tag', negated: false, key: 'flow', value: 'user login' }],
+    });
+  });
+
+  it('keeps a space inside a quoted key in one term', () => {
+    expect(parseFilter('"release train"=*')).toEqual({
+      ok: true,
+      terms: [{ kind: 'tag', negated: false, key: 'release train' }],
+    });
+  });
 });
 
 describe('selectIds', () => {
@@ -196,6 +210,31 @@ describe('writing expressions', () => {
     expect(addTerm('team=web', { kind: 'text', negated: false, text: 'ledger' })).toBe(
       'team=web "ledger"',
     );
+  });
+
+  // A tag value holding a space split into one term per word (issue #94).
+  it('keeps a value with a space as one term', () => {
+    const expression = addTerm('', { kind: 'tag', negated: false, key: 'flow', value: 'user login' });
+    expect(expression).toBe('flow="user login"');
+    expect(parseFilter(expression)).toEqual({
+      ok: true,
+      terms: [{ kind: 'tag', negated: false, key: 'flow', value: 'user login' }],
+    });
+  });
+
+  it('keeps a key with a space as one term', () => {
+    const expression = addTerm('', { kind: 'tag', negated: false, key: 'release train' });
+    expect(expression).toBe('"release train"=*');
+    expect(parseFilter(expression)).toEqual({
+      ok: true,
+      terms: [{ kind: 'tag', negated: false, key: 'release train' }],
+    });
+  });
+
+  it('matches a value with a space through the round trip', () => {
+    const spaced = { [A]: entity(A, { flow: ['user login'] }) };
+    const expression = addTerm('', { kind: 'tag', negated: false, key: 'flow', value: 'user login' });
+    expect(selectIds(spaced, expression)).toEqual(new Set([A]));
   });
 
   it('replaces an unparseable expression rather than appending to it', () => {
