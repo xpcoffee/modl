@@ -1218,6 +1218,79 @@ describe('load-document', () => {
   });
 });
 
+describe('sync-document', () => {
+  /** The board with a filter, a selection, an expanded group and a hidden element. */
+  function working(): AppState {
+    return must(
+      base,
+      entity(C, 'Ledger', 480),
+      { type: 'set-group', id: C, groupId: B },
+      { type: 'set-expanded', id: B, expanded: true },
+      { type: 'set-filter', expression: 'team=web' },
+      { type: 'set-hidden', id: A, hidden: true },
+      { type: 'set-selection', ids: [C] },
+      { type: 'set-focus-mode', enabled: true },
+    );
+  }
+
+  it('swaps the document in and leaves the session standing', () => {
+    const state = working();
+    const document = must(state, { type: 'set-metadata', id: A, title: 'Checkout' }).document;
+
+    const synced = must(state, { type: 'sync-document', document });
+
+    expect(synced.document.model.elements[A]?.title).toBe('Checkout');
+    expect(synced.filter).toBe('team=web');
+    expect(synced.selection).toEqual([C]);
+    expect(synced.expanded).toEqual([B]);
+    expect(synced.hidden).toEqual([A]);
+    expect(synced.focusMode).toBe(true);
+  });
+
+  it('drops session entries naming what the document no longer holds', () => {
+    const state = working();
+    const document = must(
+      state,
+      { type: 'delete-element', id: A },
+      { type: 'delete-element', id: C },
+    ).document;
+
+    const synced = must(state, { type: 'sync-document', document });
+
+    expect(synced.selection).toEqual([]);
+    expect(synced.hidden).toEqual([]);
+    expect(synced.expanded).toEqual([]);
+  });
+
+  it('reports the per-element changes, and not a load', () => {
+    const state = working();
+    const document = must(state, entity(LINK, 'Reports', 720), { type: 'delete-element', id: A })
+      .document;
+
+    const result = apply(state, { type: 'sync-document', document });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.events).toEqual(
+      expect.arrayContaining([
+        { type: 'element-created', id: LINK },
+        { type: 'element-deleted', id: A },
+        { type: 'document-synced', id: state.document.id },
+      ]),
+    );
+    expect(result.events.some((event) => event.type === 'document-loaded')).toBe(false);
+  });
+
+  it('schema-invalid: rejects a document that would not load', () => {
+    const result = apply(base, {
+      type: 'sync-document',
+      document: { formatVersion: 2, id: A, title: '', model: { elements: { x: 1 } } } as never,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('schema-invalid');
+  });
+});
+
 describe('load-document seeding from view.defaultExpanded', () => {
   /** A document holding two groups: A inside B, C inside D. */
   const grouped = (defaultExpanded?: true | string[]): AppState['document'] => {

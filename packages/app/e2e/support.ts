@@ -105,6 +105,17 @@ export async function queueOpenFile(page: Page, name: string, content: string): 
   }, { name, content });
 }
 
+/**
+ * Writes a file behind the app's back, the way an agent editing the document
+ * on disk does. The fake handles read `savedFiles` on every `getFile`, so the
+ * sync loop finds this on its next poll.
+ */
+export async function writeFileOutside(page: Page, name: string, content: string): Promise<void> {
+  await page.evaluate((spec) => {
+    window.__pickers.savedFiles[spec.name] = spec.content;
+  }, { name, content });
+}
+
 /** The name the next fake save dialog answers with. */
 export async function setNextSaveName(page: Page, name: string): Promise<void> {
   await page.evaluate((n) => {

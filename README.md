@@ -115,6 +115,7 @@ Use that path rather than `npx playwright install`, which fetches whatever versi
 - **Delete** removes the selection, on either Delete or Backspace, or with the trash button
 - **Undo** with Ctrl+Z, redo with Ctrl+Y or Ctrl+Shift+Z, or the arrow buttons in the zoom control cluster. Every command is undoable, including loading a document; selection, filter, and camera changes are skipped. See [decision 008](docs/decisions/008-undo-redo.md)
 - **Save** with Ctrl+S or the toolbar button, which writes back to the file you chose and keeps writing there; **Save as** (Ctrl+Shift+S) asks for a new place. **Load** remembers the opened file the same way, the toolbar and the tab title carry its name, and browsers without the File System Access API fall back to downloads. **Export trace** keeps the session's command log. See [decision 019](docs/decisions/019-save-in-place.md)
+- **Sync** the board with its file, for working alongside an agent: every change writes to the file, and a change made to the file arrives on the board with no press. The camera, the filter, the selection, and the groups you opened all stay put, and so does every box neither side moved; where the two disagree about a position or a title, the file decides. Chromium only, and off until you turn it on. See [decision 032](docs/decisions/032-file-sync.md)
 
 ### Producing a document from another tool
 

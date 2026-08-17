@@ -3,6 +3,7 @@ import { store, replayFromJson } from '../store/store.js';
 import { forgetStyle } from '../canvas/styleMemory.js';
 import { forgetClipboard } from '../canvas/duplication.js';
 import { forgetFile } from '../files/fileContext.js';
+import { forgetSync } from '../files/sync.js';
 
 export interface DomainMapperApi {
   dispatch(command: Command): CommandResult;
@@ -46,6 +47,9 @@ export function installRuntimeApi(): void {
       // The remembered style, the clipboard, and the remembered file are
       // session state too; a fresh session starts plain, with nothing to
       // paste and nowhere to save.
+      // Sync stops before the file it followed is forgotten, so a reset reads
+      // as a reset rather than as sync losing the file under it.
+      forgetSync();
       forgetStyle();
       forgetClipboard();
       forgetFile();

@@ -11,6 +11,7 @@ import {
   type SaveResult,
 } from '../files/fileAccess.js';
 import { rememberFile, useFileContext } from '../files/fileContext.js';
+import { toggleSync, useSyncState, type SyncState } from '../files/sync.js';
 import { matchesKey } from '../preferences/keybindings.js';
 import { useAppState } from '../store/useStore.js';
 import { Preferences } from './Preferences.js';
@@ -23,6 +24,13 @@ const FEEDBACK_MS = 300;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** The word beside the Sync button: what the two loops last did, or why they stopped. */
+function syncLabel(sync: SyncState): string {
+  if (sync.phase === 'writing') return 'writing';
+  if (sync.phase === 'error') return sync.message;
+  return sync.message === '' ? 'following the file' : sync.message;
 }
 
 /** A spinner while the save runs, then a checkmark, over the button. */
@@ -51,6 +59,7 @@ function SaveFeedback({ phase }: { phase: 'saving' | 'saved' }) {
 export function Toolbar() {
   const state = useAppState();
   const file = useFileContext();
+  const sync = useSyncState();
   const fileInput = useRef<HTMLInputElement>(null);
   const savingRef = useRef(false);
   const saveRunRef = useRef(0);
@@ -279,6 +288,33 @@ export function Toolbar() {
       <button type="button" data-testid="load" onClick={() => void load()}>
         Load
       </button>
+      <button
+        type="button"
+        data-testid="sync"
+        className={sync.on ? 'is-on' : undefined}
+        aria-pressed={sync.on}
+        disabled={!sync.on && !file.handle}
+        title={
+          file.handle
+            ? sync.on
+              ? `Stop following ${file.name}`
+              : `Write every change to ${file.name}, and take the file's own changes as they arrive`
+            : 'Save the board to a file first'
+        }
+        onClick={() => void toggleSync()}
+      >
+        Sync
+      </button>
+      {(sync.on || sync.phase === 'error') && (
+        <span
+          className="toolbar__sync"
+          data-testid="sync-status"
+          data-phase={sync.phase}
+          title={sync.message}
+        >
+          {syncLabel(sync)}
+        </span>
+      )}
       <input
         ref={fileInput}
         type="file"

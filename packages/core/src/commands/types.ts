@@ -204,6 +204,15 @@ export type Command =
   | { type: 'delete-comment'; id: Id }
   | { type: 'set-comment-overlay'; open: boolean }
   | { type: 'load-document'; document: Document }
+  /**
+   * Swaps in a document that arrived from the open file while the reader is
+   * working, already merged with what the board holds. Unlike `load-document`
+   * it keeps the session: the selection, the filter, the expanded groups, and
+   * the camera all survive, so a write by an agent does not restage the board.
+   * It carries the merged result rather than the file's own content, so a
+   * trace replays to the same board. See docs/decisions/032-file-sync.md.
+   */
+  | { type: 'sync-document'; document: Document }
   | { type: 'merge-document'; document: Document }
   | { type: 'undo' }
   | { type: 'redo' };
@@ -261,6 +270,12 @@ export type DomainEvent =
   | { type: 'filter-changed'; expression: string }
   | { type: 'view-changed'; view: View }
   | { type: 'document-loaded'; id: Id }
+  /**
+   * The open file changed under the board and the merged result is now in
+   * state. Separate from `document-loaded` because nobody asked for it: the
+   * canvas frames a load and holds the camera still for a sync.
+   */
+  | { type: 'document-synced'; id: Id }
   | { type: 'history-moved'; direction: 'undo' | 'redo'; cursor: number };
 
 export type CommandResult =

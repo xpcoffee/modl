@@ -28,5 +28,7 @@ export * from './query/notes.js';
 export * from './query/reflow.js';
 export * from './query/selection.js';
 export * from './query/view.js';
+export * from './sync/reconcile.js';
+export * from './sync/changes.js';
 export * from './trace/trace.js';
 export * from './state.js';
