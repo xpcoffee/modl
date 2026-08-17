@@ -26,9 +26,10 @@ import { COLOR_PATTERN } from '../model/schema.js';
 import { isConnectionType, isEntityType } from '../model/paradigm.js';
 import { seededExpansion } from '../query/expansion.js';
 import { parseFilter, selectIds } from '../query/filter.js';
-import { ancestorsOf, membersOf, wouldCycle } from '../query/groups.js';
+import { ancestorsOf, isGroup, membersOf, wouldCycle } from '../query/groups.js';
 import { hiddenElementIds, suppressedConnectionIds } from '../query/view.js';
 import { emptyDocument, loadDocument } from '../serialize/serialize.js';
+import { changeEvents } from '../sync/changes.js';
 import { isUndoable } from './undo.js';
 import type {
   AppState,
@@ -1206,6 +1207,35 @@ function reduce(state: AppState, command: Command): CommandResult {
           focusMode: false,
         },
         [{ type: 'document-loaded', id: result.document.id }],
+      );
+    }
+
+    case 'sync-document': {
+      const result = loadDocument(command.document);
+      if (!result.ok) {
+        return fail(command.type, 'schema-invalid', result.errors.map((e) => e.message).join('; '));
+      }
+      const document = result.document;
+      const present = (id: Id): boolean =>
+        Boolean(document.model.elements[id] ?? document.comments[id] ?? document.model.notes[id]);
+      const stillAGroup = (id: Id): boolean => isGroup(document.model.elements, id);
+
+      // The session survives, pruned to what the file still holds: a
+      // selection or a hidden entry naming a deleted element would make the
+      // next command that reads it fail.
+      return ok(
+        {
+          ...state,
+          document,
+          selection: state.selection.filter(present),
+          expanded: state.expanded.filter(stillAGroup),
+          expandedBeforeFilter:
+            state.expandedBeforeFilter === null
+              ? null
+              : state.expandedBeforeFilter.filter(stillAGroup),
+          hidden: state.hidden.filter(present),
+        },
+        [...changeEvents(state.document, document), { type: 'document-synced', id: document.id }],
       );
     }
 

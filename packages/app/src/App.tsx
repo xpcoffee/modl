@@ -3,6 +3,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { visibleElementIds } from '@modl/core';
 import { installAnimations } from './canvas/animations.js';
 import { Canvas } from './canvas/Canvas.js';
+import { installSync } from './files/sync.js';
 import { Toolbar } from './panels/Toolbar.js';
 import { matchesKey } from './preferences/keybindings.js';
 import { markReady } from './runtime/api.js';
@@ -53,6 +54,7 @@ function useSelectAllShortcut(): void {
 export function App() {
   useEffect(() => {
     installAnimations();
+    installSync();
     markReady();
   }, []);
   useUndoShortcuts();

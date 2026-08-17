@@ -110,6 +110,12 @@ connections
 
 `modl query` prints one element's neighbourhood: its incoming and outgoing connections, its group siblings, its members when it is a group, and the comments attached to it. That is the read that precedes acting on a review comment, so it is one command rather than four passes over the file. `--json` prints the same structure for a program, and `neighbourhoodOf` is exported from `@modl/core` for the same job in process.
 
+## Writing the file while someone watches the board
+
+With Sync on in the whiteboard (the toggle beside Load, Chromium only), the board follows the file: write the document and the change is on screen within a second, with no press from the reader. Nothing about your side of the loop changes: write the whole file as usual.
+
+Two things are worth knowing. A write is not atomic, so the board can read half a file; it says so and takes the next whole one, which means an unfinished write costs nothing. And what your document leaves out, the board keeps: no `layout` map means every box stays where the reader put it, and no `comments` map means their comments survive. State a position only when you mean to move something, because a position you state and the reader has also moved is a disagreement your file settles. See [decision 032](decisions/032-file-sync.md).
+
 ## Driving the running app instead
 
 With `npm run dev` up, every build exposes the command bus:

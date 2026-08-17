@@ -52,11 +52,11 @@ function wasCanceled(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
 
-function messageOf(error: unknown): string {
+export function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function writeTo(handle: FileSystemFileHandle, text: string): Promise<void> {
+export async function writeTo(handle: FileSystemFileHandle, text: string): Promise<void> {
   const writable = await handle.createWritable();
   await writable.write(text);
   await writable.close();
