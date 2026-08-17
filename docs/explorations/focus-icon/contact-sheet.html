@@ -1,0 +1,124 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0;
+    padding: 28px 32px;
+    background: #10141c;
+    color: #cfd8e3;
+    font: 14px/1.4 -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  h1 { font-size: 15px; font-weight: 600; margin: 0 0 4px; letter-spacing: .02em; }
+  p.sub { margin: 0 0 20px; color: #7d8899; font-size: 12px; }
+  table { border-collapse: collapse; }
+  td, th { padding: 10px 16px; text-align: left; vertical-align: middle; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #7d8899; font-weight: 600; border-bottom: 1px solid #232a36; }
+  tr + tr td { border-top: 1px solid #1a2029; }
+  .name { font-weight: 600; white-space: nowrap; }
+  .desc { color: #7d8899; font-size: 12px; max-width: 250px; }
+  svg { fill: currentcolor; display: block; }
+  .s16 { width: 16px; height: 16px; }
+  .s24 { width: 24px; height: 24px; }
+  .s64 { width: 64px; height: 64px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 6px;
+    border: 1px solid #2b3342; background: #171d27; color: #cfd8e3;
+  }
+  .btn.on { background: #5b8def; border-color: #5b8def; color: #0b0f16; }
+  .cell { display: flex; align-items: center; gap: 14px; }
+</style>
+</head>
+<body>
+<h1>Focus icon alternatives &middot; issue #107</h1>
+<p class="sub">24&times;24 viewBox, filled paths, <code>fill: currentcolor</code>. Rendered at 16px (menu size), 24px, 64px, and in the toggle button off / on.</p>
+<table>
+<tr><th>candidate</th><th>16px</th><th>24px</th><th>64px</th><th>toggle</th><th>reads as</th></tr>
+
+<tr>
+ <td class="name">A. Gravity well</td>
+ <td><svg class="s16" viewBox="0 0 24 24"><g id="cA"><path d="M12 8.6a3.4 3.4 0 100 6.8 3.4 3.4 0 000-6.8z"/><path fill-rule="evenodd" d="M12 2.6a9.4 9.4 0 100 18.8 9.4 9.4 0 000-18.8zm0 1.9a7.5 7.5 0 110 15 7.5 7.5 0 010-15z"/></g></svg></td>
+ <td><svg class="s24" viewBox="0 0 24 24"><use href="#cA"/></svg></td>
+ <td><svg class="s64" viewBox="0 0 24 24"><use href="#cA"/></svg></td>
+ <td><span class="cell"><span class="btn"><svg class="s16" viewBox="0 0 24 24"><use href="#cA"/></svg></span><span class="btn on"><svg class="s16" viewBox="0 0 24 24"><use href="#cA"/></svg></span></span></td>
+ <td class="desc">A mass in the field with its ring of influence.</td>
+</tr>
+
+<tr>
+ <td class="name">B. Field lensing</td>
+ <td><svg class="s16" viewBox="0 0 24 24"><g id="cB"><path d="M12 8.2a3.8 3.8 0 100 7.6 3.8 3.8 0 000-7.6z"/><circle cx="18.9" cy="5.1" r="1.7"/><circle cx="5.1" cy="5.1" r="1.7"/><circle cx="18.9" cy="18.9" r="1.7"/><circle cx="5.1" cy="18.9" r="1.7"/></g></svg></td>
+ <td><svg class="s24" viewBox="0 0 24 24"><use href="#cB"/></svg></td>
+ <td><svg class="s64" viewBox="0 0 24 24"><use href="#cB"/></svg></td>
+ <td><span class="cell"><span class="btn"><svg class="s16" viewBox="0 0 24 24"><use href="#cB"/></svg></span><span class="btn on"><svg class="s16" viewBox="0 0 24 24"><use href="#cB"/></svg></span></span></td>
+ <td class="desc">Grid dots held around a mass, the board's own medium.</td>
+</tr>
+
+<tr>
+ <td class="name">C. Reticle lock</td>
+ <td><svg class="s16" viewBox="0 0 24 24"><g id="cC"><path d="M3 3h7v2H5v5H3V3zm18 0v7h-2V5h-5V3h7zM5 14v5h5v2H3v-7h2zm16 0v7h-7v-2h5v-5h2z"/><path d="M12 9.4a2.6 2.6 0 100 5.2 2.6 2.6 0 000-5.2z"/></g></svg></td>
+ <td><svg class="s24" viewBox="0 0 24 24"><use href="#cC"/></svg></td>
+ <td><svg class="s64" viewBox="0 0 24 24"><use href="#cC"/></svg></td>
+ <td><span class="cell"><span class="btn"><svg class="s16" viewBox="0 0 24 24"><use href="#cC"/></svg></span><span class="btn on"><svg class="s16" viewBox="0 0 24 24"><use href="#cC"/></svg></span></span></td>
+ <td class="desc">A viewfinder closed on one target.</td>
+</tr>
+
+<tr>
+ <td class="name">D. Aperture</td>
+ <td><svg class="s16" viewBox="0 0 24 24"><g id="cD"><path fill-rule="evenodd" d="M12 2.4l8.3 4.8v9.6L12 21.6 3.7 16.8V7.2L12 2.4zm0 4.4L7.5 9.4v5.2L12 17.2l4.5-2.6V9.4L12 6.8z"/></g></svg></td>
+ <td><svg class="s24" viewBox="0 0 24 24"><use href="#cD"/></svg></td>
+ <td><svg class="s64" viewBox="0 0 24 24"><use href="#cD"/></svg></td>
+ <td><span class="cell"><span class="btn"><svg class="s16" viewBox="0 0 24 24"><use href="#cD"/></svg></span><span class="btn on"><svg class="s16" viewBox="0 0 24 24"><use href="#cD"/></svg></span></span></td>
+ <td class="desc">A stopped-down lens: less light, one subject.</td>
+</tr>
+
+<tr>
+ <td class="name">E. Pulse</td>
+ <td><svg class="s16" viewBox="0 0 24 24"><g id="cE"><path d="M12 9.6a2.4 2.4 0 100 4.8 2.4 2.4 0 000-4.8z"/><path d="M16.05 7.17a6.3 6.3 0 010 9.66l-.9-1.08a4.9 4.9 0 000-7.5l.9-1.08z"/><path d="M18.04 4.8a9.4 9.4 0 010 14.4l-.9-1.07a8 8 0 000-12.26l.9-1.07z"/><path d="M7.95 7.17a6.3 6.3 0 000 9.66l.9-1.08a4.9 4.9 0 010-7.5l-.9-1.08z"/><path d="M5.96 4.8a9.4 9.4 0 000 14.4l.9-1.07a8 8 0 010-12.26l-.9-1.07z"/></g></svg></td>
+ <td><svg class="s24" viewBox="0 0 24 24"><use href="#cE"/></svg></td>
+ <td><svg class="s64" viewBox="0 0 24 24"><use href="#cE"/></svg></td>
+ <td><span class="cell"><span class="btn"><svg class="s16" viewBox="0 0 24 24"><use href="#cE"/></svg></span><span class="btn on"><svg class="s16" viewBox="0 0 24 24"><use href="#cE"/></svg></span></span></td>
+ <td class="desc">A light pulse leaving one point, both ways.</td>
+</tr>
+
+<tr>
+ <td class="name">F. Warp in</td>
+ <td><svg class="s16" viewBox="0 0 24 24"><g id="cF"><path d="M12 8.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z"/><path d="M8.6 3.9l1.5 1.3a8.9 8.9 0 000 13.6l-1.5 1.3a10.8 10.8 0 010-16.2z"/><path d="M15.4 3.9l-1.5 1.3a8.9 8.9 0 010 13.6l1.5 1.3a10.8 10.8 0 000-16.2z"/></g></svg></td>
+ <td><svg class="s24" viewBox="0 0 24 24"><use href="#cF"/></svg></td>
+ <td><svg class="s64" viewBox="0 0 24 24"><use href="#cF"/></svg></td>
+ <td><span class="cell"><span class="btn"><svg class="s16" viewBox="0 0 24 24"><use href="#cF"/></svg></span><span class="btn on"><svg class="s16" viewBox="0 0 24 24"><use href="#cF"/></svg></span></span></td>
+ <td class="desc">The field closing in on what is left.</td>
+</tr>
+
+<tr>
+ <td class="name">G. Orbit</td>
+ <td><svg class="s16" viewBox="0 0 24 24"><g id="cG"><path d="M12 8.8a3.2 3.2 0 100 6.4 3.2 3.2 0 000-6.4z"/><path fill-rule="evenodd" d="M12 2.8c4 0 7.2 4.1 7.2 9.2s-3.2 9.2-7.2 9.2S4.8 17.1 4.8 12 8 2.8 12 2.8zm0 1.9c-2.7 0-5 3.3-5 7.3s2.3 7.3 5 7.3 5-3.3 5-7.3-2.3-7.3-5-7.3z" transform="rotate(-35 12 12)"/></g></svg></td>
+ <td><svg class="s24" viewBox="0 0 24 24"><use href="#cG"/></svg></td>
+ <td><svg class="s64" viewBox="0 0 24 24"><use href="#cG"/></svg></td>
+ <td><span class="cell"><span class="btn"><svg class="s16" viewBox="0 0 24 24"><use href="#cG"/></svg></span><span class="btn on"><svg class="s16" viewBox="0 0 24 24"><use href="#cG"/></svg></span></span></td>
+ <td class="desc">One body and what stays bound to it.</td>
+</tr>
+
+<tr>
+ <td class="name">H. Collapse</td>
+ <td><svg class="s16" viewBox="0 0 24 24"><g id="cH"><path d="M12 10a2 2 0 100 4 2 2 0 000-4z"/><g id="cHc"><path d="M8.6 3.6L12 6.6l3.4-3 1.2 1.4L12 9l-4.6-4z"/></g><use href="#cHc" transform="rotate(90 12 12)"/><use href="#cHc" transform="rotate(180 12 12)"/><use href="#cHc" transform="rotate(270 12 12)"/></g></svg></td>
+ <td><svg class="s24" viewBox="0 0 24 24"><use href="#cH"/></svg></td>
+ <td><svg class="s64" viewBox="0 0 24 24"><use href="#cH"/></svg></td>
+ <td><span class="cell"><span class="btn"><svg class="s16" viewBox="0 0 24 24"><use href="#cH"/></svg></span><span class="btn on"><svg class="s16" viewBox="0 0 24 24"><use href="#cH"/></svg></span></span></td>
+ <td class="desc">Four sides warping in on a centre.</td>
+</tr>
+
+<tr>
+ <td class="name">Current (coffee)</td>
+ <td><svg class="s16" viewBox="0 0 24 24"><g id="c0"><path d="M20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.11 0 2-.89 2-2V5c0-1.11-.89-2-2-2zm0 5h-2V5h2v3zM4 19h16v2H4v-2z"/></g></svg></td>
+ <td><svg class="s24" viewBox="0 0 24 24"><use href="#c0"/></svg></td>
+ <td><svg class="s64" viewBox="0 0 24 24"><use href="#c0"/></svg></td>
+ <td><span class="cell"><span class="btn"><svg class="s16" viewBox="0 0 24 24"><use href="#c0"/></svg></span><span class="btn on"><svg class="s16" viewBox="0 0 24 24"><use href="#c0"/></svg></span></span></td>
+ <td class="desc">For comparison.</td>
+</tr>
+
+</table>
+</body>
+</html>
