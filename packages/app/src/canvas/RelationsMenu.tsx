@@ -7,6 +7,7 @@ import {
 } from '@xyflow/react';
 import {
   focusLayoutState,
+  goToTarget,
   isConnection,
   isConnectionNode,
   readableName,
@@ -21,14 +22,6 @@ import { setHighlight } from './highlight.js';
 import { RollerMenu, type RollerOption } from './RollerMenu.js';
 import { useDock, useDockedTransform } from './docking.js';
 import type { BoardNodeData } from './derive.js';
-
-/** The board rectangle a pan should centre on. */
-function rectOf(state: AppState, id: Id): { x: number; y: number; width: number; height: number } {
-  const entry = state.document.layout[id];
-  if (!entry || !('x' in entry)) return { x: 0, y: 0, width: 180, height: 72 };
-  const container = state.expanded.includes(id) ? entry.expanded : undefined;
-  return { x: entry.x, y: entry.y, width: container?.width ?? entry.width, height: container?.height ?? entry.height };
-}
 
 function nameOf(state: AppState, id: Id): string {
   return state.document.model.elements[id]?.title || readableName(id);
@@ -82,13 +75,14 @@ export function RelationsMenu({ nodes }: { nodes: Node<BoardNodeData>[] }) {
       // Focus mode draws elements at compacted positions, so the pan reads
       // the same overlaid layout the canvas renders (issue #101). With the
       // mode off this is the state itself, and the saved position.
-      const target = rectOf(focusLayoutState(store.getState()), relation.peerId);
+      const target = goToTarget(focusLayoutState(store.getState()), relation.peerId);
+      if (target === null) return;
       const zoom = getViewport().zoom;
       store.dispatch({
         type: 'set-view',
         pan: {
-          x: paneWidth / 2 - (target.x + target.width / 2) * zoom,
-          y: paneHeight / 2 - (target.y + target.height / 2) * zoom,
+          x: paneWidth / 2 - target.centre.x * zoom,
+          y: paneHeight / 2 - target.centre.y * zoom,
         },
         zoom,
       });

@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import type { Command, Document, TraceEntry } from '@modl/core';
 
 /**
@@ -137,6 +137,27 @@ export async function setFilter(page: Page, expression: string): Promise<void> {
 export async function openSearch(page: Page): Promise<void> {
   await page.keyboard.press('Control+f');
   await page.getByTestId('search-input').waitFor();
+}
+
+/**
+ * Waits for the element to sit in the middle of the board, which is what a
+ * pan is for. The tolerance covers the pan settling and the rounding of a
+ * transform. A pan aimed at the wrong place misses by hundreds of pixels, so
+ * the two never read alike.
+ */
+export async function expectCentred(page: Page, testId: string, tolerance = 10): Promise<void> {
+  const pane = await page.locator('.react-flow__pane').boundingBox();
+  if (!pane) throw new Error('the board is not on screen');
+  await expect
+    .poll(async () => {
+      const target = await page.getByTestId(testId).boundingBox();
+      if (!target) return Number.POSITIVE_INFINITY;
+      return Math.max(
+        Math.abs(target.x + target.width / 2 - (pane.x + pane.width / 2)),
+        Math.abs(target.y + target.height / 2 - (pane.y + pane.height / 2)),
+      );
+    })
+    .toBeLessThan(tolerance);
 }
 
 /** The zoom the camera is drawn at, read from the viewport transform. */
