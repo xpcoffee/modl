@@ -6,6 +6,7 @@ import {
   type Node,
 } from '@xyflow/react';
 import {
+  focusLayoutState,
   isConnection,
   isConnectionNode,
   readableName,
@@ -78,7 +79,10 @@ export function RelationsMenu({ nodes }: { nodes: Node<BoardNodeData>[] }) {
 
   const panTo = useCallback(
     (relation: Relation): void => {
-      const target = rectOf(store.getState(), relation.peerId);
+      // Focus mode draws elements at compacted positions, so the pan reads
+      // the same overlaid layout the canvas renders (issue #101). With the
+      // mode off this is the state itself, and the saved position.
+      const target = rectOf(focusLayoutState(store.getState()), relation.peerId);
       const zoom = getViewport().zoom;
       store.dispatch({
         type: 'set-view',

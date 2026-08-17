@@ -3182,6 +3182,40 @@ test.describe('relations menu', () => {
     expect(Math.abs(target.y + target.height / 2 - (pane.y + pane.height / 2))).toBeLessThan(10);
   });
 
+  test('in focus mode, choosing a relation centres the peer where it is drawn', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    // Spread the ledger out, so its saved position and its compacted one
+    // disagree by thousands of flow pixels (issue #101).
+    await dispatch(page, [{ type: 'move-element', id: IDS.ledger, position: { x: 5000, y: 2000 } }]);
+
+    await page.getByTestId('focus-toggle').click();
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-focus-overlaid', 'true');
+    // Let the toggle's re-fit glide settle before driving the roller.
+    await page.waitForTimeout(400);
+
+    await page.getByTestId(`entity-${IDS.gateway}`).click();
+    await page.getByTestId('relations-menu-toggle').click();
+    // The ledger is the roller's second pill: the first click turns to it,
+    // the second chooses it.
+    await page.getByTestId(`relation-${IDS.ledger}`).click();
+    await expect(page.getByTestId(`relation-${IDS.ledger}`)).toHaveClass(/is-active/);
+    await page.getByTestId(`relation-${IDS.ledger}`).click();
+
+    // The pan centres the ledger's compacted box, the one the reader sees,
+    // rather than its saved position out in empty space.
+    const pane = (await page.locator('.react-flow__pane').boundingBox())!;
+    await expect
+      .poll(async () => {
+        const target = await page.getByTestId(`entity-${IDS.ledger}`).boundingBox();
+        if (!target) return Number.POSITIVE_INFINITY;
+        return Math.max(
+          Math.abs(target.x + target.width / 2 - (pane.x + pane.width / 2)),
+          Math.abs(target.y + target.height / 2 - (pane.y + pane.height / 2)),
+        );
+      })
+      .toBeLessThan(10);
+  });
+
   test('the middle option emphasises its connection on the board', async ({ page }) => {
     await dispatch(page, sampleDomain());
     await page.getByTestId(`entity-${IDS.gateway}`).click();
