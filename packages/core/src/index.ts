@@ -24,6 +24,7 @@ export * from './query/groups.js';
 export * from './query/labels.js';
 export * from './query/layout-report.js';
 export * from './query/neighbourhood.js';
+export * from './query/note-placement.js';
 export * from './query/notes.js';
 export * from './query/reflow.js';
 export * from './query/selection.js';

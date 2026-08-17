@@ -968,6 +968,47 @@ test.describe('filtering', () => {
     await expect(page.getByTestId(`note-card-${UI_NOTE}`)).toBeVisible();
   });
 
+  test('focus compaction keeps note cards clear of the elements (issue #105)', async ({ page }) => {
+    const NOTE = 'ledger-context-note';
+    await dispatch(page, [
+      ...sampleDomain(),
+      { type: 'move-element', id: IDS.ledger, position: { x: 1200, y: 400 } },
+      { type: 'create-note' as const, id: NOTE, text: 'settlement context', targets: [IDS.ledger] },
+      // Pinned where the pack is about to put the matching elements.
+      { type: 'move-note' as const, id: NOTE, position: { x: 1050, y: 60 } },
+    ]);
+    const saved = await serialize(page);
+
+    await setFilter(page, 'team=payments');
+    await page.getByTestId('focus-toggle').click();
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-focus-overlaid', 'true');
+
+    // Notes mode draws every card over the compacted board.
+    await page.getByTestId('overlay-notes').click();
+    const card = page.getByTestId(`note-card-${NOTE}`);
+    await expect(card).toBeVisible();
+
+    // The card left its pin for a spot that covers neither packed element.
+    const cardBox = await card.boundingBox();
+    const nodes = page.locator('.react-flow__node');
+    await expect(nodes).toHaveCount(2);
+    for (const node of await nodes.all()) {
+      const box = await node.boundingBox();
+      const apart =
+        cardBox!.x + cardBox!.width <= box!.x ||
+        box!.x + box!.width <= cardBox!.x ||
+        cardBox!.y + cardBox!.height <= box!.y ||
+        box!.y + box!.height <= cardBox!.y;
+      expect(apart).toBe(true);
+    }
+
+    // A transient view: the pin survives the whole trip untouched.
+    await page.getByTestId('overlay-model').click();
+    await page.getByTestId('focus-toggle').click();
+    await expect(page.getByTestId('canvas')).not.toHaveAttribute('data-focus-overlaid');
+    expect(await serialize(page)).toBe(saved);
+  });
+
   test('a filter opens the groups above a match, and clearing folds them back', async ({ page }) => {
     const INNER = '88888888-8888-4888-8888-888888888888';
     const OUTER = '99999999-9999-4999-8999-999999999999';
@@ -5754,6 +5795,28 @@ test.describe('notes', () => {
 
     await dispatch(page, [{ type: 'set-selection', ids: [EU_NOTE] }]);
     await expect(page.getByTestId(`note-card-${EU_NOTE}`)).toBeVisible();
+  });
+
+  test('create-note with a position pins the card there (issue #105)', async ({ page }) => {
+    const PINNED = 'producer-placed-note';
+    await dispatch(page, [
+      ...sampleDomain(),
+      {
+        type: 'create-note' as const,
+        id: PINNED,
+        text: 'placed by a producer',
+        targets: [IDS.ui],
+        position: { x: 40, y: -220 },
+      },
+    ]);
+    await fit(page);
+
+    await dispatch(page, [{ type: 'set-selection', ids: [PINNED] }]);
+    const card = page.getByTestId(`note-card-${PINNED}`);
+    await expect(card).toBeVisible();
+    await expect
+      .poll(() => card.evaluate((node) => (node as HTMLElement).style.transform))
+      .toBe('translate(40px, -220px)');
   });
 
   /**

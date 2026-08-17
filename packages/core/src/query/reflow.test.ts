@@ -174,6 +174,20 @@ describe('planReflow', () => {
     expect(card!.x).toBeGreaterThanOrEqual(180 + 64);
   });
 
+  it('gives a pinned note card the same clearance as a box', () => {
+    const state = must(
+      initialState(DOC),
+      entity(A, 0),
+      { type: 'create-note', id: CARD, text: 'why?', targets: [A] },
+      { type: 'move-note', id: CARD, position: { x: 20, y: 20 } },
+    );
+    const plan = planReflow(state);
+
+    const card = plan?.positions[CARD];
+    expect(card).toBeDefined();
+    expect(card!.x).toBeGreaterThanOrEqual(180 + 64);
+  });
+
   it('translates a connection\'s bends by the average of its endpoint moves', () => {
     const state = must(
       initialState(DOC),

@@ -16,7 +16,8 @@ export type LayoutIssueCode =
   | 'member-outside-container'
   | 'stranded-entity'
   | 'missing-position'
-  | 'zero-length-connection';
+  | 'zero-length-connection'
+  | 'note-over-element';
 
 export interface LayoutIssue {
   code: LayoutIssueCode;
@@ -125,6 +126,23 @@ export function inspectLayout(document: Document): LayoutReport {
         code: 'member-outside-container',
         elementIds: [element.id, element.groupId],
         message: `${element.id} sits outside the box ${element.groupId} shows when expanded: move it inside, or delete its layout entry and re-run layout`,
+      });
+    }
+  }
+
+  // A pinned note card covering an element. The board derives a clear spot
+  // for an unpinned card, so only an explicit pin (`create-note` with a
+  // position, or `move-note`) can put one over an element.
+  for (const noteId of Object.keys(document.model.notes).sort()) {
+    const pin = document.layout[noteId];
+    if (!pin || !('x' in pin)) continue;
+    const card = { id: noteId, x: pin.x, y: pin.y, width: pin.width, height: pin.height };
+    for (const box of boxes) {
+      if (!overlaps(card, box)) continue;
+      issues.push({
+        code: 'note-over-element',
+        elementIds: [noteId, box.id],
+        message: `the pinned note ${noteId} covers ${box.id}: move the note, or drop its position and let the board place it`,
       });
     }
   }

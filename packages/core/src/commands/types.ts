@@ -188,6 +188,9 @@ export type Command =
       text: string;
       targets: Id[];
       tags?: Record<string, string[]>;
+      /** Pins the card there on creation. Without it the board derives a
+          spot beside the targets that covers no element. */
+      position?: Point;
     }
   | { type: 'set-note-text'; id: Id; text: string }
   | { type: 'set-note-targets'; id: Id; targets: Id[] }

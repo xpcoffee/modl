@@ -81,11 +81,15 @@ export function planCompact(state: Pick<AppState, 'document' | 'expanded'>): Ref
         ancestorsOf(elements, b).length - ancestorsOf(elements, a).length || a.localeCompare(b),
     );
 
-  // A pinned card packs with the scope of the innermost expanded container
-  // drawn around it, the same reading reflow uses. Cards have no groupId, so
-  // containment is geometric, read before anything moves.
+  // A pinned card, comment or note, packs with the scope of the innermost
+  // expanded container drawn around it, the same reading reflow uses. Cards
+  // have no groupId, so containment is geometric, read before anything moves.
   const cardScopes = new Map<Id | null, Id[]>();
-  for (const cardId of Object.keys(document.comments).sort()) {
+  const cardIds = [
+    ...Object.keys(document.comments),
+    ...Object.keys(document.model.notes),
+  ].sort();
+  for (const cardId of cardIds) {
     const at = next.get(cardId);
     const entry = document.layout[cardId];
     if (!at || !entry || !isEntityLayout(entry)) continue;

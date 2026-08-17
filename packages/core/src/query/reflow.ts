@@ -26,7 +26,7 @@ import { ancestorsOf, connectionAnchors, descendantsOf, isRendered, membersOf } 
  */
 
 export interface ReflowPlan {
-  /** New origins for entities, connection nodes, and pinned comment cards. */
+  /** New origins for entities, connection nodes, and pinned cards (comments and notes). */
   positions: Record<Id, Point>;
   /** Hand-placed bends, carried along with the elements their line joins. */
   waypoints: Record<Id, Point[]>;
@@ -450,12 +450,17 @@ export function planReflow(state: Pick<AppState, 'document' | 'expanded'>): Refl
     y: GAP.y,
   });
 
-  // A pinned card joins the scope of the innermost expanded container drawn
-  // around it, so a remark pinned beside a member re-spaces with the members
-  // rather than being pushed out of the container it sits in. Cards have no
-  // groupId, so containment is geometric, read before anything moves.
+  // A pinned card, comment or note, joins the scope of the innermost expanded
+  // container drawn around it, so a remark pinned beside a member re-spaces
+  // with the members rather than being pushed out of the container it sits
+  // in. Cards have no groupId, so containment is geometric, read before
+  // anything moves.
   const cardScopes = new Map<Id | null, Id[]>();
-  for (const cardId of Object.keys(document.comments).sort()) {
+  const cardIds = [
+    ...Object.keys(document.comments),
+    ...Object.keys(document.model.notes),
+  ].sort();
+  for (const cardId of cardIds) {
     const at = next.get(cardId);
     const entry = document.layout[cardId];
     if (!at || !entry || !isEntityLayout(entry)) continue;

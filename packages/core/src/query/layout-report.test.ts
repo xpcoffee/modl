@@ -102,6 +102,32 @@ describe('inspectLayout', () => {
     expect(codes(inspectLayout(state.document))).toContain('zero-length-connection');
   });
 
+  it('reports a pinned note card covering an element', () => {
+    const state = must(
+      initialState(DOC),
+      entity(A, 0),
+      entity(B, 400),
+      { type: 'create-note', id: NODE, text: 'context', targets: [A], position: { x: 380, y: 0 } },
+    );
+    const report = inspectLayout(state.document);
+    expect(codes(report)).toContain('note-over-element');
+    expect(report.issues.find((issue) => issue.code === 'note-over-element')?.elementIds).toEqual([
+      NODE,
+      B,
+    ]);
+  });
+
+  it('accepts a pinned note card beside the elements, and an unpinned note anywhere', () => {
+    const state = must(
+      initialState(DOC),
+      entity(A, 0),
+      entity(B, 400),
+      { type: 'create-note', id: NODE, text: 'context', targets: [A], position: { x: 0, y: -200 } },
+      { type: 'create-note', id: GROUP, text: 'more context', targets: [B] },
+    );
+    expect(codes(inspectLayout(state.document))).not.toContain('note-over-element');
+  });
+
   it('reports the bounding box of what is placed', () => {
     const state = must(initialState(DOC), entity(A, 0), entity(B, 400));
     expect(inspectLayout(state.document).bounds).toEqual({ x: 0, y: 0, width: 580, height: 72 });

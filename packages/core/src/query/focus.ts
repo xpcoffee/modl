@@ -48,6 +48,9 @@ export function planFocusLayout(state: AppState): ReflowPlan | null {
   // Comment cards stay at their pinned positions: the overlay moves model
   // elements only, and a card is brought forward by selection, not by the
   // filter, so packing it would move it for no reason the reader can see.
+  // Note cards are not packed either; while this plan overlays the board
+  // their pins stop describing it, so `noteCardPlacements` derives each card
+  // from its targets' compacted positions instead (issue #105).
   const document = {
     ...state.document,
     model: { ...state.document.model, elements },
