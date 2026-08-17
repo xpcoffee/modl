@@ -176,11 +176,13 @@ export function boardEmphasis(state: AppState): BoardEmphasis {
 }
 
 /**
- * Elements focus mode removes from the board entirely: with the mode on and a
- * filter active, everything the filter neither matches nor promotes goes
- * unrendered instead of dimming. Connections are not listed; a connection
- * leaves the board when an endpoint does, judged by the renderer against its
- * visible anchors.
+ * Everything focus mode removes from the board: with the mode on and a
+ * filter active, every element the filter neither matches nor promotes goes
+ * unrendered instead of dimming, and every attachment (a comment or note,
+ * through `focusHiddenAttachmentIds`) whose targets have all left goes with
+ * them. Renderers ask this one set, so nothing draws a card for a thing the
+ * mode took away. Connections are not listed; a connection leaves the board
+ * when an endpoint does, judged by the renderer against its visible anchors.
  *
  * Three kinds of element stay put, with their enclosing groups kept so what
  * remains still has somewhere to render:
@@ -226,7 +228,56 @@ export function focusHiddenIds(state: AppState): Set<Id> {
     if (isConnection(element)) continue;
     if (!kept.has(id)) removed.add(id);
   }
+
+  for (const id of focusHiddenAttachmentIds(state, removed)) removed.add(id);
   return removed;
+}
+
+/** What a comment or note needs to follow its targets: an id and the targets. */
+interface Attachment {
+  id: Id;
+  targets: readonly Id[];
+}
+
+/**
+ * Attachments that follow their targets off the board (issue #102). One rule
+ * for comments, notes, and whatever attaches to elements next: an attachment
+ * hides when every element it targets has left the board, and one standing
+ * target keeps it, matching how a note reveals on any selected target
+ * (`visibleNoteIds`) and how a selected card stands for all its targets. A
+ * target list naming no live elements scopes the attachment to the whole
+ * document, which no filter removes.
+ *
+ * A target is judged where it lands on the board, the rule
+ * `suppressedConnectionIds` set: a target inside a kept collapsed group
+ * counts as the group standing in for it. A connection target counts as gone
+ * when its line draws nowhere, meaning every `from` or every `to` anchor was
+ * removed.
+ */
+function focusHiddenAttachmentIds(state: AppState, removed: ReadonlySet<Id>): Set<Id> {
+  const elements = state.document.model.elements;
+  const expanded = new Set(state.expanded);
+  const attachments: Attachment[] = [
+    ...Object.values(state.document.comments),
+    ...Object.values(state.document.model.notes),
+  ];
+
+  const targetGone = (target: Id): boolean => {
+    const element = elements[target];
+    if (element && isConnection(element)) {
+      const froms = element.from.map((end) => visibleAnchor(elements, end, expanded));
+      const tos = element.to.map((end) => visibleAnchor(elements, end, expanded));
+      return froms.every((anchor) => removed.has(anchor)) || tos.every((anchor) => removed.has(anchor));
+    }
+    return removed.has(visibleAnchor(elements, target, expanded));
+  };
+
+  const gone = new Set<Id>();
+  for (const attachment of attachments) {
+    const live = attachment.targets.filter((target) => elements[target]);
+    if (live.length > 0 && live.every(targetGone)) gone.add(attachment.id);
+  }
+  return gone;
 }
 
 /**

@@ -4,6 +4,7 @@ import {
   COMMENT_CARD_SIZE,
   allComments,
   cardPinAt,
+  focusHiddenIds,
   isEntityLayout,
   renderedCentre,
   spawnCardPin,
@@ -112,21 +113,26 @@ function generalFallback(state: AppState, index: number): Point {
 }
 
 function placeCards(state: AppState, live?: LiveCentres): CardPlace[] {
+  // A card focus mode took away draws nowhere: not on the board, not in the
+  // timeline, whichever mode is showing cards (issue #102).
+  const focusHidden = focusHiddenIds(state);
   let unpinnedGenerals = 0;
-  return allComments(state.document.comments).map((comment) => {
-    const anchors = comment.targets
-      .map((target) => rectCentre(state, target, live))
-      .filter((point): point is Point => point !== null);
+  return allComments(state.document.comments)
+    .filter((comment) => !focusHidden.has(comment.id))
+    .map((comment) => {
+      const anchors = comment.targets
+        .map((target) => rectCentre(state, target, live))
+        .filter((point): point is Point => point !== null);
 
-    const pin = state.document.layout[comment.id];
-    if (pin && 'x' in pin) return { comment, at: { x: pin.x, y: pin.y }, anchors };
+      const pin = state.document.layout[comment.id];
+      if (pin && 'x' in pin) return { comment, at: { x: pin.x, y: pin.y }, anchors };
 
-    const derived = derivedCardAt(anchors, DERIVED_CARD_OFFSET);
-    if (derived === null) {
-      return { comment, at: generalFallback(state, unpinnedGenerals++), anchors };
-    }
-    return { comment, at: derived, anchors };
-  });
+      const derived = derivedCardAt(anchors, DERIVED_CARD_OFFSET);
+      if (derived === null) {
+        return { comment, at: generalFallback(state, unpinnedGenerals++), anchors };
+      }
+      return { comment, at: derived, anchors };
+    });
 }
 
 /** The single selected comment, if the selection is exactly that. */
