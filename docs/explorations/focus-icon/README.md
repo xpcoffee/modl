@@ -2,6 +2,8 @@
 
 Issue [#107](https://github.com/xpcoffee/modl/issues/107) asks for replacements for the coffee cup on the focus toggle in the search menu. Each SVG here is one candidate for `FocusIcon` in `packages/app/src/panels/SearchMenu.tsx`.
 
+**G, orbit, is the chosen icon** and now ships in `FocusIcon`. The other seven stay here as the record of the round, and as a starting point if the icon is revisited.
+
 Every candidate uses a 24×24 viewBox and filled paths, so it drops into the menu unchanged: `.search-menu__icon` sets the size (16px) and `fill: currentcolor`.
 
 The candidates read the board as a field, following [decision 010](../../decisions/010-gravity-wave-art-direction.md): a mass, a ring of influence, waves through the dot grid.

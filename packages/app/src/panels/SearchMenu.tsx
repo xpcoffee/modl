@@ -512,11 +512,19 @@ function FilterIcon() {
   );
 }
 
-// A coffee cup: sit down with the few things the filter kept (issue #88).
+// An orbit: a mass and what stays bound to it, which is what the board keeps
+// under focus. Drawn in the field language of
+// docs/decisions/010-gravity-wave-art-direction.md; candidates in
+// docs/explorations/focus-icon (issue #107).
 function FocusIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="search-menu__icon">
-      <path d="M20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.11 0 2-.89 2-2V5c0-1.11-.89-2-2-2zm0 5h-2V5h2v3zM4 19h16v2H4v-2z" />
+      <path d="M12 8.8a3.2 3.2 0 100 6.4 3.2 3.2 0 000-6.4z" />
+      <path
+        fillRule="evenodd"
+        d="M12 2.8c4 0 7.2 4.1 7.2 9.2s-3.2 9.2-7.2 9.2S4.8 17.1 4.8 12 8 2.8 12 2.8zm0 1.9c-2.7 0-5 3.3-5 7.3s2.3 7.3 5 7.3 5-3.3 5-7.3-2.3-7.3-5-7.3z"
+        transform="rotate(-35 12 12)"
+      />
     </svg>
   );
 }
