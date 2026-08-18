@@ -107,6 +107,35 @@ describe('create-note', () => {
     expect(result.error.code).toBe('schema-invalid');
   });
 
+  it('pins the card where a position says, in one command', () => {
+    const state = must(base, {
+      type: 'create-note',
+      id: NOTE,
+      text: 'refund path',
+      targets: [A],
+      position: { x: 40, y: -160 },
+    });
+    expect(state.document.layout[NOTE]).toMatchObject({ x: 40, y: -160 });
+  });
+
+  it('leaves the card unpinned without a position, so the board places it', () => {
+    const state = must(base, note(NOTE, 'refund path', [A]));
+    expect(state.document.layout[NOTE]).toBeUndefined();
+  });
+
+  it('schema-invalid: rejects a position with non-finite coordinates', () => {
+    const result = apply(base, {
+      type: 'create-note',
+      id: NOTE,
+      text: 'x',
+      targets: [A],
+      position: { x: Number.NaN, y: 0 },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('schema-invalid');
+  });
+
   it('unknown-element: rejects a target that is not in the document', () => {
     const result = apply(base, note(NOTE, 'about nothing', [MISSING]));
     expect(result.ok).toBe(false);

@@ -37,5 +37,6 @@ A decision earns a file when reversing it later would be expensive: it shapes th
 | [029](029-focus-compaction-on-collapse.md) | Focus mode compacts whenever it is on, so collapse reflows the view |
 | [030](030-domain-notes.md) | Notes are taggable context inside the model, held apart from discussion |
 | [031](031-focus-hides-attachments.md) | Focus mode hides attachments through the one hidden set |
+| [032](032-note-card-placement.md) | The core derives note card placement, and a pin holds only while the board draws its saved geometry |
 
 The build order these decisions were first applied in lives in [the bootstrap spec](../specs/001-bootstrap.md).

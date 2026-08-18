@@ -214,6 +214,28 @@ describe('planCompact', () => {
     expect(card.y + card.height).toBeLessThanOrEqual(group.y + group.expanded!.height);
   });
 
+  it('packs a pinned note card with the scope that holds it', () => {
+    const state = must(
+      initialState(DOC),
+      entity(A, 0),
+      entity(B, 40, 10),
+      { type: 'group-elements', id: GROUP, title: 'G', memberIds: [A, B], position: { x: 0, y: 0 } },
+      { type: 'set-expanded', id: GROUP, expanded: true },
+      { type: 'create-note', id: CARD, text: 'why?', targets: [A] },
+      { type: 'move-note', id: CARD, position: { x: 10, y: 30 } },
+    );
+    const plan = planCompact(state);
+    expect(plan).not.toBeNull();
+
+    const applied = must(state, { type: 'reflow-layout', ...plan! });
+    const group = boxOf(applied, GROUP);
+    const card = boxOf(applied, CARD);
+    expect(card.x).toBeGreaterThanOrEqual(group.x);
+    expect(card.y).toBeGreaterThanOrEqual(group.y);
+    expect(card.x + card.width).toBeLessThanOrEqual(group.x + group.expanded!.width);
+    expect(card.y + card.height).toBeLessThanOrEqual(group.y + group.expanded!.height);
+  });
+
   it('translates a connection\'s bends by the average of its endpoint moves', () => {
     const state = must(
       initialState(DOC),

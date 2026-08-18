@@ -1367,6 +1367,12 @@ function reduce(state: AppState, command: Command): CommandResult {
       if (Object.keys(command.tags ?? {}).some((key) => key === '')) {
         return fail(command.type, 'schema-invalid', 'tag key must not be empty');
       }
+      if (
+        command.position !== undefined &&
+        (!Number.isFinite(command.position.x) || !Number.isFinite(command.position.y))
+      ) {
+        return fail(command.type, 'schema-invalid', 'a position needs finite coordinates');
+      }
 
       const note: Note = {
         id: command.id,
@@ -1376,7 +1382,27 @@ function reduce(state: AppState, command: Command): CommandResult {
           Object.entries(command.tags ?? {}).map(([key, values]) => [key, [...values]]),
         ),
       };
-      return ok(withNote(state, note), [{ type: 'note-created', id: command.id }]);
+      const created = withNote(state, note);
+      if (command.position === undefined) {
+        return ok(created, [{ type: 'note-created', id: command.id }]);
+      }
+      return ok(
+        {
+          ...created,
+          document: {
+            ...created.document,
+            layout: {
+              ...created.document.layout,
+              [command.id]: {
+                ...NOTE_CARD_SIZE,
+                x: command.position.x,
+                y: command.position.y,
+              },
+            },
+          },
+        },
+        [{ type: 'note-created', id: command.id }],
+      );
     }
 
     case 'set-note-text': {

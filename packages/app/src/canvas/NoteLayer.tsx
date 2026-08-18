@@ -5,7 +5,8 @@ import {
   allNotes,
   cardPinAt,
   focusHiddenIds,
-  isEntityLayout,
+  focusLayoutState,
+  noteCardPlacements,
   notesOn,
   spawnCardPin,
   visibleNoteIds,
@@ -16,13 +17,7 @@ import {
 } from '@modl/core';
 import { store } from '../store/store.js';
 import { useAppState } from '../store/useStore.js';
-import {
-  derivedCardAt,
-  rectCentre,
-  useVisibleRect,
-  type CardSpawn,
-  type LiveCentres,
-} from './CommentOverlay.js';
+import { rectCentre, useVisibleRect, type CardSpawn, type LiveCentres } from './CommentOverlay.js';
 import {
   enterNotesMode,
   getNoteEdit,
@@ -46,13 +41,6 @@ import { NoteTextBox } from './NoteTextBox.js';
  * modes exclude each other.
  */
 
-/** Where an unpinned card sits: above its targets, where comments sit below,
- * so an element carrying both never draws the two cards on top of each other. */
-const DERIVED_CARD_OFFSET = {
-  x: -NOTE_CARD_SIZE.width / 2,
-  y: -NOTE_CARD_SIZE.height - 48,
-};
-
 interface CardPlace {
   note: Note;
   at: Point;
@@ -60,42 +48,25 @@ interface CardPlace {
   anchors: Point[];
 }
 
-/**
- * Where unpinned document-level notes stack: above the content, apart from
- * the left edge where unpinned general remarks sit. A document-level note
- * normally arrives pinned where it was double-clicked; this fallback is for
- * files that carry one without a pin.
- */
-function documentFallback(state: AppState, index: number): Point {
-  const boxes = Object.values(state.document.layout).filter(isEntityLayout);
-  const left = boxes.length === 0 ? 0 : Math.min(...boxes.map((box) => box.x));
-  const top = boxes.length === 0 ? 0 : Math.min(...boxes.map((box) => box.y));
-  return {
-    x: left + index * (NOTE_CARD_SIZE.width + 16),
-    y: top - NOTE_CARD_SIZE.height - 60,
-  };
-}
-
 function placeCards(state: AppState, live?: LiveCentres): CardPlace[] {
   // A card focus mode took away draws nowhere, notes mode included, the same
   // rule the comment cards follow (issue #102).
   const focusHidden = focusHiddenIds(state);
-  let unpinnedDocumentNotes = 0;
+  // The core derives every card's place (issue #105): pins hold while the
+  // board draws its saved geometry, and every other card rises clear of the
+  // element boxes. Anchors read the same overlaid layout the nodes draw.
+  const shown = focusLayoutState(state);
+  const placements = noteCardPlacements(
+    state,
+    live === undefined ? undefined : (id) => live.get(id),
+  );
   return allNotes(state.document.model.notes)
     .filter((note) => !focusHidden.has(note.id))
     .map((note) => {
       const anchors = note.targets
-        .map((target) => rectCentre(state, target, live))
+        .map((target) => rectCentre(shown, target, live))
         .filter((point): point is Point => point !== null);
-
-      const pin = state.document.layout[note.id];
-      if (pin && 'x' in pin) return { note, at: { x: pin.x, y: pin.y }, anchors };
-
-      const derived = derivedCardAt(anchors, DERIVED_CARD_OFFSET);
-      if (derived === null) {
-        return { note, at: documentFallback(state, unpinnedDocumentNotes++), anchors };
-      }
-      return { note, at: derived, anchors };
+      return { note, at: placements.get(note.id) ?? { x: 0, y: 0 }, anchors };
     });
 }
 
@@ -124,12 +95,8 @@ export function quickAddNote(targets: Id[], at?: Point, spawn?: CardSpawn): void
   if (!result.ok) return;
   let position = at !== undefined ? cardPinAt(at, NOTE_CARD_SIZE) : null;
   if (position === null && spawn !== undefined) {
-    const state = store.getState();
-    const anchors = targets
-      .map((target) => rectCentre(state, target))
-      .filter((point): point is Point => point !== null);
     position = spawnCardPin(
-      derivedCardAt(anchors, DERIVED_CARD_OFFSET),
+      noteCardPlacements(store.getState()).get(id) ?? null,
       NOTE_CARD_SIZE,
       spawn.view,
       spawn.cursor,
