@@ -4,11 +4,11 @@ import {
   MAX_FILTERS,
   activeFilterTerms,
   addTerm,
+  focusLayoutState,
   formatTerm,
+  goToTarget,
   replaceTerm,
   searchOptions,
-  visibleAnchor,
-  type AppState,
   type FilterTerm,
   type Id,
   type SearchOption,
@@ -27,19 +27,6 @@ const CLOSE_MS = 300;
 
 /** What the bar is doing: finding things, or changing one active filter. */
 type Mode = { kind: 'search' } | { kind: 'edit'; index: number };
-
-/** The board rectangle a pan should centre on. */
-function rectOf(state: AppState, id: Id): { x: number; y: number; width: number; height: number } {
-  const entry = state.document.layout[id];
-  if (!entry || !('x' in entry)) return { x: 0, y: 0, width: 180, height: 72 };
-  const container = state.expanded.includes(id) ? entry.expanded : undefined;
-  return {
-    x: entry.x,
-    y: entry.y,
-    width: container?.width ?? entry.width,
-    height: container?.height ?? entry.height,
-  };
-}
 
 /** A stable key for an option, so the list keeps its identity across renders. */
 function keyOf(option: SearchOption): string {
@@ -214,19 +201,22 @@ export function SearchMenu() {
 
   /** Goes to an element: the camera moves, and the selection follows it. */
   const goTo = (id: Id): void => {
-    const current = store.getState();
-    const anchor = visibleAnchor(current.document.model.elements, id, new Set(current.expanded));
-    const target = rectOf(current, anchor);
-    const zoom = getViewport().zoom;
-    store.dispatch({
-      type: 'set-view',
-      pan: {
-        x: paneWidth / 2 - (target.x + target.width / 2) * zoom,
-        y: paneHeight / 2 - (target.y + target.height / 2) * zoom,
-      },
-      zoom,
-    });
-    store.dispatch({ type: 'set-selection', ids: [anchor] });
+    // Focus mode draws elements at compacted positions, so the camera reads
+    // the same overlaid layout the canvas renders (issue #106). With the mode
+    // off this is the state itself, and the saved position.
+    const target = goToTarget(focusLayoutState(store.getState()), id);
+    if (target !== null) {
+      const zoom = getViewport().zoom;
+      store.dispatch({
+        type: 'set-view',
+        pan: {
+          x: paneWidth / 2 - target.centre.x * zoom,
+          y: paneHeight / 2 - target.centre.y * zoom,
+        },
+        zoom,
+      });
+      store.dispatch({ type: 'set-selection', ids: [target.selectId] });
+    }
     close();
   };
 

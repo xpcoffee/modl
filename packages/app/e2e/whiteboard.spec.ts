@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import {
   dispatch,
+  expectCentred,
   fit,
   getDocument,
   getTrace,
@@ -1119,6 +1120,46 @@ test.describe('search menu', () => {
     expect(trace.some((entry) => entry.command.type === 'set-view')).toBe(true);
     // Going somewhere is the end of the search.
     await expect(page.getByTestId('search-bar')).toHaveCount(0);
+  });
+
+  test('choosing a connection centres the line between its endpoints', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    // Away from the origin, so a pan to the origin shows up as a miss
+    // (issue #106).
+    await dispatch(page, [
+      { type: 'move-element', id: IDS.gateway, position: { x: 3000, y: 1500 } },
+      { type: 'move-element', id: IDS.ledger, position: { x: 3400, y: 1500 } },
+    ]);
+    await openSearch(page);
+    await page.getByTestId('search-input').fill('post entry');
+
+    await page.getByTestId(`search-element-${IDS.post}`).click();
+
+    await expect
+      .poll(() => page.evaluate(() => window.__modl.getState().selection))
+      .toEqual([IDS.post]);
+    await expectCentred(page, `connection-${IDS.post}`);
+  });
+
+  test('in focus mode, choosing a connection centres where the line is drawn', async ({ page }) => {
+    await dispatch(page, sampleDomain());
+    // Spread the endpoints out, so the saved line and the compacted one sit
+    // thousands of flow pixels apart.
+    await dispatch(page, [
+      { type: 'move-element', id: IDS.gateway, position: { x: 3000, y: 1500 } },
+      { type: 'move-element', id: IDS.ledger, position: { x: 6000, y: 3000 } },
+    ]);
+
+    await page.getByTestId('focus-toggle').click();
+    await expect(page.getByTestId('canvas')).toHaveAttribute('data-focus-overlaid', 'true');
+    // Let the toggle's re-fit glide settle before searching.
+    await page.waitForTimeout(400);
+
+    await openSearch(page);
+    await page.getByTestId('search-input').fill('post entry');
+    await page.getByTestId(`search-element-${IDS.post}`).click();
+
+    await expectCentred(page, `connection-${IDS.post}`);
   });
 
   test('finds an element by scattered characters', async ({ page }) => {
@@ -3236,17 +3277,7 @@ test.describe('relations menu', () => {
 
     // The pan centres the ledger's compacted box, the one the reader sees,
     // rather than its saved position out in empty space.
-    const pane = (await page.locator('.react-flow__pane').boundingBox())!;
-    await expect
-      .poll(async () => {
-        const target = await page.getByTestId(`entity-${IDS.ledger}`).boundingBox();
-        if (!target) return Number.POSITIVE_INFINITY;
-        return Math.max(
-          Math.abs(target.x + target.width / 2 - (pane.x + pane.width / 2)),
-          Math.abs(target.y + target.height / 2 - (pane.y + pane.height / 2)),
-        );
-      })
-      .toBeLessThan(10);
+    await expectCentred(page, `entity-${IDS.ledger}`);
   });
 
   test('the middle option emphasises its connection on the board', async ({ page }) => {
